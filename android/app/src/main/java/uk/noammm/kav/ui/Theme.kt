@@ -87,6 +87,8 @@ object K {
     // Bus line badges in Kav's look or the strip, as chosen in Settings.
     var lineBadgeAppearance by mutableStateOf(LineBadgeAppearance.KAV)
 
+    var mapLang by mutableStateOf<Lang>(Lang.EN)
+
     // Every colour has to be set for every look, or a switch leaves strays from the last one.
     fun applyTheme(chosen: Look) {
         look = chosen

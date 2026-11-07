@@ -169,6 +169,7 @@ class MainActivity : ComponentActivity() {
         GoogleMaps.shareLocation = !Prefs.privateSearch(this)
         Prefs.loadSources(this)
         StopNames.english = Prefs.stopNamesEnglish(this)
+        K.mapLang = Prefs.mapLang(this)
         MapFile.type = Prefs.mapType(this)
         MapFile.init(this)
         uk.noammm.kav.data.Timetable.init(this)
@@ -414,6 +415,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         seen = Prefs.seen(ctx)
         seenPlace = Prefs.seenPlace(ctx)
         T.switchTo(Prefs.lang(ctx))
+        K.mapLang = Prefs.mapLang(ctx)
     }
 
     // One-off positions for maps and planning; only tracked fixes move a trip's steps on.
@@ -1598,6 +1600,9 @@ object Prefs {
     fun lang(ctx: Context): Lang =
         Lang.entries.firstOrNull { it.code == store(ctx).getString("lang", null) } ?: Lang.EN
     fun setLang(ctx: Context, lang: Lang) = store(ctx).edit().putString("lang", lang.code).apply()
+
+    fun mapLang(ctx: Context): Lang = Lang.entries.firstOrNull { it.code == store(ctx).getString("mapLang", null) } ?: Lang.EN
+    fun setMapLang(ctx: Context, lang: Lang) = store(ctx).edit().putString("mapLang", lang.code).apply()
 
     // Stops', stations' and towns' names in English rather than the ministry's Hebrew (StopNames), Hebrew until chosen.
     fun stopNamesEnglish(ctx: Context): Boolean = store(ctx).getString("stopNames", null) == "en"

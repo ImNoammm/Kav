@@ -199,6 +199,12 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     "רק שמות התחנות, התחנות והיישובים. השפה של Kav נשארת כפי שהיא."),
             )
             StopNamesRow(ctx, explained = false)
+            InfoHeader(
+                T("Map", "מפה"),
+                T("Names of places and streets on the map. Kav's own language stays as it is.",
+                    "שמות של מקומות וכבישים על המפה. השפה של Kav נשארת כפי שהיא."),
+            )
+            MapLanguageRow(ctx)
             Sub(T("Time format", "תבנית שעה"))
             ClockChoice(ctx)
         }
@@ -1332,7 +1338,7 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
 private fun LanguageRow(ctx: android.content.Context) {
     KavSegmented(
         Lang.entries.map { it.label }, selected = Lang.entries.indexOf(T.lang),
-        onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l) },
+        onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l) ; K.mapLang=l},
     )
 }
 
@@ -1355,6 +1361,13 @@ internal fun StopNamesRow(ctx: android.content.Context, modifier: Modifier = Mod
             Modifier.padding(top = K.gap2),
         )
     }
+}
+@Composable
+private fun MapLanguageRow(ctx: android.content.Context) {
+    KavSegmented(
+        Lang.entries.map { it.label }, selected = Lang.entries.indexOf(K.mapLang),
+        onSelect = { i -> val l = Lang.entries[i]; K.mapLang=l; Prefs.setMapLang(ctx, l) },
+    )
 }
 
 @Composable
