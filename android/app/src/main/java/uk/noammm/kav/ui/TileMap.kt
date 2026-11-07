@@ -724,10 +724,10 @@ fun TileMap(
     val type = MapFile.type
     val provider = MapFile.getProvider(ctx)
     val available = provider.isAvailable(ctx)
-    val mapReady = available || remote
-    LaunchedEffect(map, mapReady, available, K.look, type) {
+//    val mapReady = available || remote
+    LaunchedEffect(map, available, K.look, type) {
         val provider = MapFile.getProvider(ctx)
-        if (mapReady) map?.setStyle(Style.Builder().fromJson(provider.styleJson(ctx).toString())) { style = it }
+        map?.setStyle(Style.Builder().fromJson(provider.styleJson(ctx).toString())) { style = it }
     }
     fun Style.ensureKavIcons() {
         val px = with(density) { 1.dp.toPx() }
@@ -940,12 +940,6 @@ fun TileMap(
                 },
         )
 
-        if (!mapReady) MapDownloadCard(
-            Modifier.align(Alignment.TopStart)
-                .padding(start = with(density) { padL.toDp() }, top = with(density) { padT.toDp() })
-                .size(with(density) { (w - padL - padR).coerceAtLeast(1f).toDp() },
-                    with(density) { (h - padT - padB).coerceAtLeast(1f).toDp() }),
-        )
 
         // One row, so a long status wraps instead of running under the buttons.
         Row(
