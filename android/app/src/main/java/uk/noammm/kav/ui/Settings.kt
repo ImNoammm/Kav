@@ -16,7 +16,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -210,10 +213,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         listOfNotNull(
             when (K.look) { Look.OLED -> "OLED"; Look.LIGHT -> T("Light", "בהיר"); Look.DARK -> T("Dark", "כהה") },
             if (!liquidGlassReady) null else if (K.liquid) T("liquid glass", "זכוכית נוזלית") else T("solid", "אחיד"),
-            if (MapFile.type == MapFile.Type.SATELLITE) T("satellite map", "מפת לוויין") else T("standard map", "מפה רגילה"),
         ).joinToString(" · "),
     ) {
-        // In setup's order: the preview, the look and its glass, the colour, the line badges, the map.
+        // In setup's order: the preview, the look and its glass, the colour, then the line badges.
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             AccentPreview()
             LookChoices { Sub(it) }
@@ -221,8 +223,15 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             Spacer(Modifier.height(K.gap4))
             AccentPicker { Prefs.setAccent(ctx, it.toArgb()) }
             LineBadgeChoice()
-            MapChoices()
         }
+    }
+
+    part(
+        "map",
+        T("Map", "מפה"),
+        T("Customize map look and feel", "בחר איך תיראה המפה"),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices() }
     }
 
     part(
@@ -286,8 +295,8 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Absent(
             T("Maps", "מפות"),
             T(
-                "Map data © OpenStreetMap contributors, Protomaps. Satellite imagery: Esri, Vantor, Earthstar Geographics.",
-                "נתוני המפה © תורמי OpenStreetMap, Protomaps. צילומי הלוויין: Esri, Vantor, Earthstar Geographics.",
+                "Map data © OpenStreetMap contributors, Protomaps. Liberty tiles: OpenFreeMap.",
+                "נתוני המפה © תורמי OpenStreetMap, Protomaps. אריחי Liberty: OpenFreeMap.",
             ),
         )
     }
@@ -354,7 +363,7 @@ private class SettingsPart(val id: String, val title: String, val summary: Strin
 // Trips first, then how Kav looks and behaves, then Kav itself.
 private val SETTINGS_GROUPS = listOf(
     listOf("live", "plans", "trip", "pay"),
-    listOf("lang", "look", "links", "privacy"),
+    listOf("lang", "look", "map", "links", "privacy"),
     listOf("updates", "absent"),
 )
 
@@ -518,34 +527,45 @@ internal fun UpdatePrompts(checkAbove: Boolean = true) {
     }
 }
 
-// Kav's own map, or satellite photos, which load online. After setup, a map that isn't on the phone has its download
-// right under the choice; setup downloads it as its last step.
+// Where Kav's map tiles come from: its own file on the phone, or Liberty, which loads online. After setup, an
+// offline map that isn't on the phone has its download right under the choices; setup downloads it as its last step.
 @Composable
 internal fun MapChoices(setup: Boolean = false) {
     val ctx = LocalContext.current
-    val types = listOf(MapFile.Type.STANDARD, MapFile.Type.SATELLITE)
     InfoHeader(
-        T("Map", "מפה"),
-        T("Standard works without internet. Satellite photos come from Esri while you look, so Esri sees which area you view.",
-            "המפה הרגילה עובדת בלי אינטרנט. תמונות הלוויין מגיעות מ-Esri בזמן הצפייה, ולכן Esri רואה איזה אזור אתם צופים בו."),
+        T("Map tiles", "אריחי מפה"),
+        T("Offline Map keeps the map on your phone and works without internet. Liberty loads vector tiles from OpenFreeMap while you look, so OpenFreeMap sees which area you view.",
+            "המפה הלא מקוונת נשמרת בטלפון ועובדת בלי אינטרנט. Liberty טוענת אריחי וקטור מ-OpenFreeMap בזמן הצפייה, ולכן OpenFreeMap רואה איזה אזור אתם צופים בו."),
     )
-    KavSegmented(
-        listOf(T("Standard", "רגילה"), T("Satellite", "לוויין")), selected = types.indexOf(MapFile.type).coerceAtLeast(0),
-        onSelect = { i -> MapFile.type = types[i]; Prefs.setMapType(ctx, types[i]) },
-    )
+    ListGroup {
+        row {
+            MapTypeChoice(
+                T("Standard Map", "מפה סטנדרטית"),
+                T("On your phone. About ${MapFile.BYTES shr 20} MB, once, and no internet needed.",
+                    "בטלפון. בערך ${MapFile.BYTES shr 20} MB, פעם אחת, ובלי צורך באינטרנט."),
+                MapFile.type == MapFile.Type.OFFLINE,
+            ) { MapFile.type = MapFile.Type.OFFLINE; Prefs.setMapType(ctx, MapFile.Type.OFFLINE) }
+        }
+        row {
+            MapTypeChoice(
+                "Liberty",
+                T("Online vector map from OpenFreeMap.", "מפת וקטור מקוונת מ-OpenFreeMap."),
+                MapFile.type == MapFile.Type.LIBERTY,
+            ) { MapFile.type = MapFile.Type.LIBERTY; Prefs.setMapType(ctx, MapFile.Type.LIBERTY) }
+        }
+
+    }
     val state = MapFile.state
-    if (!setup) AnimatedVisibility(state !is MapFile.State.Ready, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    val offline = MapFile.type == MapFile.Type.OFFLINE
+    if (!setup) AnimatedVisibility(offline && state !is MapFile.State.Ready,
+        enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         Column(Modifier.padding(top = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             when (state) {
                 is MapFile.State.Downloading -> DownloadBar(state.progress, T("Downloading the map…", "מורידים את המפה…"))
                 is MapFile.State.Failed -> Text(T("Couldn't download the map. ${state.why}", "ההורדה של המפה לא הצליחה. ${state.why}"),
                     style = K.type.subhead, color = K.critical)
-                else -> Text(
-                    if (MapFile.type == MapFile.Type.SATELLITE) T(
-                        "Satellite's names come from the map on your phone, which isn't here yet: about ${MapFile.BYTES shr 20} MB, once.",
-                        "השמות במפת הלוויין מגיעים מהמפה שבטלפון, שעוד לא כאן: בערך ${MapFile.BYTES shr 20} MB, פעם אחת.")
-                    else T("This map isn't on your phone yet: about ${MapFile.BYTES shr 20} MB, once.",
-                        "המפה הזו עוד לא בטלפון: בערך ${MapFile.BYTES shr 20} MB, פעם אחת."),
+                else -> Text(T("This map isn't on your phone yet: about ${MapFile.BYTES shr 20} MB, once.",
+                    "המפה הזו עוד לא בטלפון: בערך ${MapFile.BYTES shr 20} MB, פעם אחת."),
                     style = K.type.subhead, color = K.textSecondary,
                 )
             }
@@ -556,10 +576,31 @@ internal fun MapChoices(setup: Boolean = false) {
         }
     }
     // The map as it looks with the choice above, around Dizengoff Center; it only shows, so the page scrolls over it.
-    // Before the map is downloaded (setup), it's read from GitHub for this spot alone.
+    // Before the offline map is downloaded (setup), it's read from GitHub for this spot alone.
     Box(Modifier.padding(top = K.gap3).fillMaxWidth().height(160.dp).panel(K.rCard)) {
         TileMap(listOf(32.0731 to 34.7712, 32.0781 to 34.7792), Modifier.fillMaxSize(), remote = true)
         Box(Modifier.matchParentSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } })
+    }
+}
+
+// One map source, picked with a radio button; tapping the whole row picks it.
+@Composable
+private fun MapTypeChoice(title: String, detail: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(horizontal = K.gap4, vertical = K.gap3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(K.gap3),
+    ) {
+        RadioButton(
+            selected = selected, onClick = null,
+            colors = RadioButtonDefaults.colors(selectedColor = K.accentInk, unselectedColor = K.dim),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontSize = 16.sp, color = K.text)
+            Text(detail, style = K.type.subhead, color = K.dim)
+        }
     }
 }
 

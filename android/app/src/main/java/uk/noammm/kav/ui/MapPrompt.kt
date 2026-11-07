@@ -15,13 +15,14 @@ import uk.noammm.kav.data.MapFile
 // "Later" lasts until the app restarts.
 private var dismissed by mutableStateOf(false)
 
-// Whether it would show: StartPopups decides when.
-internal val mapPromptWanted: Boolean get() = !dismissed && MapFile.state !is MapFile.State.Ready
+// Whether it would show: StartPopups decides when. Liberty needs no download, so only the offline map prompts.
+internal val mapPromptWanted: Boolean get() =
+    !dismissed && MapFile.type == MapFile.Type.OFFLINE && MapFile.state !is MapFile.State.Ready
 
 @Composable
 fun MapPrompt() {
     val state = MapFile.state
-    if (dismissed || state is MapFile.State.Ready) return
+    if (dismissed || MapFile.type != MapFile.Type.OFFLINE || state is MapFile.State.Ready) return
     val ctx = LocalContext.current
     Dialog(onDismissRequest = { dismissed = true }) {
         Column(

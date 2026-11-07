@@ -721,11 +721,13 @@ fun TileMap(
             mapView.onDestroy()
         }
     }
-    val onPhone = MapFile.state is MapFile.State.Ready
-    val mapReady = onPhone || remote
     val type = MapFile.type
-    LaunchedEffect(map, mapReady, onPhone, K.look, type) {
-        if (mapReady) map?.setStyle(Style.Builder().fromJson(MapFile.styleJson(ctx, K.light, K.look == Look.OLED, type, remote = !onPhone))) { style = it }
+    val provider = MapFile.getProvider(ctx)
+    val available = provider.isAvailable(ctx)
+    val mapReady = available || remote
+    LaunchedEffect(map, mapReady, available, K.look, type) {
+        val provider = MapFile.getProvider(ctx)
+        if (mapReady) map?.setStyle(Style.Builder().fromJson(provider.styleJson(ctx).toString())) { style = it }
     }
     fun Style.ensureKavIcons() {
         val px = with(density) { 1.dp.toPx() }
@@ -995,20 +997,15 @@ fun TileMap(
 }
 
 // The map's credit line, drawn by a screen whose own cards cover the map's corner (Navigate) where they end.
-// OpenStreetMap's guidelines let it fade 5 s after the map shows, as About Kav keeps the full credits. Esri's
-// satellite credit has to stay on the map.
+// OpenStreetMap's guidelines let the offline map's credit fade 5 s after it shows, as About Kav keeps the full
+// credits; Liberty's stays while its tiles are on screen.
 @Composable
 internal fun MapAttribution(modifier: Modifier = Modifier) {
-    val type = MapFile.type
-    val ready = MapFile.state is MapFile.State.Ready
-    var faded by remember(type, ready) { mutableStateOf(false) }
-    if (type == MapFile.Type.STANDARD && ready) LaunchedEffect(type, ready) {
-        kotlinx.coroutines.delay(5_000)
-        faded = true
-    }
+    val available = MapFile.getProvider(LocalContext.current).isAvailable(LocalContext.current)
+    var faded by remember(available) { mutableStateOf(false) }
+
     val alpha by animateFloatAsState(if (faded) 0f else 0.8f, tween(400), label = "mapCredit")
-    Text(MapFile.attribution(type), fontSize = 8.sp, color = if (type == MapFile.Type.SATELLITE) Color.White else K.dim,
-        modifier = modifier.alpha(alpha))
+    Text(MapFile.getProvider(LocalContext.current).attribution(), fontSize = 8.sp, color = K.dim, modifier = modifier.alpha(alpha))
 }
 
 @Composable

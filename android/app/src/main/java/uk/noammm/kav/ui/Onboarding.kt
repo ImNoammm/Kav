@@ -144,9 +144,15 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
             } else {
                 val state = MapFile.state
                 val week = Timetable.state
-                Text(T("Download the map and timetable", "הורדת המפה ולוח הזמנים"), style = K.type.largeTitle)
+                val offline = MapFile.type == MapFile.Type.OFFLINE
+                val mapReady = !offline || state is MapFile.State.Ready
                 Text(
-                    T(
+                    if (offline) T("Download the map and timetable", "הורדת המפה ולוח הזמנים")
+                    else T("Download the timetable", "הורדת לוח הזמנים"),
+                    style = K.type.largeTitle,
+                )
+                Text(
+                    if (offline) T(
                         "Kav keeps its map on your phone instead of loading tiles from a server as " +
                             "you go, so nothing tracks where you look. It's about ${MapFile.BYTES shr 20} MB for all " +
                             "of Israel, once. After that the map works with no signal. Kav needs it " +
@@ -158,26 +164,38 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                             "ישראל, פעם אחת. אחרי זה המפה עובדת גם בלי קליטה. Kav צריכה אותה כדי " +
                             "להציג לכם משהו, אז מורידים אותה עכשיו. איתה מגיע שבוע היציאות המתוכננות, בערך 6 MB, " +
                             "שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
+                    ) else T(
+                        "Liberty loads its map from OpenFreeMap as you look. With it comes the week of scheduled " +
+                            "departures, about 6 MB, built each night from the Ministry of Transport's timetable and " +
+                            "kept up to date in the background.",
+                        "Liberty טוענת את המפה מ-OpenFreeMap בזמן הצפייה. איתה מגיע שבוע היציאות המתוכננות, " +
+                            "בערך 6 MB, שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
                     ),
                     style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
                 )
                 Spacer(Modifier.height(K.gap5))
                 // Weight the combined progress by size, downloading the small timetable first.
                 var started by rememberSaveable { mutableStateOf(false) }
-                LaunchedEffect(started, week, state) {
-                    if (started && week is Timetable.State.Ready && state is MapFile.State.Missing) MapFile.startDownload(ctx)
+                LaunchedEffect(started, week, state, offline) {
+                    if (started && offline && week is Timetable.State.Ready && state is MapFile.State.Missing) MapFile.startDownload(ctx)
                 }
                 val weekDone = when (week) { is Timetable.State.Ready -> 1f; is Timetable.State.Downloading -> week.progress; else -> 0f }
-                val mapDone = when (state) { is MapFile.State.Ready -> 1f; is MapFile.State.Downloading -> state.progress; else -> 0f }
-                val total = (weekDone * WEEK_BYTES + mapDone * MapFile.BYTES) / (WEEK_BYTES + MapFile.BYTES)
+                val mapDone = if (!offline) 1f else when (state) { is MapFile.State.Ready -> 1f; is MapFile.State.Downloading -> state.progress; else -> 0f }
+                val bytes = WEEK_BYTES + if (offline) MapFile.BYTES.toFloat() else 0f
+                val total = (weekDone * WEEK_BYTES + (if (offline) mapDone * MapFile.BYTES else 0f)) / bytes
                 when {
-                    state is MapFile.State.Ready && week is Timetable.State.Ready ->
-                        NoteCard(T("Got it. The map and timetable stay on your phone from now on.", "מוכן. מעכשיו המפה ולוח הזמנים נשארים בטלפון שלכם."))
+                    mapReady && week is Timetable.State.Ready ->
+                        NoteCard(
+                            if (offline) T("Got it. The map and timetable stay on your phone from now on.",
+                                "מוכן. מעכשיו המפה ולוח הזמנים נשארים בטלפון שלכם.")
+                            else T("Got it. The timetable stays on your phone from now on.",
+                                "מוכן. מעכשיו לוח הזמנים נשאר בטלפון שלכם."),
+                        )
                     week is Timetable.State.Failed ->
                         Text(T("Couldn't download the timetable. ${week.why}", "ההורדה של לוח הזמנים לא הצליחה. ${week.why}"), style = K.type.subhead, color = K.critical)
-                    state is MapFile.State.Failed ->
+                    offline && state is MapFile.State.Failed ->
                         Text(T("Couldn't download the map. ${state.why}", "ההורדה של המפה לא הצליחה. ${state.why}"), style = K.type.subhead, color = K.critical)
-                    started || week is Timetable.State.Downloading || state is MapFile.State.Downloading -> DownloadBar(
+                    started || week is Timetable.State.Downloading || (offline && state is MapFile.State.Downloading) -> DownloadBar(
                         total,
                         if (week !is Timetable.State.Ready) T("Downloading the timetable…", "מורידים את לוח הזמנים…")
                         else T("Downloading the map…", "מורידים את המפה…"),
@@ -188,12 +206,13 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 val start = {
                     started = true
                     if (week !is Timetable.State.Ready) Timetable.startDownload(ctx)
-                    else if (state !is MapFile.State.Ready) MapFile.startDownload(ctx)
+                    else if (offline && state !is MapFile.State.Ready) MapFile.startDownload(ctx)
                 }
                 when {
-                    state is MapFile.State.Ready && week is Timetable.State.Ready -> OnboardingButton(T("Done", "סיום"), onClick = onDone)
-                    week is Timetable.State.Failed || state is MapFile.State.Failed -> OnboardingButton(T("Try again", "נסו שוב")) { start() }
-                    started || state is MapFile.State.Downloading || week is Timetable.State.Downloading -> {}
+                    mapReady && week is Timetable.State.Ready -> OnboardingButton(T("Done", "סיום"), onClick = onDone)
+                    week is Timetable.State.Failed || (offline && state is MapFile.State.Failed) ->
+                        OnboardingButton(T("Try again", "נסו שוב")) { start() }
+                    started || week is Timetable.State.Downloading || (offline && state is MapFile.State.Downloading) -> {}
                     else -> OnboardingButton(T("Download", "הורדה")) { start() }
                 }
             }

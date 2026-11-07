@@ -6,8 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.io.File
-import org.json.JSONArray
-import org.json.JSONObject
+import java.nio.file.Path
+import kotlin.io.path.absolutePathString
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.CancellationException
@@ -15,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import uk.noammm.kav.ui.K
+import uk.noammm.kav.ui.Look
 
 object MapFile {
     const val TAG = "map-1"
@@ -32,13 +34,44 @@ object MapFile {
     var state by mutableStateOf<State>(State.Missing)
         private set
 
-    // The map Kav draws: its own, from the file on the phone, or satellite photos with its names on them, which load
-    // online as the map is looked at.
-    enum class Type { STANDARD, SATELLITE }
+    // The tiles Kav draws: its own file on the phone, or Liberty's vector tiles, which load online. Both styles and
+    // credits come from a MapTileProvider; this only chooses between them and keeps the offline file downloaded.
+    enum class Type { OFFLINE, LIBERTY, }
 
-    var type by mutableStateOf(Type.STANDARD)
+    var type by mutableStateOf(Type.OFFLINE)
+
+    fun getProvider(ctx: Context): MapTileProvider {
+        val openFreeMapPath = File(ctx.filesDir.absolutePath, "mappacks/openfreemap").toPath()
+        val standardMapPath = File(ctx.filesDir.absolutePath, "mappacks/standard").toPath()
+        return when (type) {
+            Type.OFFLINE -> OfflineMapTileProvider(
+                styleJsonPath = styleFile(ctx, when {
+                    K.light -> "map/style-light.json"
+                    K.look== Look.OLED -> "map/style-oled.json"
+                    else -> "map/style.json"
+                }),
+                mapPackDir = standardMapPath,
+                remoteUrl = URL,
+                attribution = OFFLINE_ATTRIBUTION,
+            )
+            Type.LIBERTY ->
+                OnlineOrOfflineMapTileProvider(
+                onlineMapTileProvider =  OnlineMapTileProvider(
+                styleJsonPath = styleFile(ctx, "map/openfreemap/liberty.json"),
+                attribution = OPENFREEMAP_ATTRIBUTION,
+                ), remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.0/openfreemap.tar.gz", mapPackDir = openFreeMapPath)
+
+        }
+    }
+
+
+    private const val OFFLINE_ATTRIBUTION = "Protomaps · © OpenStreetMap"
+    private const val OPENFREEMAP_ATTRIBUTION = "OpenFreeMap · © OpenStreetMap"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // The assets are styles, but MapTileProvider reads a style from a Path, so each is copied to the phone once per run.
+    private val extracted = HashSet<String>()
 
     fun file(ctx: Context) = File(File(ctx.filesDir, "map"), "israel.pmtiles")
 
@@ -51,58 +84,19 @@ object MapFile {
         }
     }
 
-    // OLED draws the map like a battery saver: black ground, grey roads, no buildings or land colours. Satellite keeps
-    // the dark map's names, light with a dark edge, which read on any photo. remote: read from the file on GitHub, a
-    // piece at a time, for a preview before it's downloaded.
-    fun styleJson(ctx: Context, light: Boolean = false, oled: Boolean = false, type: Type = Type.STANDARD, remote: Boolean = false): String {
-        val name = when {
-            type == Type.SATELLITE -> "map/style.json"
-            light -> "map/style-light.json"
-            oled -> "map/style-oled.json"
-            else -> "map/style.json"
-        }
-        val json = ctx.assets.open(name).reader().use { it.readText() }
-            .replace("__MAP__", if (remote) "pmtiles://$URL" else "pmtiles://file://" + file(ctx).absolutePath)
-        return when (type) {
-            Type.STANDARD -> json
-            Type.SATELLITE -> satellite(JSONObject(json)).toString()
-        }
-    }
-
-    fun attribution(type: Type): String = when (type) {
-        Type.STANDARD -> "Protomaps · © OpenStreetMap"
-        Type.SATELLITE -> "Esri, Vantor, Earthstar Geographics · Protomaps · © OpenStreetMap"
-    }
-
-    // Esri's World Imagery needs no key and has photos to zoom 19 over Israel.
-    private const val PHOTOS = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-
-    // The photos under the map's names: the land, water, buildings and roads drawn on top would hide what the photo
-    // shows, so only the background and the names stay.
-    internal fun satellite(style: JSONObject): JSONObject {
-        style.getJSONObject("sources").put("satellite", JSONObject()
-            .put("type", "raster").put("tiles", JSONArray().put(PHOTOS)).put("tileSize", 256).put("maxzoom", 19))
-        val layers = style.getJSONArray("layers")
-        val kept = JSONArray()
-        for (i in 0 until layers.length()) {
-            val layer = layers.getJSONObject(i)
-            when (layer.optString("type")) {
-                "background" -> {
-                    kept.put(layer)
-                    kept.put(JSONObject().put("id", "satellite").put("type", "raster").put("source", "satellite"))
-                }
-                "symbol" -> if (layer.optString("id") != "roads_oneway") kept.put(onPhotos(layer))
+    // OLED draws the map like a battery saver: black ground, grey roads, no buildings or land colours. remote: read
+    // from the file on GitHub, a piece at a time, for a preview before it's downloaded.
+    // A copied asset keeps its name: style.json, style-light.json, style-oled.json and liberty.json are all distinct.
+    private fun styleFile(ctx: Context, asset: String): Path {
+        val file = File(File(ctx.filesDir, "map-styles"), asset.substringAfterLast('/'))
+        synchronized(extracted) {
+            if (asset !in extracted) {
+                file.parentFile?.mkdirs()
+                ctx.assets.open(asset).use { input -> file.outputStream().use { input.copyTo(it) } }
+                extracted += asset
             }
         }
-        return style.put("layers", kept)
-    }
-
-    // The black map's names are dark grey, which a photo swallows: white with a dark edge instead. Road shields keep
-    // their own plate.
-    private fun onPhotos(layer: JSONObject): JSONObject {
-        val paint = layer.optJSONObject("paint")?.takeIf { it.has("text-halo-color") } ?: return layer
-        paint.put("text-color", "rgba(255,255,255,0.95)").put("text-halo-color", "rgba(0,0,0,0.75)").put("text-halo-width", 1.5)
-        return layer
+        return file.toPath()
     }
 
     fun startDownload(ctx: Context) {

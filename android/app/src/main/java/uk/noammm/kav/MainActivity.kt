@@ -1742,9 +1742,11 @@ object Prefs {
     fun kavServerBundleKey(ctx: Context): String = store(ctx).getString("kavServerBundleKey", null).orEmpty()
     fun setKavServerBundleKey(ctx: Context, key: String) = store(ctx).edit().putString("kavServerBundleKey", key).apply()
 
-    private val mapTypes = MapFile.Type.entries.map { it.name.lowercase() }
+    // Older backups say standard or satellite; both keep the map on the phone, so they become Offline.
+    private val mapTypes = MapFile.Type.entries.map { it.name.lowercase() } + listOf("standard", "satellite")
     fun mapType(ctx: Context): MapFile.Type =
-        MapFile.Type.entries.firstOrNull { it.name.lowercase() == store(ctx).getString("mapType", null) } ?: MapFile.Type.STANDARD
+        if (store(ctx).getString("mapType", null) == MapFile.Type.LIBERTY.name.lowercase()) MapFile.Type.LIBERTY
+        else MapFile.Type.OFFLINE
     fun setMapType(ctx: Context, type: MapFile.Type) = store(ctx).edit().putString("mapType", type.name.lowercase()).apply()
 
     fun seen(ctx: Context): Seen = Seen.entries.firstOrNull { it.name == store(ctx).getString("seen", null) } ?: Seen.CITY
