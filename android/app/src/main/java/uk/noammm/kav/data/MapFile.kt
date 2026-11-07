@@ -121,8 +121,7 @@ object MapFile {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // The assets are styles, but MapTileProvider reads a style from a Path, so each is copied to the phone once per run.
-    private val extracted = HashSet<String>()
+
 
     fun file(ctx: Context) = File(File(ctx.filesDir, "map"), "israel.pmtiles")
 
