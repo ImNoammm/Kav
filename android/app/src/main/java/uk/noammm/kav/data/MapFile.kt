@@ -15,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import uk.noammm.kav.ui.K
 import uk.noammm.kav.ui.Look
 
@@ -36,37 +38,87 @@ object MapFile {
 
     // The tiles Kav draws: its own file on the phone, or Liberty's vector tiles, which load online. Both styles and
     // credits come from a MapTileProvider; this only chooses between them and keeps the offline file downloaded.
-    enum class Type { OFFLINE, LIBERTY, }
+    enum class Type { OFFLINE, SATELLITE, LIBERTY}
 
     var type by mutableStateOf(Type.OFFLINE)
 
-    fun getProvider(ctx: Context): MapTileProvider {
-        val openFreeMapPath = File(ctx.filesDir.absolutePath, "mappacks/openfreemap").toPath()
-        val standardMapPath = File(ctx.filesDir.absolutePath, "mappacks/standard").toPath()
-        return when (type) {
-            Type.OFFLINE -> OfflineMapTileProvider(
-                styleJsonPath = styleFile(ctx, when {
-                    K.light -> "map/style-light.json"
-                    K.look== Look.OLED -> "map/style-oled.json"
-                    else -> "map/style.json"
-                }),
-                mapPackDir = standardMapPath,
-                remoteUrl = URL,
-                attribution = OFFLINE_ATTRIBUTION,
-            )
-            Type.LIBERTY ->
-                OnlineOrOfflineMapTileProvider(
-                onlineMapTileProvider =  OnlineMapTileProvider(
-                styleJsonPath = styleFile(ctx, "map/openfreemap/liberty.json"),
-                attribution = OPENFREEMAP_ATTRIBUTION,
-                ), remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.0/openfreemap.tar.gz", mapPackDir = openFreeMapPath)
+    // Kept as they are made, so a download's progress and state stay put while screens come and go.
+    private val providers = HashMap<String, MapTileProvider>()
 
+    fun getProvider(ctx: Context): MapTileProvider {
+        val app = ctx.applicationContext
+        val kind = type
+        val asset = when (kind) {
+            Type.OFFLINE, Type.SATELLITE -> when {
+                K.light -> "map/style-light.json"
+                K.look == Look.OLED -> "map/style-oled.json"
+                else -> "map/style.json"
+            }
+            Type.LIBERTY -> "map/openfreemap/liberty.json"
+        }
+        val variant = when(kind) {
+            Type.SATELLITE -> "satellite"
+            else -> ""
+        }
+        return synchronized(providers) {
+            providers.getOrPut(asset+variant) {
+                when (kind) {
+                    Type.OFFLINE -> OfflineMapTileProvider(
+                        styleJsonPath = asset,
+                        mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
+                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
+                        attribution = OFFLINE_ATTRIBUTION,
+                    )
+                    Type.LIBERTY -> OnlineOrOfflineMapTileProvider(
+                        onlineMapTileProvider = OnlineMapTileProvider(
+                            styleJsonPath = asset,
+                            attribution = OPENFREEMAP_ATTRIBUTION,
+                        ),
+                        remoteUrl = OPENFREEMAP_URL,
+                        mapPackDir = File(app.filesDir.absolutePath, "mappacks/openfreemap").toPath(),
+                    )
+                    Type.SATELLITE -> OfflineMapTileProvider(
+                        styleJsonPath = asset,
+                        mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
+                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
+                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(it)}
+                    )
+                }
+            }
         }
     }
 
+    private const val PHOTOS = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+
+    private fun onPhotos(layer: JSONObject): JSONObject {
+        val paint = layer.optJSONObject("paint")?.takeIf { it.has("text-halo-color") } ?: return layer
+        paint.put("text-color", "rgba(255,255,255,0.95)").put("text-halo-color", "rgba(0,0,0,0.75)").put("text-halo-width", 1.5)
+        return layer
+    }
+
+    // The photos under the map's names: the land, water, buildings and roads drawn on top would hide what the photo
+    // shows, so only the background and the names stay.
+    internal fun satellite(style: JSONObject): JSONObject {
+        style.getJSONObject("sources").put("satellite", JSONObject()
+            .put("type", "raster").put("tiles", JSONArray().put(PHOTOS)).put("tileSize", 256).put("maxzoom", 19))
+        val layers = style.getJSONArray("layers")
+        val kept = JSONArray()
+        for (i in 0 until layers.length()) {
+            val layer = layers.getJSONObject(i)
+            when (layer.optString("type")) {
+                "background" -> {
+                    kept.put(layer)
+                    kept.put(JSONObject().put("id", "satellite").put("type", "raster").put("source", "satellite"))
+                }
+                "symbol" -> if (layer.optString("id") != "roads_oneway") kept.put(onPhotos(layer))
+            }
+        }
+        return style.put("layers", kept)
+    }
 
     private const val OFFLINE_ATTRIBUTION = "Protomaps · © OpenStreetMap"
     private const val OPENFREEMAP_ATTRIBUTION = "OpenFreeMap · © OpenStreetMap"
+    private const val OPENFREEMAP_URL = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/openfreemap.tar.gz"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -82,21 +134,6 @@ object MapFile {
             File(app.filesDir, "tiles-esri").listFiles()?.forEach { it.delete() }
             File(app.filesDir, "tiles-esri").delete()
         }
-    }
-
-    // OLED draws the map like a battery saver: black ground, grey roads, no buildings or land colours. remote: read
-    // from the file on GitHub, a piece at a time, for a preview before it's downloaded.
-    // A copied asset keeps its name: style.json, style-light.json, style-oled.json and liberty.json are all distinct.
-    private fun styleFile(ctx: Context, asset: String): Path {
-        val file = File(File(ctx.filesDir, "map-styles"), asset.substringAfterLast('/'))
-        synchronized(extracted) {
-            if (asset !in extracted) {
-                file.parentFile?.mkdirs()
-                ctx.assets.open(asset).use { input -> file.outputStream().use { input.copyTo(it) } }
-                extracted += asset
-            }
-        }
-        return file.toPath()
     }
 
     fun startDownload(ctx: Context) {

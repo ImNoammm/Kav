@@ -59,8 +59,10 @@ import uk.noammm.kav.data.GoogleRecipe
 import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.MapFile
+import uk.noammm.kav.data.DownloadableMapTileProvider
 import uk.noammm.kav.data.Schedules
 import uk.noammm.kav.data.SignedFile
+import uk.noammm.kav.data.State as MapPackState
 import uk.noammm.kav.data.Source
 import uk.noammm.kav.data.Sources
 import uk.noammm.kav.data.StopNames
@@ -548,30 +550,52 @@ internal fun MapChoices(setup: Boolean = false) {
         }
         row {
             MapTypeChoice(
+                T("Satellite Map", "מפה עם תצלום לווייני"),
+                T("Requires download and an online connection.",
+                    "דורשת הורדה וחיבור מקוון."),
+                MapFile.type == MapFile.Type.SATELLITE,
+            ) { MapFile.type = MapFile.Type.SATELLITE; Prefs.setMapType(ctx, MapFile.Type.SATELLITE) }
+        }
+        row {
+            MapTypeChoice(
                 "Liberty",
-                T("Online vector map from OpenFreeMap.", "מפת וקטור מקוונת מ-OpenFreeMap."),
+                T("Online vector map from OpenFreeMap. You can download it for offline use, but don't have to.",
+                    "מפת וקטור מקוונת מ-OpenFreeMap. אפשר להוריד אותה לשימוש בלי אינטרנט, אבל זה לא חובה."),
                 MapFile.type == MapFile.Type.LIBERTY,
             ) { MapFile.type = MapFile.Type.LIBERTY; Prefs.setMapType(ctx, MapFile.Type.LIBERTY) }
         }
 
     }
-    val state = MapFile.state
-    val offline = MapFile.type == MapFile.Type.OFFLINE
-    if (!setup) AnimatedVisibility(offline && state !is MapFile.State.Ready,
+    val provider = remember(MapFile.type) { MapFile.getProvider(ctx) }
+    val downloadable = provider as? DownloadableMapTileProvider
+    val state = provider.downloadState
+    val downloaded = downloadable?.isDownloaded(ctx) ?: true
+    if (!setup) AnimatedVisibility(downloadable != null && !downloaded,
         enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        val optional = downloadable?.isDownloadOptional() == true
         Column(Modifier.padding(top = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             when (state) {
-                is MapFile.State.Downloading -> DownloadBar(state.progress, T("Downloading the map…", "מורידים את המפה…"))
-                is MapFile.State.Failed -> Text(T("Couldn't download the map. ${state.why}", "ההורדה של המפה לא הצליחה. ${state.why}"),
+                is MapPackState.Downloading -> DownloadBar(state.progress, T("Downloading the map…", "מורידים את המפה…"))
+                is MapPackState.Failed -> Text(T("Couldn't download the map. ${state.why}", "ההורדה של המפה לא הצליחה. ${state.why}"),
                     style = K.type.subhead, color = K.critical)
-                else -> Text(T("This map isn't on your phone yet: about ${MapFile.BYTES shr 20} MB, once.",
-                    "המפה הזו עוד לא בטלפון: בערך ${MapFile.BYTES shr 20} MB, פעם אחת."),
+                else -> Text(
+                    if (optional) T(
+                        "You can download this map to use it offline. It isn't required: without it, Kav loads the map online while you look.",
+                        "אפשר להוריד את המפה הזו לשימוש בלי אינטרנט. זה לא חובה: בלעדיה Kav טוענת את המפה מהאינטרנט בזמן הצפייה.",
+                    ) else T(
+                        "Kav needs this map on your phone: about  MB, once. Until it's downloaded, Kav can't show the map.",
+                        "Kav צריכה את המפה הזו בטלפון: בערך MB, פעם אחת. עד שהיא תורד, Kav לא יכולה להציג את המפה.",
+                    ),
                     style = K.type.subhead, color = K.textSecondary,
                 )
             }
-            if (state !is MapFile.State.Downloading) KavButton(
-                if (state is MapFile.State.Failed) T("Try again", "נסו שוב") else T("Download", "הורדה"),
-                { MapFile.startDownload(ctx) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Download,
+            if (state !is MapPackState.Downloading) KavButton(
+                when {
+                    state is MapPackState.Failed -> T("Try again", "נסו שוב")
+                    optional -> T("Download for offline", "הורדה לשימוש לא מקוון")
+                    else -> T("Download", "הורדה")
+                },
+                { downloadable?.startDownload(ctx) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Download,
             )
         }
     }

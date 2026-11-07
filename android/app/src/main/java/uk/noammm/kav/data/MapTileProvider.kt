@@ -119,24 +119,35 @@ interface MapTileProvider {
 interface DownloadableMapTileProvider : MapTileProvider {
     fun isDownloaded(ctx: Context): Boolean
     fun startDownload(ctx: Context)
+    fun isDownloadOptional(): Boolean
 }
 
 class OfflineMapTileProvider(
-    val styleJsonPath: Path,
+    val styleJsonPath: String,
     val mapPackDir: Path,
     val remoteUrl: String,
-    val attribution: String
-
-) : MapTileProvider {
+    val attribution: String,
+    val spriteFileName: String="black", val transformStyleJson: (JSONObject)->(JSONObject)= {it}
+) : DownloadableMapTileProvider {
 
 
     override fun styleJson(ctx: Context): JSONObject {
-        return JSONObject(
-            File(styleJsonPath.absolutePathString()).readText().replace(
-                "__MAP__",
-                "pmtiles://file://" + mapPackDir.absolutePathString() + "/israel.pmtiles"
-            )
+        val sj = JSONObject(ctx.assets.open(styleJsonPath).reader().use { it.readText() })
+        val tilesPath = File(mapPackDir.absolutePathString(), "israel.pmtiles").toPath()
+        val url = if (!isDownloaded(ctx)) "pmtiles://"+ MapFile.URL else "pmtiles://file://$tilesPath"
+
+        val spritesPath = File(mapPackDir.absolutePathString(), "sprites").toPath()
+        val fontsPath = File(mapPackDir.absolutePathString(), "fonts").toPath()
+        val sources = sj.getJSONObject("sources")
+        val key = sources.keys().next()
+        sources.getJSONObject(key).put("url",
+            url
         )
+        val spriteUrl = if (isDownloaded(ctx)) "file://${spritesPath.absolutePathString()}/$spriteFileName" else "https://raw.githubusercontent.com/ImNoammm/Kav/ede72bdb2f0618fdb845503925685dd365cf0982/android/app/src/main/assets/map/sprites/black"
+        val fontsUrl = if (isDownloaded(ctx)) "file://"+fontsPath.absolutePathString()+"/{fontstack}/{range}.pbf" else "https://github.com/ImNoammm/Kav/raw/ede72bdb2f0618fdb845503925685dd365cf0982/android/app/src/main/assets/map/fonts/{fontstack}/{range}.pbf"
+        sj.put("sprite", spriteUrl)
+        sj.put("glyphs", fontsUrl)
+        return transformStyleJson(sj)
     }
 
     override fun attribution(): String {
@@ -149,11 +160,11 @@ class OfflineMapTileProvider(
 
     var state by mutableStateOf<State>(if (mapPackDir.exists())State.Ready  else State.Missing)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private fun isDownloaded(ctx : Context): Boolean{
+    override fun isDownloaded(ctx : Context): Boolean{
         return mapPackDir.exists()
     }
 
-    fun startDownload(ctx: Context){
+    override fun startDownload(ctx: Context){
         if (state is State.Downloading || state is State.Ready) return
         val app = ctx.applicationContext
         state = State.Downloading(0f)
@@ -170,13 +181,14 @@ class OfflineMapTileProvider(
             }
         }
     }
+    override fun isDownloadOptional() =  false
 }
 
-class OnlineMapTileProvider(val styleJsonPath: Path, val attribution: String) :
+class OnlineMapTileProvider(val styleJsonPath: String, val attribution: String) :
     MapTileProvider {
     override fun styleJson(ctx: Context): JSONObject {
         return JSONObject(
-            File(styleJsonPath.absolutePathString()).readText()
+            ctx.assets.open(styleJsonPath).reader().use { it.readText() }
         )
     }
 
@@ -192,12 +204,12 @@ class OnlineMapTileProvider(val styleJsonPath: Path, val attribution: String) :
 class OnlineOrOfflineMapTileProvider(
     val onlineMapTileProvider: OnlineMapTileProvider,
     val remoteUrl: String,
-    val mapPackDir: Path
-) : MapTileProvider{
+    val mapPackDir: Path, val spriteFileName: String="ofm"
+) : DownloadableMapTileProvider{
     var state by mutableStateOf<State>(if (mapPackDir.exists())State.Ready  else State.Missing)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private fun isDownloaded(ctx : Context): Boolean{
+    override fun isDownloaded(ctx : Context): Boolean{
         return mapPackDir.exists()
     }
 
@@ -207,11 +219,13 @@ class OnlineOrOfflineMapTileProvider(
         val tilesPath = File(mapPackDir.absolutePathString(), "israel.pmtiles").toPath()
         val spritesPath = File(mapPackDir.absolutePathString(), "sprites").toPath()
         val fontsPath = File(mapPackDir.absolutePathString(), "fonts").toPath()
-        sj.getJSONObject("sources").getJSONObject("openmaptiles").put("url",
-            "pmtiles://file://$tilesPath"
+        val sources = sj.getJSONObject("sources")
+        val key = sources.keys().next()
+        sources.getJSONObject(key).put("url",
+            "pmtiles://file://"+tilesPath.absolutePathString()
         )
-        sj.put("sprite", spritesPath+"/ofm")
-        sj.put("glyph", fontsPath+"{fontstack}/{range}.pbf")
+        sj.put("sprite", "file://${spritesPath.absolutePathString()}/$spriteFileName")
+        sj.put("glyphs", "file://"+fontsPath.absolutePathString()+"/{fontstack}/{range}.pbf")
         return sj
     }
 
@@ -222,7 +236,7 @@ class OnlineOrOfflineMapTileProvider(
     override fun isAvailable(ctx: Context): Boolean {
         return true
     }
-    fun startDownload(ctx: Context){
+    override fun startDownload(ctx: Context){
         if (state is State.Downloading || state is State.Ready) return
         val app = ctx.applicationContext
         state = State.Downloading(0f)
@@ -239,5 +253,7 @@ class OnlineOrOfflineMapTileProvider(
             }
         }
     }
+    override fun isDownloadOptional() =  true
+
 
 }

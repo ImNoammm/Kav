@@ -1,4 +1,4 @@
-// Fills the National Public Transport Authority's form (govforms.gov.il, PublicTransportRequest@mot.gov.il) with a
+/ Fills the National Public Transport Authority's form (govforms.gov.il, PublicTransportRequest@mot.gov.il) with a
 // report Kav put together, about a bus or a train. Kav runs it in the form's own page as (function)(report). It never presses Send: the
 // rider does, after checking the form. How far it got is left in window.__kav for Kav to read.
 (function (d) {

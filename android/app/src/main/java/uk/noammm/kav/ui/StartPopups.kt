@@ -87,7 +87,7 @@ fun StartPopups(model: KavModel) {
     val wanted = buildSet {
         if (pickLook) add(StartPopup.LOOK)
         if (notice != null) add(StartPopup.NOTICE)
-        if (mapPromptWanted) add(StartPopup.MAP)
+        if (mapPromptWanted(ctx)) add(StartPopup.MAP)
         if (PendingBackup.uri != null) add(StartPopup.IMPORT)
         if (pickSupport && !supportWaits) add(StartPopup.SUPPORT)
         // With automatic updates on, Kav asks about the version it downloaded instead.
