@@ -261,6 +261,7 @@ class OnlineOrOfflineMapTileProvider(
 
 }
 fun translateStyleJson(styleJson: JSONObject, textField: JSONArray): JSONObject {
+    if (styleJson.optString("id")=="highway-shield-non-us") return styleJson
     for (key in styleJson.keys()) {
         if (key=="text-field") {
             styleJson.put(key, textField)
