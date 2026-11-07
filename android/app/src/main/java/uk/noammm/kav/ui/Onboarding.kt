@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.Prefs
+import uk.noammm.kav.data.DownloadableMapTileProvider
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.Timetable
 
@@ -144,7 +145,8 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
             } else {
                 val state = MapFile.state
                 val week = Timetable.state
-                val offline = MapFile.type == MapFile.Type.OFFLINE
+                val provider = MapFile.getProvider(ctx)
+                val offline = MapFile.getProvider(ctx) is DownloadableMapTileProvider && !(provider as DownloadableMapTileProvider).isDownloadOptional()
                 val mapReady = !offline || state is MapFile.State.Ready
                 Text(
                     if (offline) T("Download the map and timetable", "הורדת המפה ולוח הזמנים")
@@ -165,10 +167,10 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                             "להציג לכם משהו, אז מורידים אותה עכשיו. איתה מגיע שבוע היציאות המתוכננות, בערך 6 MB, " +
                             "שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
                     ) else T(
-                        "Liberty loads its map from OpenFreeMap as you look. With it comes the week of scheduled " +
+                        "OpenFreeMap loads its map as you look. With it comes the week of scheduled " +
                             "departures, about 6 MB, built each night from the Ministry of Transport's timetable and " +
                             "kept up to date in the background.",
-                        "Liberty טוענת את המפה מ-OpenFreeMap בזמן הצפייה. איתה מגיע שבוע היציאות המתוכננות, " +
+                        "OpenFreeMap טוענת את המפה בזמן הצפייה. איתה מגיע שבוע היציאות המתוכננות, " +
                             "בערך 6 MB, שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
                     ),
                     style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
