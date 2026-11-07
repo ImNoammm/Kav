@@ -79,13 +79,13 @@ object MapFile {
                         styleJsonPath = asset,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
                         remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.3/standard.tar.gz",
-                        attribution = OFFLINE_ATTRIBUTION,
+                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {translateStyleJson(it, textField)}
                     )
                     Type.SATELLITE -> OfflineMapTileProvider(
                         styleJsonPath = asset,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
                         remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.3/standard.tar.gz",
-                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(it)}
+                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(translateStyleJson(it, textField))}
                     )
                     Type.LIBERTY, Type.BRIGHT, Type.DARK, Type.FIORD -> OnlineOrOfflineMapTileProvider(
                         onlineMapTileProvider = OnlineMapTileProvider(
