@@ -1744,9 +1744,11 @@ object Prefs {
 
     // Older backups say standard or satellite; both keep the map on the phone, so they become Offline.
     private val mapTypes = MapFile.Type.entries.map { it.name.lowercase() } + listOf("standard", "satellite")
-    fun mapType(ctx: Context): MapFile.Type =
-        if (store(ctx).getString("mapType", null) == MapFile.Type.LIBERTY.name.lowercase()) MapFile.Type.LIBERTY
-        else MapFile.Type.OFFLINE
+    fun mapType(ctx: Context): MapFile.Type {
+        val stringValue = store(ctx).getString("mapType", "offline")
+        if (stringValue=="standard") return MapFile.Type.OFFLINE
+            return MapFile.Type.values().filter {it.name.lowercase()==stringValue}.firstOrNull() ?: MapFile.Type.OFFLINE
+    }
     fun setMapType(ctx: Context, type: MapFile.Type) = store(ctx).edit().putString("mapType", type.name.lowercase()).apply()
 
     fun seen(ctx: Context): Seen = Seen.entries.firstOrNull { it.name == store(ctx).getString("seen", null) } ?: Seen.CITY

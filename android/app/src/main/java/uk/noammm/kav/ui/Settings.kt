@@ -556,14 +556,26 @@ internal fun MapChoices(setup: Boolean = false) {
                 MapFile.type == MapFile.Type.SATELLITE,
             ) { MapFile.type = MapFile.Type.SATELLITE; Prefs.setMapType(ctx, MapFile.Type.SATELLITE) }
         }
-        row {
-            MapTypeChoice(
-                "Liberty",
-                T("Online vector map from OpenFreeMap. You can download it for offline use, but don't have to.",
-                    "מפת וקטור מקוונת מ-OpenFreeMap. אפשר להוריד אותה לשימוש בלי אינטרנט, אבל זה לא חובה."),
-                MapFile.type == MapFile.Type.LIBERTY,
-            ) { MapFile.type = MapFile.Type.LIBERTY; Prefs.setMapType(ctx, MapFile.Type.LIBERTY) }
+        for (type  in listOf(
+            MapFile.Type.LIBERTY, MapFile.Type.BRIGHT, MapFile.Type.DARK, MapFile.Type.FIORD
+        )) {
+            row {
+                MapTypeChoice(
+                    type.name.lowercase().replaceFirstChar { it.uppercase() },
+                    T(
+                        "Online vector map from OpenFreeMap. You can download it for offline use, but don't have to.",
+                        "מפת וקטור מקוונת מ-OpenFreeMap. אפשר להוריד אותה לשימוש בלי אינטרנט, אבל זה לא חובה."
+                    ),
+                    MapFile.type == type,
+                ) {
+                    MapFile.type = type; Prefs.setMapType(
+                    ctx,
+                    type
+                )
+                }
+            }
         }
+
 
     }
     val provider = remember(MapFile.type) { MapFile.getProvider(ctx) }

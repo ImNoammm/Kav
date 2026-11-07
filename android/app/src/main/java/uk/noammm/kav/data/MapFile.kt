@@ -38,8 +38,7 @@ object MapFile {
 
     // The tiles Kav draws: its own file on the phone, or Liberty's vector tiles, which load online. Both styles and
     // credits come from a MapTileProvider; this only chooses between them and keeps the offline file downloaded.
-    enum class Type { OFFLINE, SATELLITE, LIBERTY}
-
+    enum class Type { OFFLINE, SATELLITE, LIBERTY, BRIGHT, DARK, FIORD}
     var type by mutableStateOf(Type.OFFLINE)
 
     // Kept as they are made, so a download's progress and state stay put while screens come and go.
@@ -54,7 +53,7 @@ object MapFile {
                 K.look == Look.OLED -> "map/style-oled.json"
                 else -> "map/style.json"
             }
-            Type.LIBERTY -> "map/openfreemap/liberty.json"
+            Type.LIBERTY, Type.BRIGHT, Type.DARK, Type.FIORD -> "map/openfreemap/${kind.name.lowercase()}.json"
         }
         val variant = when(kind) {
             Type.SATELLITE -> "satellite"
@@ -69,19 +68,19 @@ object MapFile {
                         remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
                         attribution = OFFLINE_ATTRIBUTION,
                     )
-                    Type.LIBERTY -> OnlineOrOfflineMapTileProvider(
+                    Type.SATELLITE -> OfflineMapTileProvider(
+                        styleJsonPath = asset,
+                        mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
+                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
+                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(it)}
+                    )
+                    Type.LIBERTY, Type.BRIGHT, Type.DARK, Type.FIORD -> OnlineOrOfflineMapTileProvider(
                         onlineMapTileProvider = OnlineMapTileProvider(
                             styleJsonPath = asset,
                             attribution = OPENFREEMAP_ATTRIBUTION,
                         ),
                         remoteUrl = OPENFREEMAP_URL,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/openfreemap").toPath(),
-                    )
-                    Type.SATELLITE -> OfflineMapTileProvider(
-                        styleJsonPath = asset,
-                        mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
-                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
-                        attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(it)}
                     )
                 }
             }
