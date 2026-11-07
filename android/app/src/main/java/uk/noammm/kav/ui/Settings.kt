@@ -556,7 +556,7 @@ internal fun MapChoices(setup: Boolean = false) {
                 MapFile.type == MapFile.Type.SATELLITE,
             ) { MapFile.type = MapFile.Type.SATELLITE; Prefs.setMapType(ctx, MapFile.Type.SATELLITE) }
         }
-        for (type  in listOf(
+        for (type in listOf(
             MapFile.Type.LIBERTY, MapFile.Type.BRIGHT, MapFile.Type.DARK, MapFile.Type.FIORD
         )) {
             row {
@@ -595,8 +595,8 @@ internal fun MapChoices(setup: Boolean = false) {
                         "You can download this map to use it offline. It isn't required: without it, Kav loads the map online while you look.",
                         "אפשר להוריד את המפה הזו לשימוש בלי אינטרנט. זה לא חובה: בלעדיה Kav טוענת את המפה מהאינטרנט בזמן הצפייה.",
                     ) else T(
-                        "Kav needs this map on your phone: about  MB, once. Until it's downloaded, Kav can't show the map.",
-                        "Kav צריכה את המפה הזו בטלפון: בערך MB, פעם אחת. עד שהיא תורד, Kav לא יכולה להציג את המפה.",
+                        "Kav needs this map on your phone: about ${MapFile.BYTES shr 20} MB, once. Until it's downloaded, Kav can't show the map.",
+                        "Kav צריכה את המפה הזו בטלפון: בערך ${MapFile.BYTES shr 20} MB, פעם אחת. עד שהיא תורד, Kav לא יכולה להציג את המפה.",
                     ),
                     style = K.type.subhead, color = K.textSecondary,
                 )
