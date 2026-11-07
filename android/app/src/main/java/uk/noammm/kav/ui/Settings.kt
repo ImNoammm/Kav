@@ -1338,7 +1338,7 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
 private fun LanguageRow(ctx: android.content.Context) {
     KavSegmented(
         Lang.entries.map { it.label }, selected = Lang.entries.indexOf(T.lang),
-        onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l) ; K.mapLang=l},
+        onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l)},
     )
 }
 
