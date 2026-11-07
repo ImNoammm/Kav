@@ -27,7 +27,7 @@ private var dismissed by mutableStateOf(false)
 internal fun mapPromptWanted(ctx: Context): Boolean {
     if (dismissed) return false
     val provider = MapFile.getProvider(ctx) as? DownloadableMapTileProvider ?: return false
-    return !provider.isDownloaded(ctx)
+    return !provider.isDownloaded(ctx) && !provider.isDownloadOptional()
 }
 
 // The download's progress, for the providers that keep one.
