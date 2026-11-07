@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.ui.K
+import uk.noammm.kav.ui.Lang
 import uk.noammm.kav.ui.Look
 
 object MapFile {
@@ -60,7 +61,21 @@ object MapFile {
             else -> ""
         }
         return synchronized(providers) {
-            providers.getOrPut(asset+variant) {
+            val textField = when(K.mapLang) {
+                Lang.HE -> JSONArray(arrayOf<Any>(
+                    "coalesce",
+                    arrayOf("get", "name:he"),
+                    arrayOf("get", "name:non_latin"),
+                    arrayOf("get", "name")
+                ))
+                Lang.EN ->  JSONArray(arrayOf<Any>(
+                    "coalesce",
+                    arrayOf("get", "name:en"),
+                    arrayOf("get", "name:latin"),
+                    arrayOf("get", "name")
+                ))
+            }
+            providers.getOrPut(asset+variant+K.mapLang) {
                 when (kind) {
                     Type.OFFLINE -> OfflineMapTileProvider(
                         styleJsonPath = asset,
@@ -77,7 +92,7 @@ object MapFile {
                     Type.LIBERTY, Type.BRIGHT, Type.DARK, Type.FIORD -> OnlineOrOfflineMapTileProvider(
                         onlineMapTileProvider = OnlineMapTileProvider(
                             styleJsonPath = asset,
-                            attribution = OPENFREEMAP_ATTRIBUTION,
+                            attribution = OPENFREEMAP_ATTRIBUTION, transformStyleJson = {translateStyleJson(it, textField)}
                         ),
                         remoteUrl = OPENFREEMAP_URL,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/openfreemap").toPath(),

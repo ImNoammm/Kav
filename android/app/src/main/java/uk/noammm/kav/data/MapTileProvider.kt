@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import uk.noammm.kav.data.MapFile.state
 
 
@@ -184,11 +185,13 @@ class OfflineMapTileProvider(
     override fun isDownloadOptional() =  false
 }
 
-class OnlineMapTileProvider(val styleJsonPath: String, val attribution: String) :
+class OnlineMapTileProvider(val styleJsonPath: String, val attribution: String, val transformStyleJson: (JSONObject) -> JSONObject = {it}) :
     MapTileProvider {
     override fun styleJson(ctx: Context): JSONObject {
-        return JSONObject(
-            ctx.assets.open(styleJsonPath).reader().use { it.readText() }
+        return transformStyleJson(
+            JSONObject(
+                ctx.assets.open(styleJsonPath).reader().use { it.readText() }
+            )
         )
     }
 
@@ -256,4 +259,27 @@ class OnlineOrOfflineMapTileProvider(
     override fun isDownloadOptional() =  true
 
 
+}
+fun translateStyleJson(styleJson: JSONObject, textField: JSONArray): JSONObject {
+    for (key in styleJson.keys()) {
+        if (key=="text-field") {
+            styleJson.put(key, textField)
+        }
+        else {
+            when (val obj = styleJson.get(key)) {
+                is JSONObject -> translateStyleJson(obj, textField)
+                is JSONArray -> translateStyleJson(obj, textField)
+            }
+        }
+    }
+    return styleJson
+}
+
+fun translateStyleJson(styleJson: JSONArray, textField: JSONArray){
+    for (i in 0..<styleJson.length()) {
+        when(val obj = styleJson[i]) {
+            is JSONObject -> translateStyleJson(obj, textField)
+            is JSONArray -> translateStyleJson(obj, textField)
+        }
+    }
 }
