@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import uk.noammm.kav.Prefs
 import uk.noammm.kav.data.DownloadableMapTileProvider
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapTileProvider
@@ -93,8 +94,12 @@ fun MapPrompt() {
                 else -> {}
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                if (!required) KavButton(
-                    T("Not now", "לא עכשיו"), { dismissed = true }, Modifier.weight(1f).heightIn(min = 52.dp),
+                KavButton(
+                    T("Not now", "לא עכשיו"), { dismissed = true
+                        if (required) {
+                            MapFile.type=MapFile.Type.LIBERTY
+                            Prefs.setMapType(ctx, MapFile.Type.LIBERTY)
+                        } }, Modifier.weight(1f).heightIn(min = 52.dp),
                     style = ButtonStyle.Secondary,
                 )
                 val busy = state is MapPackState.Downloading
