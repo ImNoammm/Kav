@@ -80,13 +80,13 @@ object MapFile {
                     Type.OFFLINE -> OfflineMapTileProvider(
                         styleJsonPath = asset,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
-                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
+                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.3/standard.tar.gz",
                         attribution = OFFLINE_ATTRIBUTION,
                     )
                     Type.SATELLITE -> OfflineMapTileProvider(
                         styleJsonPath = asset,
                         mapPackDir = File(app.filesDir.absolutePath, "mappacks/standard").toPath(),
-                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/standard.tar.gz",
+                        remoteUrl = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.3/standard.tar.gz",
                         attribution = OFFLINE_ATTRIBUTION, transformStyleJson = {satellite(it)}
                     )
                     Type.LIBERTY, Type.BRIGHT, Type.DARK, Type.FIORD -> OnlineOrOfflineMapTileProvider(
@@ -132,7 +132,7 @@ object MapFile {
 
     private const val OFFLINE_ATTRIBUTION = "Protomaps · © OpenStreetMap"
     private const val OPENFREEMAP_ATTRIBUTION = "OpenFreeMap · © OpenStreetMap"
-    private const val OPENFREEMAP_URL = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.2/openfreemap.tar.gz"
+    private const val OPENFREEMAP_URL = "https://github.com/szaionz/kav-offline-maps/releases/download/v0.0.3/openfreemap.tar.gz"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
