@@ -1363,7 +1363,7 @@ internal fun StopNamesRow(ctx: android.content.Context, modifier: Modifier = Mod
     }
 }
 @Composable
-private fun MapLanguageRow(ctx: android.content.Context) {
+fun MapLanguageRow(ctx: android.content.Context) {
     KavSegmented(
         Lang.entries.map { it.label }, selected = Lang.entries.indexOf(K.mapLang),
         onSelect = { i -> val l = Lang.entries[i]; K.mapLang=l; Prefs.setMapLang(ctx, l) },

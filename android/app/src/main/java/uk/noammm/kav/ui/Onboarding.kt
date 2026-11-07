@@ -52,6 +52,12 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                     modifier = Modifier.padding(start = K.gap3, top = K.gap3, bottom = K.gap2),
                 )
                 StopNamesRow(ctx, Modifier)
+                InfoHeader(
+                    T("Map", "מפה"),
+                    T("Names of places and streets on the map. Kav's own language stays as it is.",
+                        "שמות של מקומות וכבישים על המפה. השפה של Kav נשארת כפי שהיא."),
+                )
+                MapLanguageRow(ctx)
                 Text(
                     T("Time format", "תבנית שעה"),
                     style = K.type.caption,
