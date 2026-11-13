@@ -225,6 +225,10 @@ your own server (below): Kav's server only answers the APKs from Releases.
 - A huge thanks to [@yair-654](https://github.com/yair-654) for all the support
   for Kav, and for the bug reports and ideas behind a lot of it.
 
+## Contact
+
+Questions, ideas, or a developer who wants to build on Kav or needs API access: [noam@kavapp.link](mailto:noam@kavapp.link).
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).
