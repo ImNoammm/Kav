@@ -1,0 +1,10 @@
+node_modules/
+.vitepress/cache/
+.vitepress/dist/
+# Copied from the repo's own Markdown by scripts/sync-docs.mjs on every build.
+docs/self-hosting.md
+docs/api.md
+docs/live-sources.md
+docs/planner.md
+docs/predictor.md
+docs/training.md

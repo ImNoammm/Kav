@@ -1,0 +1,42 @@
+# MOT feed and everything built from it: no licence attached, so not redistributed
+.cache/
+android/app/src/main/assets/*.kav*
+
+# Build output
+build/
+!server/selfhost/build/
+server/otp/patch/classes/
+server/otp/patch/app/
+.gradle/
+android/local.properties
+android/.kotlin/
+dist/
+
+# Notes and local dev tools
+/docs/
+__pycache__/
+shared-trips.sqlite3*
+tools/android_emulator.sh
+tools/emulator_trust_ca.sh
+tools/measure_bundle.py
+tools/measure_sqlite.py
+tools/serve.py
+tools/server_build.sh
+server/eta/score.py
+server/selfhost/setup/preview.py
+site/scripts/deploy.sh
+# The trailer the site serves; the release carries it.
+site/public/trailer.mp4
+
+# Tests
+android/app/src/androidTest/
+android/app/src/test/
+server/**/test_*.py
+
+# The private key that signs the nightly timetable
+.signing/
+# The address and key of the Worker that fetches Tel Aviv's weekend lines (otp/naim-worker.js), kept on the server only
+server/otp/naim-worker
+# A copy of the server's settings and everything it keeps (server/selfhost)
+server/selfhost/.env
+server/selfhost/data/

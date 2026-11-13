@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Both, and FINE is not optional: from Android 12 a coarse-only app is handed a
+         deliberately fuzzed fix, randomised within a grid cell of roughly a kilometre
+         or two. For a transit app that is not a rounding error: it puts you in the
+         next town, so the planner boards you at stops you cannot walk to and the place
+         search ranks the wrong city first. Read once per session, never stored. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Only to read the QR code on a bus when paying for a ride; asked for then,
+         and a phone without a camera can still install Kav. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Live times and trips planned online come from Kav's server, so those need a
+         connection. The map is the part that does not: its tiles are bundled and
+         read from disk, so the map still draws with the radio off. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Updates come from GitHub releases and are handed to the system installer;
+         Android asks you once, per app, before it will take an APK from one. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Install now, in Kav's own popup for an update it downloaded, installs it on
+         Android 12 and newer without a second confirmation from Android; Android or
+         Play Protect still ask whenever they decide to. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+    <!-- A trip under way lives in the shade as an ongoing notification. Its service
+         follows your location so the steps move with the phone, "special use" keeps it
+         up when location isn't granted, and Android 16 shows it as a live update. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+    <!-- Line alerts you set wake Kav at their times; a restart drops the phone's alarms,
+         so Kav sets them again once it's back up. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Deliberately NOT declared, and why each one is refused:
+           ADVERTISING_ID            - there is no advertising
+           ACCESS_BACKGROUND_LOCATION- nothing tracks you between sessions
+           GET_ACCOUNTS / CONTACTS   - there are no accounts -->
+
+    <!-- Gett, to open a taxi ride in it when it's installed (Gett.kt), else its Play Store page. -->
+    <queries>
+        <package android:name="com.gettaxi.android" />
+        <!-- The apps a trip can be sent to straight from the Share sheet. -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <!-- The phone's text-to-speech engines, for alerts said out loud (Speaker.kt): unlisted here, an engine the
+             rider installed is hidden from Kav and nothing is said (GrapheneOS, which ships none of its own). -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".KavApp"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.Kav"
+        android:supportsRtl="true"
+        android:allowBackup="false"
+        android:largeHeap="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- A trip link on someone's own Kav server (server/selfhost): its page opens Kav with kav://trip?host=...&id=...,
+                 since only Kav's own domain is verified for its https links. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kav" android:host="trip" />
+            </intent-filter>
+            <!-- The seven-character trip code opens the saved route, on share.kavapp.link and, for links made before it,
+                 kav.noammm.uk. App Links verifies Kav's release certificate on both. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="share.kavapp.link" />
+                <data android:scheme="https" android:host="kav.noammm.uk" />
+                <data android:pathPattern="/......." />
+                <data android:pathPrefix="/l/" />
+                <data android:pathPrefix="/s/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="busnear.by" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="busnearby.co.il" android:pathPrefix="/itinerary/" />
+                <data android:scheme="https" android:host="*.busnearby.co.il" android:pathPrefix="/itinerary/" />
+                <data android:scheme="https" android:host="egg.hopon.co" android:pathPrefix="/itinerary/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="busnearby" android:host="itinerary" />
+                <data android:scheme="egged" android:host="itinerary" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- geo: points and place names, so Kav is offered as a navigation app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
+            </intent-filter>
+            <!-- A .kav backup tapped in a file manager. Matched by the name's ending
+                 rather than a type, because .kav has no registered MIME and claiming
+                 application/octet-stream would put Kav in the chooser for every
+                 unknown file on the phone. pathPattern's wildcard does not cross a
+                 dot, so a name with dots in it needs one line per dot; three covers
+                 anything a rider is likely to have renamed a backup to. A file
+                 manager that hands over a content:// URI carrying no name in its
+                 path cannot be matched this way at all. Settings › Import is the
+                 way in for those. -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.kav" />
+                <data android:pathPattern=".*\\..*\\.kav" />
+                <data android:pathPattern=".*\\..*\\..*\\.kav" />
+            </intent-filter>
+            <!-- The same again with no mimeType, because a filter that declares one
+                 only matches an intent that carries one. Android derives a file://
+                 URI's type from its extension, and .kav is in no MIME map, so a file
+                 manager sending a bare VIEW would miss the filter above entirely.
+                 Verified both ways with `cmd package query-activities`. -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.kav" />
+                <data android:pathPattern=".*\\..*\\.kav" />
+                <data android:pathPattern=".*\\..*\\..*\\.kav" />
+            </intent-filter>
+        </activity>
+
+        <!-- the ongoing trip notification's anchor -->
+        <service
+            android:name=".TripService"
+            android:exported="false"
+            android:foregroundServiceType="location|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="ongoing transit trip status" />
+        </service>
+
+        <!-- line alerts: their alarm, and the restart, update or new clock that sets it again -->
+        <receiver
+            android:name=".LineAlertReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- the background check that asks GitHub for Kav's recipes and a new version, never
+             because Kav opened, and what Android's installer says about an update Kav handed it -->
+        <service
+            android:name=".Checks"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver
+            android:name=".InstallStatus"
+            android:exported="false" />
+
+        <!-- the downloaded update, readable by the installer and nobody else -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+    </application>
+</manifest>

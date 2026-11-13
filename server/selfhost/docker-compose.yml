@@ -1,0 +1,299 @@
+# Your own copy of Kav's server, all of it on one machine: live buses and departure boards from the Ministry of Transport
+# (kav-live), the trip planner (OpenTripPlanner on the ministry's timetable and OpenStreetMap, rebuilt every night by
+# kav-build), Kav's own predicted arrivals (kav-eta) and line alerts (kav-alerts, translate). install.sh puts this file in a folder of its own and starts the
+# setup page, which writes .env and starts the rest. By hand instead: copy .env.example to .env, fill it in, then
+#
+#     docker compose up -d
+#
+# Live buses come at once; the first planner takes about half an hour to build. All it keeps is in ./data. Kav's parts
+# are images from GitHub's registry, at the release KAV_VERSION in .env (the setup page's updates change it); to build
+# them from the repository instead: docker-compose.dev.yml.
+name: kav
+
+x-logging: &logging
+  options:
+    max-size: 1m
+    max-file: "2"
+
+# The arrival model's files as published with Kav's releases (live5 and the train and light-rail models):
+# kav-build fetches them and takes them only when they hash to MODELS_SHA256, and kav-eta runs no others.
+x-models: &models
+  MODELS_URL: ${MODELS_URL-https://github.com/ImNoammm/kav/releases/download/eta-models-2026-10-27/kav-eta-models.tar.gz}
+  MODELS_SHA256: ${MODELS_SHA256:-1bc4268fa426881c0f46f772c260e28ce65b9809baa94c5f0b365d90bbafd11a}
+
+services:
+  # The folders in ./data, for the services below, which run as user 1000.
+  init:
+    image: busybox:1.37
+    user: "0:0"
+    command: >-
+      sh -c "mkdir -p /data/history /data/history-backfill /data/realtime /data/otp/build /data/otp/serve /data/otp/official
+      /data/otp/serve-official /data/eta/out /data/eta/spill /data/models /data/signing /data/caddy &&
+      chown 1000:1000 /data /data/history /data/realtime /data/otp /data/otp/build /data/otp/serve /data/otp/official
+      /data/otp/serve-official /data/eta /data/eta/out /data/eta/spill /data/models /data/signing"
+    volumes:
+      - ./data:/data
+    restart: "no"
+
+  # The ministry's buses in memory, every 15 seconds, and everything the app asks for under /live/v1/.
+  live:
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-live:${KAV_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      # The ministry's key; without one, no live buses here (the planner and the timetable only).
+      MOT_KEY: ${MOT_KEY:-}
+      # Another live source instead of the ministry, answering SIRI StopMonitoring (server/LIVE.md), and the area it covers.
+      LIVE_URL: ${LIVE_URL:-}
+      BOUNDS: ${BOUNDS:-29,34,34,36}
+      # A timetable of your own instead of the ministry's (any GTFS zip), for the planner and the lines.
+      GTFS_URL: ${GTFS_URL:-https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip}
+      MOT_URL: ${MOT_URL:-https://moran.mot.gov.il/Channels/HTTPChannel/SmQuery/2.8/json}
+      MOT_URL_BACKUP: ${MOT_URL_BACKUP-https://moran-t.mot.gov.il/Channels/HTTPChannel/SmQuery/2.8/json}
+      MOT_CA: /app/mot-ca.pem
+      KAV_APP_KEY: ${KAV_APP_KEY:-}
+      # Who may use it: accounts (each phone signed in by a person, the default), or open to anyone
+      # (server/selfhost/README.md).
+      ACCESS: ${ACCESS:-accounts}
+      # A predictor of your own running elsewhere, answering the predictions file at this address (server/selfhost/README.md).
+      PREDICT_URL: ${PREDICT_URL:-}
+      ACCOUNTS: /data/history/accounts.sqlite3
+      # The https address trip links are made on: this server's (DOMAIN, or PUBLIC_URL behind a proxy of your own).
+      PUBLIC_URL: ${PUBLIC_URL:-https://${DOMAIN:-localhost}}
+      PORT: "8080"
+      HISTORY: /data/history
+      REALTIME: /data/realtime
+      # Kav's own arrival times, or a predictor's of your own written here; ETA= (empty) in .env: none, the ministry's.
+      ETA: ${ETA-/data/eta/out/now.json}
+      # The official planner below, when it is on; empty, it is not asked.
+      OFFICIAL_URL: ${OFFICIAL_URL:-}
+      # The planner: the one below, or your own OpenTripPlanner; or with PLAN_URL, a planner you wrote yourself
+      # (server/selfhost/README.md).
+      OTP_URL: ${OTP_URL:-http://otp:8080/otp/gtfs/v1}
+      PLAN_URL: ${PLAN_URL:-}
+      # off: no planner here, so no routes from this server.
+      PLANNER: ${PLANNER:-on}
+      # Line alerts for the app (server/alerts.py): gtfsrt (any GTFS-Realtime alerts feed at ALERTS_URL, the ministry's
+      # for one, with ALERTS_HEADERS as a JSON object if it wants any) or off.
+      ALERTS_SOURCE: ${ALERTS_SOURCE:-off}
+      ALERTS_URL: ${ALERTS_URL:-}
+      ALERTS_HEADERS: ${ALERTS_HEADERS:-}
+      # The alerts in English too, from the translator below; empty, Hebrew only.
+      TRANSLATE_URL: ${TRANSLATE_URL:-}
+      TRANSLATE_KEY: ${TRANSLATE_KEY:-}
+      TRANSLATIONS: /data/history/translations.sqlite3
+    volumes:
+      # When each bus passed each stop, kept ten weeks: the planner's and kav-eta's history.
+      - ./data/history:/data/history
+      # The planner's live updates, the timetable the app downloads, and what kav-build leaves for this.
+      - ./data/realtime:/data/realtime
+      - ./data/eta/out:/data/eta/out:ro
+    ports:
+      - ${LISTEN:-127.0.0.1}:${PORT:-8080}:8080
+    user: "1000:1000"
+    read_only: true
+    mem_limit: 512m
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/live/v1/status', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    networks: [default, inside]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # The trip planner, from the graph kav-build makes; the old graph answers until a new one is moved in.
+  otp:
+    # OpenTripPlanner's own image with otp-serve.sh.
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-otp:${KAV_VERSION:-latest}
+    # On with the planner profile (the setup page's "Kav's planner").
+    profiles: [planner]
+    restart: unless-stopped
+    environment:
+      # Four fifths of the container's memory for Java's heap: 4 GB of 5, as on Kav's own server.
+      JAVA_OPTS: -XX:MaxRAMPercentage=80
+    volumes:
+      - ./data/otp/serve:/var/opentripplanner
+      - ./data/realtime:/var/opentripplanner/realtime:ro
+    user: "1000:1000"
+    mem_limit: ${PLANNER_MEMORY:-5}g
+    cpus: 2
+    logging: *logging
+    networks: [inside]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # A second planner, on the ministry's own times (the timetable before predict.py), whose routes kav-live adds after
+  # Kav's own; kav-build makes its graph after the main one. On with COMPOSE_PROFILES=official and OFFICIAL_URL in .env.
+  otp-official:
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-otp:${KAV_VERSION:-latest}
+    profiles: [official]
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: -XX:MaxRAMPercentage=80
+    volumes:
+      - ./data/otp/serve-official:/var/opentripplanner
+      - ./data/realtime:/var/opentripplanner/realtime:ro
+    user: "1000:1000"
+    mem_limit: ${PLANNER_MEMORY:-5}g
+    cpus: 2
+    logging: *logging
+    networks: [inside]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Builds the planner on its first start and every night after (as ../otp/rebuild.sh does on Kav's own server), the
+  # timetable the app downloads for the seven days from today, and fetches the arrival model's files for kav-eta.
+  build:
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-build:${KAV_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *models
+      BUILD_MEMORY: ${BUILD_MEMORY:-15}
+      REBUILD_AT: ${REBUILD_AT:-00:30}
+      # Set, the official planner's graph is built too.
+      OFFICIAL_URL: ${OFFICIAL_URL:-}
+      # The timetable and the map the planner is built from: the ministry's and OpenStreetMap's Israel, or your own.
+      GTFS_URL: ${GTFS_URL:-https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip}
+      OSM_URL: ${OSM_URL:-https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf}
+      # off: the timetable and live buses only, no planner graph.
+      PLANNER: ${PLANNER:-on}
+      # The planner for this area alone (south,west,north,east), for a smaller machine; the same box live keeps to.
+      AREA: ${BOUNDS:-}
+      # A step of the nightly build replaced by a command of your own, or "skip" (server/selfhost/README.md).
+      STAGE_PREPARE: ${STAGE_PREPARE:-}
+      STAGE_AREA: ${STAGE_AREA:-}
+      STAGE_WALKS: ${STAGE_WALKS:-}
+      STAGE_PREDICT: ${STAGE_PREDICT:-}
+      STAGE_CLOCKS: ${STAGE_CLOCKS:-}
+      STAGE_GRAPH: ${STAGE_GRAPH:-}
+      STAGE_BUNDLE: ${STAGE_BUNDLE:-}
+    volumes:
+      # Build steps of your own (STAGE_<NAME> below), as /stages/... in the container.
+      - ./stages:/stages:ro
+      - ./data/otp:/data/otp
+      - ./data/realtime:/data/realtime
+      - ./data/history:/data/history:ro
+      - ./data/models:/data/models
+      - ./data/signing:/data/signing
+    user: "1000:1000"
+    # Low priority and capped: the planner and the live buses come first. The national graph with the predicted bus
+    # times takes about 14 GB (BUILD_MEMORY less one for Java itself); the official planner's comes after it.
+    mem_limit: ${BUILD_MEMORY:-15}g
+    cpus: 4
+    cpu_shares: 128
+    logging: *logging
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Kav's own predicted arrivals for buses, trains and the Tel Aviv light rail, every 30 seconds, which kav-live gives
+  # the planner and the app in place of the ministry's. Its first day's medians take a few GB for a minute or two.
+  eta:
+    # On with the predictor profile (the setup page's "Kav's arrival times"); off, a predictor of your own writes the
+    # same file (server/selfhost/README.md).
+    profiles: [predictor]
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-eta:${KAV_VERSION:-latest}
+    restart: unless-stopped
+    # Nothing to predict on until kav-build has the timetable and the model's files.
+    command: >-
+      sh -c "until [ -s /data/otp/official/mot-gtfs.zip ] && [ \"$$(cat /models/.sha256 2>/dev/null)\" = \"$$MODELS_SHA256\" ];
+      do sleep 60; done; exec python3 -u -W ignore::UserWarning /app/eta.py"
+    environment:
+      <<: *models
+      HISTORY: /data/history
+      BACKFILL: /data/history-backfill
+      GTFS: /data/otp/official/mot-gtfs.zip
+      MODEL: /models/live5_motion.npz
+      MODEL_FALLBACK: /models/live5_control.npz
+      RAIL: /models/rail
+      RAIL_HANDOVER: "2,22"
+      REALTIME: /data/realtime
+      OUT: /data/eta/out
+      # The planner's special days (kav-build's predict.py writes them), when the live times go the special day's way.
+      SPECIAL_DAYS: /data/otp/special-days.txt
+      # Kav's own server keeps every prediction to score them, about 200 MB a day; a copy has no need to.
+      LOG_EVERY: "0"
+      # This server's kav-live, which it asks for the buses on the road, signing as the app does.
+      KAV_LIVE: http://live:8080
+      KAV_APP_KEY: ${KAV_APP_KEY:-}
+    volumes:
+      - ./data/history:/data/history:ro
+      # Older days of passings, if you have them (one file a day, as kav-live writes them), for the six weeks of medians.
+      - ./data/history-backfill:/data/history-backfill:ro
+      - ./data/otp:/data/otp:ro
+      - ./data/models:/models:ro
+      - ./data/realtime:/data/realtime:ro
+      - ./data/eta/out:/data/eta/out
+      # polars spills to /var/tmp when memory runs short, whatever it's told.
+      - ./data/eta/spill:/var/tmp
+    user: "1000:1000"
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 8g
+    cpus: 4
+    logging: *logging
+    networks: [inside]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Hebrew to English for the alerts (server/translate.py: OPUS-MT's opus-mt-tc-big-he-en, in the image), at
+  # TRANSLATE_URL=http://translate:5000; on with the translate profile. kav-live asks it once for each text and keeps
+  # the answer. It needs no network but kav-live's.
+  translate:
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-translate:${KAV_VERSION:-latest}
+    profiles: [translate]
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    mem_limit: 1g
+    logging: *logging
+    networks: [inside]
+
+  # HTTPS with a certificate from Let's Encrypt, for DOMAIN; on with COMPOSE_PROFILES=https in .env.
+  https:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+    ports:
+      - 80:80
+      - 443:443
+    logging: *logging
+    depends_on: [live]
+
+  # The setup page and dashboard (setup/server.py): the owner's account, what runs, who may use it, updates. It writes
+  # .env and starts the rest with Docker, so it holds Docker's socket: on the home network only, never through the
+  # gateway, behind the owner's account. An update pulls the new release's images, this one's too.
+  setup:
+    image: ${KAV_IMAGES:-ghcr.io/imnoammm}/kav-setup:${KAV_VERSION:-latest}
+    # Started by name (install.sh, `docker compose up -d setup`), never by a plain `docker compose up -d`: a server set
+    # up by its .env alone runs without this page.
+    profiles: [setup]
+    restart: unless-stopped
+    environment:
+      # This folder as the host sees it, so the services it starts mount their files from the right place.
+      HOST_DIR: ${PWD}
+      # When phones were last seen, in Israel's time.
+      TZ: Asia/Jerusalem
+    working_dir: ${PWD}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # This folder, at the same path as on the host: its .env, this file and data/.
+      - ${PWD}:${PWD}
+    ports:
+      - ${SETUP_LISTEN:-0.0.0.0}:${SETUP_PORT:-8090}:8090
+    logging: *logging
+
+networks:
+  # The planner and kav-eta reach nothing but kav-live.
+  inside:
+    internal: true

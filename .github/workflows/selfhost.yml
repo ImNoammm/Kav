@@ -1,0 +1,52 @@
+name: Server images
+
+# A version tag builds the self-hosted server's images (server/selfhost) from that exact commit, for amd64 and arm64,
+# and pushes them to GitHub's registry as ghcr.io/imnoammm/kav-<part>:<tag>. A release tag (no "-" in it) moves
+# latest too. docker-compose.yml runs them at KAV_VERSION, which install.sh and the setup page's updates set to a tag.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - {part: live, context: ., file: server/selfhost/live/Dockerfile}
+          - {part: otp, context: ., file: server/selfhost/otp/Dockerfile}
+          - {part: build, context: ., file: server/selfhost/build/Dockerfile}
+          - {part: eta, context: server/eta, file: server/eta/Dockerfile}
+          - {part: setup, context: ., file: server/selfhost/setup/Dockerfile}
+          - {part: translate, context: ., file: server/selfhost/translate/Dockerfile}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/imnoammm/kav-${{ matrix.part }}
+          flavor: latest=false
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.part }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.part }}

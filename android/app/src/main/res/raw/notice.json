@@ -1,0 +1,15 @@
+{
+  "id": "4.3-kav-own-sources",
+  "en": {
+    "title": "A note about this update",
+    "text": "at moovit's request, kav no longer uses moovit as a source. if you had picked moovit for trips, the timetable or alerts, kav switched you to its own. kav's planner uses the ministry of transport's live data with arrival times learned from the buses that really passed each stop, and it has improved a lot over the past few weeks. your trips, favourites and settings are all still here. kav is nowhere near stopping: it is moving faster than ever, and it is coming for the top spot.",
+    "helpTitle": "kav needs your help",
+    "help": "kav has no ads and never will. keeping its server and the app running takes time and money, so if kav helps you, buying me a coffee keeps it running."
+  },
+  "he": {
+    "title": "הודעה על העדכון הזה",
+    "text": "לבקשת Moovit, Kav כבר לא משתמשת ב-Moovit כמקור. אם בחרתם ב-Moovit למסלולים, ללוח הזמנים או להתראות, Kav העבירה אתכם למקור שלה. המתכנן של Kav משתמש בנתוני זמן האמת של משרד התחבורה, עם זמני הגעה שנלמדו מהאוטובוסים שבאמת עברו בכל תחנה, והוא השתפר מאוד בשבועות האחרונים. הנסיעות, המועדפים וההגדרות שלכם נשארו. Kav לא מתקרבת לעצירה: היא מתקדמת מהר מתמיד, והיא באה לקחת את המקום הראשון.",
+    "helpTitle": "Kav צריכה את העזרה שלכם",
+    "help": "ב-Kav אין פרסומות ולא יהיו. התחזוקה של השרת והיישומון דורשת זמן וכסף, אז אם Kav עוזרת לכם, קפה עוזר לה להמשיך לעבוד."
+  }
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status bar keeps only the alpha, so this is a mask: a route leaving its
+     origin dot and arriving at the ring it was headed for. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M6,15.5 m-2.6,0 a2.6,2.6 0 1,1 5.2,0 a2.6,2.6 0 1,1 -5.2,0" />
+    <path
+        android:strokeColor="#FF000000" android:strokeWidth="2.4"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M6,15.5 L6,10.2 Q6,7 9.2,7 L13.2,7" />
+    <path
+        android:strokeColor="#FF000000" android:strokeWidth="2.2"
+        android:fillColor="#00000000"
+        android:pathData="M18,7 m-2.7,0 a2.7,2.7 0 1,1 5.4,0 a2.7,2.7 0 1,1 -5.4,0" />
+</vector>

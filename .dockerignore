@@ -1,0 +1,14 @@
+# Kav's server images (server/selfhost) are built from here; nothing below ever goes in one.
+.git
+.signing
+server/otp/naim-worker
+.cache
+android
+docs
+dist
+**/__pycache__
+**/test_*.py
+server/selfhost/.env
+server/selfhost/data
+server/selfhost/setup/preview.py
+server/selfhost/setup/Dockerfile

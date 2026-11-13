@@ -1,0 +1,8 @@
+# HTTPS for your copy of Kav's server, with a certificate Caddy gets from Let's Encrypt for DOMAIN: the app's addresses
+# (/live/v1/) and its trip links (the pages, their pictures and /api/share), and nothing is logged.
+{$DOMAIN} {
+	# The live answers are JSON of a hundred kilobytes and more each, every few seconds on the app's Live tab: packed,
+	# they're about a tenth of that on the rider's mobile data.
+	encode zstd gzip
+	reverse_proxy live:8080
+}

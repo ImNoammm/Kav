@@ -1,0 +1,23 @@
+# Kav's parts built from this checkout instead of pulled from GitHub's registry, for working on them:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+#     docker compose up -d setup
+#
+# The images get the names docker-compose.yml runs (KAV_VERSION, latest unless .env says otherwise), so the setup page
+# and a plain `docker compose up -d` start these. Leave KAV_VERSION out of .env here: the setup page offers no updates
+# then, which would pull the published images over these.
+services:
+  live:
+    build: {context: ../.., dockerfile: server/selfhost/live/Dockerfile}
+  otp:
+    build: {context: ../.., dockerfile: server/selfhost/otp/Dockerfile}
+  build:
+    build: {context: ../.., dockerfile: server/selfhost/build/Dockerfile}
+  eta:
+    build: ../eta
+  alerts:
+    build: {context: ../.., dockerfile: server/selfhost/alerts/Dockerfile}
+  translate:
+    build: {context: ../.., dockerfile: server/selfhost/translate/Dockerfile}
+  setup:
+    build: {context: ../.., dockerfile: server/selfhost/setup/Dockerfile}

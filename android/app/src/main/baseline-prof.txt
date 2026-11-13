@@ -1,0 +1,5 @@
+# Kav's own code, compiled ahead of time once the phone has installed this profile (androidx.profileinstaller, already in
+# the app through Compose) and run its next background compile, rather than warming up a screen at a time on each update.
+# The libraries' own profiles are added to it by the build.
+HSPLuk/noammm/kav/**;->**(**)**
+Luk/noammm/kav/**;

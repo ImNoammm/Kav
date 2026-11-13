@@ -1,0 +1,522 @@
+/* Kav's site: the system font, Apple's neutral greys, and Kav purple kept for links and the one main action.
+   Contrast: #8e3cc4 on white 5.8:1, #bf5af2 on black 6.0:1, white on the dark button #a24ad8 4.7:1. */
+
+:root {
+  --vp-font-family-base: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue',
+    Arial, 'Noto Sans Hebrew', sans-serif;
+  --vp-font-family-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --vp-c-brand-1: #8e3cc4;
+  --vp-c-brand-2: #7a2fb0;
+  --vp-c-brand-3: #8e3cc4;
+  --vp-c-brand-soft: rgba(142, 60, 196, 0.12);
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #f5f5f7;
+  --vp-c-bg-soft: #f5f5f7;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-text-1: #1d1d1f;
+  --vp-c-text-2: #6e6e73;
+  --vp-c-text-3: #86868b;
+  --vp-c-divider: #e5e5ea;
+  --vp-c-gutter: #f2f2f7;
+
+  --vp-button-brand-bg: var(--vp-c-brand-3);
+  --vp-button-brand-hover-bg: var(--vp-c-brand-2);
+  --vp-button-brand-active-bg: var(--vp-c-brand-2);
+
+  --vp-nav-logo-height: 28px;
+  --kav-radius: 14px;
+  --kav-button-bg: #8e3cc4;
+  --kav-button-hover: #7a2fb0;
+}
+
+.dark {
+  --vp-c-brand-1: #bf5af2;
+  --vp-c-brand-2: #cc7af5;
+  --vp-c-brand-3: #a24ad8;
+  --vp-c-brand-soft: rgba(191, 90, 242, 0.16);
+
+  --vp-c-bg: #000000;
+  --vp-c-bg-alt: #0c0c0d;
+  --vp-c-bg-soft: #1c1c1e;
+  --vp-c-bg-elv: #1c1c1e;
+  --vp-c-text-1: #f5f5f7;
+  --vp-c-text-2: #a1a1a6;
+  --vp-c-text-3: #86868b;
+  --vp-c-divider: #2c2c2e;
+  --vp-c-gutter: #000000;
+
+  --kav-button-bg: #a24ad8;
+  --kav-button-hover: #9341c9;
+}
+
+/* Body text at Apple's 17 px default. */
+.vp-doc p,
+.vp-doc li {
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.vp-doc h1 {
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.vp-doc h2 {
+  border-top: none;
+  letter-spacing: -0.01em;
+}
+
+.vp-doc a {
+  text-decoration: none;
+}
+
+.vp-doc a:hover {
+  text-decoration: underline;
+}
+
+.VPNavBarTitle .title {
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.kav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none !important;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.kav-button--primary {
+  background: var(--kav-button-bg);
+  color: #ffffff !important;
+}
+
+.kav-button--primary:hover {
+  background: var(--kav-button-hover);
+}
+
+.kav-button--primary:active {
+  transform: scale(0.98);
+}
+
+.kav-button:focus-visible,
+.kav-link-chevron:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 3px;
+}
+
+.kav-button__glyph {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.kav-caption {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .kav-caption {
+  font-size: 14px;
+}
+
+.kav-link-chevron {
+  font-size: 17px;
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.kav-link-chevron::after {
+  content: '\00a0›';
+}
+
+.kav-link-chevron:hover {
+  text-decoration: underline;
+}
+
+.kav-muted {
+  color: var(--vp-c-text-2);
+}
+
+.kav-home {
+  padding: 0 24px;
+}
+
+.kav-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 88px 0 72px;
+}
+
+.kav-hero__icon {
+  width: 128px;
+  height: 128px;
+  border-radius: 28px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.dark .kav-hero__icon {
+  box-shadow: 0 0 0 1px #2c2c2e, 0 16px 48px rgba(191, 90, 242, 0.14);
+}
+
+.kav-hero__title {
+  margin: 28px 0 0;
+  font-size: clamp(56px, 9vw, 88px);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.kav-hero__tagline {
+  max-width: 620px;
+  margin: 16px 0 0;
+  font-size: clamp(21px, 2.6vw, 28px);
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--vp-c-text-2);
+  text-wrap: balance;
+}
+
+.kav-hero__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 36px 0 20px;
+}
+
+.kav-hero__trailer {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  margin-top: 32px;
+  border-radius: var(--kav-radius);
+  background: #000000;
+}
+
+.kav-hero__trailer:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 3px;
+}
+
+.kav-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 48px 40px;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 56px 0 88px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.kav-feature__glyph {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: var(--vp-c-text-1);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.kav-feature__title {
+  margin: 14px 0 6px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.kav-feature__text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
+.kav-band {
+  margin: 0 -24px;
+  padding: 80px 24px 96px;
+  background: var(--vp-c-bg-alt);
+}
+
+.kav-band__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.kav-band__title {
+  margin: 0;
+  font-size: clamp(32px, 4.5vw, 44px);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.kav-band__text {
+  max-width: 600px;
+  margin: 16px 0 28px;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
+.kav-band__code {
+  max-width: 100%;
+  margin: 0 0 24px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  border-radius: var(--kav-radius);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  font-family: var(--vp-font-family-mono);
+  font-size: 14px;
+  text-align: start;
+}
+
+.kav-download {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 28px 0 8px;
+}
+
+.kav-releases {
+  margin-top: 8px;
+}
+
+.kav-release {
+  padding: 28px 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.kav-release__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.vp-doc .kav-release__head h3 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.kav-release__head time {
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+}
+
+.kav-badge {
+  display: inline-block;
+  margin-inline-start: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 13px;
+  font-weight: 600;
+  vertical-align: 3px;
+}
+
+.kav-release__notes :first-child {
+  margin-top: 12px;
+}
+
+.vp-doc .kav-release__links {
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+
+/* One family of movement: things rise a little as they fade in, on Apple's ease-out, and leave faster than they come.
+   All of it is off for anyone who asks for less motion. */
+
+:root {
+  --kav-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes kav-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@keyframes kav-icon {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+}
+
+@keyframes kav-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes kav-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
+@keyframes kav-nudge {
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* The home page comes in piece by piece. */
+  .kav-enter {
+    animation: kav-rise 0.8s var(--kav-ease) both;
+    animation-delay: calc(var(--i, 0) * 80ms + 60ms);
+  }
+
+  .kav-hero__icon.kav-enter {
+    animation-name: kav-icon;
+  }
+
+  /* Further down, things rise as they scroll into view (reveal.ts). */
+  .kav-reveal {
+    transition: opacity 0.8s var(--kav-ease), transform 0.8s var(--kav-ease);
+    transition-delay: calc(var(--i, 0) * 90ms);
+  }
+
+  .kav-motion .kav-reveal:not(.is-in) {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  /* Between pages: the bar and the sidebar stay, the page itself crossfades with a small rise. */
+  .VPNav {
+    view-transition-name: kav-nav;
+  }
+
+  .VPLocalNav {
+    view-transition-name: kav-localnav;
+  }
+
+  .VPSidebar {
+    view-transition-name: kav-sidebar;
+  }
+
+  ::view-transition-old(root) {
+    animation: kav-leave 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  ::view-transition-new(root) {
+    animation: kav-rise 0.42s var(--kav-ease) both;
+  }
+
+  /* Opening the docs from a page without a sidebar slides it in; leaving them slides it out. */
+  ::view-transition-new(kav-sidebar):only-child {
+    animation: kav-slide 0.42s var(--kav-ease) both;
+  }
+
+  ::view-transition-old(kav-sidebar):only-child {
+    animation: kav-slide 0.2s cubic-bezier(0.4, 0, 1, 1) reverse both;
+  }
+
+  /* Browsers without View Transitions still see each new page rise in. */
+  @supports not (view-transition-name: none) {
+    .VPPage,
+    .VPDoc .vp-doc > div {
+      animation: kav-rise 0.42s var(--kav-ease) both;
+    }
+  }
+
+  /* Links and controls answer the pointer. */
+  .vp-doc a:not(.kav-button) {
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: color 0.2s, text-decoration-color 0.2s;
+  }
+
+  .vp-doc a:not(.kav-button):hover {
+    text-decoration-color: currentColor;
+  }
+
+  .kav-link-chevron::after {
+    display: inline-block;
+    transition: transform 0.25s var(--kav-ease);
+  }
+
+  .kav-link-chevron:hover::after {
+    transform: translateX(3px);
+  }
+
+  .kav-button--primary {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transition: background-color 0.2s, transform 0.25s var(--kav-ease), box-shadow 0.25s var(--kav-ease);
+  }
+
+  .kav-button--primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(142, 60, 196, 0.32);
+  }
+
+  .kav-button--primary:active {
+    transform: scale(0.97);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transition-duration: 0.08s;
+  }
+
+  .kav-button--primary:hover .kav-button__glyph {
+    animation: kav-nudge 0.6s var(--kav-ease);
+  }
+
+  .kav-feature__glyph {
+    transition: transform 0.4s var(--kav-ease), stroke 0.3s;
+  }
+
+  .kav-feature:hover .kav-feature__glyph {
+    transform: translateY(-2px);
+    stroke: var(--vp-c-brand-1);
+  }
+
+  .kav-band__code {
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .kav-band__code:hover {
+    border-color: var(--vp-c-brand-soft);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+  }
+
+  .VPSidebarItem .link,
+  .VPSidebarItem .text {
+    transition: color 0.2s, transform 0.25s var(--kav-ease);
+  }
+
+  .VPSidebarItem .link:hover .text {
+    transform: translateX(2px);
+  }
+}
