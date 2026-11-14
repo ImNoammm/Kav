@@ -148,6 +148,8 @@ fun DirectionsOnline(model: KavModel) {
     val planner = tab?.takeIf { it in tabs } ?: KavPlan.source
     val everyScope = rememberCoroutineScope()
     val every = remember { EveryPlanner(everyScope) }
+    // Routes a tab already had when it was picked: their live times are from when they were planned.
+    var kept by remember { mutableStateOf(false) }
 
     LaunchedEffect(model.returnHome) {
         if (model.returnHome) {
@@ -289,8 +291,9 @@ fun DirectionsOnline(model: KavModel) {
                 every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain), planner, tabs) { by ->
                     val at = KavPlan.plannerOf(by) ?: throw java.io.IOException("no planner answering")
                     KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at, by)
-                }.await().getOrThrow()
+                }.also { kept = it.isCompleted }.await().getOrThrow()
             } else {
+                kept = false
                 val at = (if (link != null) KavPlan.linkPlanner() else KavPlan.planner())
                     ?: throw java.io.IOException("no planner answering")
                 withContext(Dispatchers.IO) { KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at) }
@@ -387,7 +390,8 @@ fun DirectionsOnline(model: KavModel) {
         if (!showResults || raw.isEmpty() || (active != null && open?.trip === active)) return@LaunchedEffect
         val otherTrips = raw.filterNot { it === active }
         if (otherTrips.isEmpty()) return@LaunchedEffect
-        var wait = true
+        // A search comes with its live times. A tab's kept routes get theirs at once, then every poll.
+        var wait = !kept
         var back = false
         // Only while Home is in front: behind another tab, or with Kav away, they wait, and come at once on coming back.
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
