@@ -151,6 +151,8 @@ internal fun TimeEntry(hour: Int, minute: Int, onChange: (hour: Int, minute: Int
     val pm = hour >= 12
     val minutes = remember { FocusRequester() }
     val focus = LocalFocusManager.current
+    // A clock reads hour then minutes from the left in Hebrew too.
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
     Row(verticalAlignment = Alignment.Top) {
         TimeField(
             if (twelve) (hour + 11) % 12 + 1 else hour, pad = !twelve, range = if (twelve) 1..12 else 0..23,
@@ -171,6 +173,7 @@ internal fun TimeEntry(hour: Int, minute: Int, onChange: (hour: Int, minute: Int
                 Period("PM", pm) { if (!pm) onChange(hour + 12, minute) }
             }
         }
+    }
     }
 }
 

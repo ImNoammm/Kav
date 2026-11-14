@@ -1024,7 +1024,7 @@ private fun LiveList(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
                     LiveGlyph(tint, 12.dp)
-                    TickText(T("${ageS}s ago", "לפני ${ageS} שנ׳"), K.type.caption.tabular, K.textSecondary, said = ageSaid(ageS))
+                    TickText(ageShown(ageS), K.type.caption.tabular, K.textSecondary, said = ageSaid(ageS))
                 }
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp))
             }
@@ -1192,6 +1192,11 @@ private fun TickText(text: String, style: androidx.compose.ui.text.TextStyle, co
         if (after.isNotEmpty()) Text(after, style = style, color = color, maxLines = 1)
     }
 }
+
+// How long ago a vehicle reported, as the row shows it: seconds under a minute, minutes and seconds from there
+// ("8m 55s ago", not "535s ago").
+internal fun ageShown(s: Long): String =
+    if (s < 60) T("${s}s ago", "לפני $s שנ׳") else T("${s / 60}m ${s % 60}s ago", "לפני ${s / 60} דק׳ ${s % 60} שנ׳")
 
 // How long ago a vehicle reported, as a screen reader says it: a ticking count of seconds, said each second, would have
 // every accessibility service told of a change every second for each vehicle listed.

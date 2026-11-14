@@ -2533,22 +2533,16 @@ internal fun bandTo(
 }
 
 // A ticket for the inspector, as HopOn's app shows it: each passenger's code, one a page, with its reference under it,
-// bright and with no screenshots.
+// and bright.
 @Composable
 private fun TicketView(t: RavPass.Ticket, onExit: () -> Unit, onAgain: () -> Unit, onClose: () -> Unit) {
     val activity = LocalContext.current as? android.app.Activity
     DisposableEffect(activity) {
         val w = activity?.window
         val before = w?.attributes?.screenBrightness ?: -1f
-        if (w != null) {
-            w.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            w.attributes = w.attributes.apply { screenBrightness = 1f }
-        }
+        if (w != null) w.attributes = w.attributes.apply { screenBrightness = 1f }
         onDispose {
-            if (w != null) {
-                w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                w.attributes = w.attributes.apply { screenBrightness = before }
-            }
+            if (w != null) w.attributes = w.attributes.apply { screenBrightness = before }
         }
     }
     androidx.activity.compose.BackHandler(onBack = onClose)

@@ -321,6 +321,8 @@ data class ActiveJourney(
     val fromHere: Boolean = true,
     // The stops on the way it was planned through (a search with "Add a stop"), so it's planned through them again.
     val stopovers: List<Transit.Place> = emptyList(),
+    // The trip as it was opened, when this one is that trip set out later: a screen showing it shows this one.
+    val before: List<Transit.Itinerary> = emptyList(),
 ) {
     val paymentKey get() = trip.paymentKey
 }

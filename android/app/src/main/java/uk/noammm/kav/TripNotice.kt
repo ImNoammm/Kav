@@ -355,9 +355,10 @@ internal fun tripAlert(journey: ActiveJourney, current: Int, fix: Fix?, now: Lon
     if (steps.isEmpty()) return null
     val r = journey.resolved
     return when (val step = steps[current.coerceIn(0, steps.lastIndex)]) {
-        // Walking: each turn as the rider reaches it, once.
+        // Walking: each turn as the rider reaches it, once. Not at a vehicle's speed: the ride's step ends as the bus comes
+        // up to the stop, and a bus driving where the walk goes passed its turns with the rider still aboard.
         is Step.Walk -> {
-            val at = fix?.takeIf { it.isFresh(now) } ?: return null
+            val at = fix?.takeIf { it.isFresh(now) && it.speed <= 5f } ?: return null
             val (turn, metres) = nextTurn(step.leg, at) ?: return null
             if (metres > TURN_AHEAD_M) null
             else TripAlert("$TURN_KEY${turn.lat},${turn.lon}", turnText(turn), walkTo(step, r))

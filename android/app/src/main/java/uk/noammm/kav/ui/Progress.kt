@@ -16,12 +16,13 @@ private const val FRESH_S = 150L
 internal const val POOR_FIX_M = 200f
 
 // How a trip goes by a rough fix. Its distances below allow for a fix up to SHARP_FIX_M off; a rougher one has slack,
-// the rest of its accuracy. A step ends when its end is within one slack more. Anything else that moves the trip on,
+// the rest of its accuracy. A step ends when its end is within one slack more, but for the walk that ends the trip, which
+// nothing after it would take back. Anything else that moves the trip on,
 // starting a ride above all, has to hold with three slacks to spare, so a rough fix jumping round a stop or a walk never
 // starts a ride. Only the ride's route itself gets just one.
 private const val SHARP_FIX_M = 20f
 
-private val Fix.slack: Double get() = (accuracy.coerceIn(0f, POOR_FIX_M) - SHARP_FIX_M).coerceAtLeast(0f).toDouble()
+internal val Fix.slack: Double get() = (accuracy.coerceIn(0f, POOR_FIX_M) - SHARP_FIX_M).coerceAtLeast(0f).toDouble()
 
 internal fun Fix.isFresh(now: Long) = now - at <= FRESH_S
 internal fun Fix.distanceTo(p: Pair<Double, Double>) = metres(lat, lon, p.first, p.second)
@@ -328,11 +329,16 @@ private fun done(
         is Step.Start -> startNow || now >= step.time || live != null && target != null &&
             live.distanceTo(target) > 60 + 3 * slack &&
             (fromHere || distanceToPath(live.lat, live.lon, firstWalk) < ON_WALK_M + slack)
-        is Step.Walk -> when {
-            target == null -> now >= step.leg.arr
-            live != null -> live.distanceTo(target) < 40 + slack
-            seen != null -> seen.distanceTo(target) < 40 + seen.slack
-            else -> !waitForFix && now >= step.leg.arr
+        is Step.Walk -> {
+            // The walk that ends the trip gives a rough fix no slack: nothing after it takes an early end back, and one fix
+            // well off had the trip arrive with a few hundred metres still to walk.
+            val last = step.toName != null
+            when {
+                target == null -> now >= step.leg.arr
+                live != null -> live.distanceTo(target) < 40 + if (last) 0.0 else slack
+                seen != null -> seen.distanceTo(target) < 40 + if (last) 0.0 else seen.slack
+                else -> !waitForFix && now >= step.leg.arr
+            }
         }
         is Step.Wait -> {
             val ride = rideOf(step, chosen)

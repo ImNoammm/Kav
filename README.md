@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/e24440ee-d630-4a5f-b054-bbb5be0134e7
 
 An Android app for getting around on public transport in Israel. No ads, no
 account, no analytics, nothing phoning home about where you go. Hebrew and
-English, and it lays itself out right to left when you pick Hebrew.
+English.
 
 I built it because the app everyone uses for Israeli transit has become
 unusable: full-screen ads, a subscription nag, and a permissions list that has
@@ -224,6 +224,10 @@ your own server (below): Kav's server only answers the APKs from Releases.
   kindly gave Kav a free Pro licence.
 - A huge thanks to [@yair-654](https://github.com/yair-654) for all the support
   for Kav, and for the bug reports and ideas behind a lot of it.
+
+## Contact
+
+Questions, ideas, or a developer who wants to build on Kav or needs API access: [noam@kavapp.link](mailto:noam@kavapp.link).
 
 ## License
 

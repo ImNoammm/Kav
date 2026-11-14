@@ -11,10 +11,27 @@ import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 // Bus Nearby and egg's HopOn protocol, as shipped in their public Android client. Neither requests a user key for
-// these read-only services. Routes and stop codes are the ministry's; other feeds are excluded to avoid id collisions.
+// these read-only services. Routes and stop codes are the ministry's; other feeds are excluded to avoid id collisions,
+// but for Tel Aviv's weekend lines in trips and on boards (weekend()), under the ids Kav's server gives them.
 // The map shows vehicles serving nearby stops, not a complete vehicle snapshot of its box.
 internal object BusNearby {
     const val SERVER = "https://app.busnearby.co.il"
+    // Tel Aviv's weekend lines (Na'im BeSofash): the city's agency in their own timetable, and how far above the city's
+    // route ids Kav's server puts them (server/otp/prepare.py NAIM_OFFSET), clear of the ministry's.
+    private const val NAIM_AGENCY = "101"
+    private const val NAIM_OFFSET = 9_000_000
+
+    // A weekend line on HopOn's feed of the city's timetable: its route the city's agency and route id ("101970"), its
+    // trip the city's ("970_0000_d"). Its route and trip as Kav's server names them, else null.
+    internal fun weekend(agency: String, route: String, trip: String): Pair<String, String>? {
+        val own = trip.substringBefore('_')
+        if (agency != NAIM_AGENCY || own.toIntOrNull() == null || route != NAIM_AGENCY + own) return null
+        val up = (NAIM_OFFSET + own.toInt()).toString()
+        return up to up + trip.removePrefix(own)
+    }
+
+    // The route HopOn knows a line by: a weekend line's its own ("101970" for Kav's 9000970), any other as Kav has it.
+    private fun hopOnRoute(route: Int): Int = if (route > NAIM_OFFSET) (NAIM_AGENCY + (route - NAIM_OFFSET)).toInt() else route
     private val israel = ZoneId.of("Asia/Jerusalem")
     private data class Route(val line: KavLive.Line, val codes: List<Int>, val shape: List<Pair<Double, Double>>)
     private val routes = ConcurrentHashMap<Pair<Source, Int>, Route>()
@@ -31,6 +48,9 @@ internal object BusNearby {
 
     internal fun variant(source: Source): String = if (source == Source.EGG) "egged" else "busnearby"
 
+    // The name their apps go by: both are built on OkHttp 4.12.0 and send its own. HopOn turns away Android's default one.
+    internal const val AGENT = "okhttp/4.12.0"
+
     private fun get(path: String, args: String, source: Source): String = fetch("$SERVER/$path?${query(args)}", source)
 
     class NotFound(message: String) : java.io.IOException(message)
@@ -39,6 +59,7 @@ internal object BusNearby {
         val c = RiderProxy.open(URL(url)) as HttpURLConnection
         try {
             c.connectTimeout = 5_000; c.readTimeout = 15_000
+            c.setRequestProperty("User-Agent", AGENT)
             c.setRequestProperty("Accept", "application/json")
             c.setRequestProperty("Accept-Language", "he")
             c.setRequestProperty("X-BNB-VARIANT", variant(source))
@@ -147,13 +168,17 @@ internal object BusNearby {
         fun stop(p: JSONObject): String = id(p.getString("stopId")).also { k ->
             stops.put(k, JSONArray().put(p.optString("stopCode")).put(p.optString("name")).put(p.getDouble("lat")).put(p.getDouble("lon")))
         }
+        // A weekend line's ride: "6:101970", "6:970_0000_d".
+        fun weekendRide(l: JSONObject) =
+            weekend(l.optString("agencyId"), l.optString("routeId").substringAfter(':'), l.optString("tripId").substringAfter(':'))
         val all = plan.getJSONArray("itineraries")
         for (i in 0 until all.length()) {
             val it = all.getJSONObject(i); val parts = it.getJSONArray("legs"); val legs = JSONArray()
             var supported = true
             for (j in 0 until parts.length()) {
                 val l = parts.getJSONObject(j); val transit = l.optBoolean("transitLeg")
-                if (transit && (l.optString("routeId").substringBefore(':', "1") != "1" || l.optString("agencyId").toIntOrNull() == null)) {
+                val naim = if (transit && l.optString("routeId").substringBefore(':', "1") != "1") weekendRide(l) else null
+                if (transit && naim == null && (l.optString("routeId").substringBefore(':', "1") != "1" || l.optString("agencyId").toIntOrNull() == null)) {
                     supported = false; break
                 }
                 val leg = JSONObject().put("dep", l.getLong("startTime") / 1000).put("arr", l.getLong("endTime") / 1000)
@@ -165,7 +190,7 @@ internal object BusNearby {
                     leg.put("k", if (l.optString("mode") == "BICYCLE") "b" else "w")
                     l.optJSONArray("steps")?.takeIf { it.length() > 0 }?.let { leg.put("turns", turnsOf(it)) }
                 } else {
-                    val route = id(l.getString("routeId")); val agency = l.getString("agencyId")
+                    val route = naim?.first ?: id(l.getString("routeId")); val agency = l.getString("agencyId")
                     val from = l.getJSONObject("from"); val to = l.getJSONObject("to")
                     val calls = JSONArray().put(stop(from))
                     l.optJSONArray("intermediateStops")?.let { mid -> for (n in 0 until mid.length()) calls.put(stop(mid.getJSONObject(n))) }
@@ -175,7 +200,7 @@ internal object BusNearby {
                         .put(l.optString("headsign", to.optString("name"))).put("").put(from.optString("name")).put("")
                         .put(agency.toInt()).put(typeOf(l.optString("mode"), l.optString("agencyName"), l.optString("routeLongName"),
                             l.optString("routeShortName", l.optString("route")))).put(l.optString("routeLongName")))
-                    leg.put("k", "r").put("line", route).put("trip", l.getString("tripId").substringAfter(':'))
+                    leg.put("k", "r").put("line", route).put("trip", naim?.second ?: l.getString("tripId").substringAfter(':'))
                         .put("stops", calls).put("live", l.optBoolean("realTime"))
                         .put("sdep", l.getLong("startTime") / 1000 - l.optInt("departureDelay"))
                 }
@@ -206,8 +231,10 @@ internal object BusNearby {
             val rows = o.optJSONArray(code) ?: continue
             for (i in 0 until rows.length()) {
                 val r = rows.getJSONObject(i)
-                if (r.optString("feedId", "1") != "1") continue
-                val route = r.optInt("route"); val first = epoch(r.optString("aimedDeparture"))
+                val naim = if (r.optString("feedId", "1") != "1")
+                    weekend(r.optString("operator"), r.optString("routeId", r.optString("route")), r.optString("tripId")) else null
+                if (r.optString("feedId", "1") != "1" && naim == null) continue
+                val route = naim?.first?.toInt() ?: r.optInt("route"); val first = epoch(r.optString("aimedDeparture"))
                 val expected = epoch(r.optString("expectedArrival"))
                 if (route <= 0 || first == 0L || expected == 0L) continue
                 val key = "${route}_${r.getString("aimedDeparture")}_${r.optString("vehicle").ifEmpty { "trip:" + r.optString("tripId").replace('_', '-') }}"
@@ -237,8 +264,8 @@ internal object BusNearby {
         routes[source to route]?.let { return it }
         // A real observed station supplies context; the server's returned route id, never a local index, is checked.
         val code = seenAt[source to route] ?: 0
-        val list = JSONArray(get("lines", "lineref=$route&stopcode=$code", source))
-        val r = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull { it.optInt("routeid") == route }
+        val list = JSONArray(get("lines", "lineref=${hopOnRoute(route)}&stopcode=$code", source))
+        val r = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull { it.optInt("routeid") == hopOnRoute(route) }
             ?: throw java.io.IOException("Provider has no route $route")
         val codes = r.getJSONArray("stopCodes").let { a -> (0 until a.length()).map { a.getInt(it) } }
         val net = uk.noammm.kav.Loaded.net
@@ -532,6 +559,7 @@ internal object HopOnShare {
             try {
                 c.connectTimeout = 5_000; c.readTimeout = 10_000
                 c.requestMethod = "POST"; c.doOutput = true
+                c.setRequestProperty("User-Agent", BusNearby.AGENT)
                 c.setRequestProperty("Accept", "application/json")
                 c.setRequestProperty("Content-Type", "application/json")
                 c.setRequestProperty("Accept-Language", "he")

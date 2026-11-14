@@ -74,6 +74,17 @@ private const val LEFT_S = 120L
 private fun departed(trip: Transit.Itinerary): Boolean =
     trip.rides.firstOrNull()?.let { it.dep + LEFT_S < System.currentTimeMillis() / 1000 } == true
 
+// A trip with nothing on a timetable, a walk, sets out when it's started. The latest route opens as it was, so one
+// planned hours before kept its times, and its arrival long past ended the trip as soon as it began.
+internal fun startedNow(trip: Transit.Itinerary, now: Long): Transit.Itinerary {
+    val late = now - trip.dep
+    if (trip.rides.isNotEmpty() || late <= LEFT_S) return trip
+    return Transit.Itinerary(
+        trip.guid, trip.group, trip.legs.map { it.copy(dep = it.dep + late, arr = it.arr + late) }, trip.dep + late, trip.arr + late,
+        trip.fare, trip.currency, trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId, trip.original,
+    )
+}
+
 private fun endpointName(p: Place?) = if (isHere(p)) hereName() else p?.name
 
 // Whether the rider is where the trip starts as they begin it: by a fresh position when there is one, else by the trip
@@ -454,36 +465,40 @@ fun DirectionsOnline(model: KavModel) {
         label = "directions",
     ) { (chosen, displayingResults, opening) ->
         if (chosen != null) {
-            val active = model.activeJourney?.takeIf { it.trip === chosen.trip }
+            // A walk started late sets out now: it shows in the place of the trip as it was opened.
+            val trip = model.activeJourney?.takeIf { chosen.trip in it.before }?.trip ?: chosen.trip
+            val active = model.activeJourney?.takeIf { it.trip === trip }
             val detailResolved = active?.resolved
                 ?: if (!chosen.resume && raw.any { it === chosen.trip }) resolved
                 else openLive?.takeIf { it.first === chosen.trip }?.second ?: chosen.resolved
-            LaunchedEffect(chosen.trip) {
+            LaunchedEffect(trip) {
                 withContext(Dispatchers.IO) {
                     uk.noammm.kav.data.RecentRoutes.saveLatest(ctx,
-                        ActiveJourney(chosen.trip, detailResolved, chosen.fromLabel, chosen.toLabel, stopovers = chosen.stopovers))
+                        ActiveJourney(trip, detailResolved, active?.fromLabel ?: chosen.fromLabel, chosen.toLabel, stopovers = active?.stopovers ?: chosen.stopovers))
                 }
             }
             TripDetailScreen(
                 model,
-                chosen.trip, detailResolved,
-                fromLabel = chosen.fromLabel,
+                trip, detailResolved,
+                fromLabel = active?.fromLabel ?: chosen.fromLabel,
                 toLabel = chosen.toLabel,
                 onBack = { open = null; if (chosen.resume || chosen.backHome) showResults = false },
-                startInNavigation = chosen.resume,
+                startInNavigation = chosen.resume || trip !== chosen.trip,
                 onStart = {
                     if (active == null) {
                         model.journeyStep = 0
+                        val leaving = startedNow(chosen.trip, System.currentTimeMillis() / 1000)
                         model.activeJourney = ActiveJourney(
-                            chosen.trip, detailResolved, chosen.fromLabel, chosen.toLabel,
+                            leaving, detailResolved, chosen.fromLabel, chosen.toLabel,
                             fromHere = startsHere(chosen.trip, model, fromIsHere), stopovers = chosen.stopovers,
+                            before = if (leaving === chosen.trip) emptyList() else listOf(chosen.trip),
                         )
                     }
                 },
                 onNavigating = { model.navigating = it },
                 onHome = { open = null; showResults = false },
                 onEnd = {
-                    if (model.activeJourney?.trip === chosen.trip) model.activeJourney = null
+                    if (model.activeJourney?.trip === trip) model.activeJourney = null
                     open = null
                     showResults = false
                 },

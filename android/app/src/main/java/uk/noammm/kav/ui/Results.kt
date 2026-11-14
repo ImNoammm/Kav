@@ -408,15 +408,15 @@ private fun departLabels(deps: List<Transit.Departure>, now: Long): Pair<List<De
     return out to allMinutes
 }
 
-// How many days on a time is, for saying "tomorrow": by the day that runs to the night's break at 04:00, so a train at
-// 00:12 an hour from now is tonight's, and the first bus at 05:00 is tomorrow's, at 01:00 too.
+// How many days on a time is, for saying "tomorrow": by the day that runs to the night's break at 01:00, so a train at
+// 00:12 an hour from now is tonight's, and from 01:00 the morning's first bus is today's.
 internal fun daysAhead(t: Long, now: Long): Long {
     val zone = ISRAEL.toZoneId()
     fun day(s: Long) = java.time.Instant.ofEpochSecond(s).atZone(zone).minusHours(NIGHT_BREAK_HOUR).toLocalDate()
     return java.time.temporal.ChronoUnit.DAYS.between(day(now), day(t))
 }
 
-private const val NIGHT_BREAK_HOUR = 4L
+private const val NIGHT_BREAK_HOUR = 1L
 
 private fun clockLabel(t: Long, days: Long): String {
     val time = hm.format(Date(t * 1000))
