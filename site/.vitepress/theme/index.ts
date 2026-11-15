@@ -2,6 +2,7 @@
 import DefaultTheme from 'vitepress/theme-without-fonts'
 import { inBrowser, type Theme } from 'vitepress'
 import { nextTick } from 'vue'
+import Layout from './Layout.vue'
 import HomePage from './components/HomePage.vue'
 import DownloadButton from './components/DownloadButton.vue'
 import ReleaseList from './components/ReleaseList.vue'
@@ -10,6 +11,7 @@ import './style.css'
 
 export default {
   extends: DefaultTheme,
+  Layout,
   enhanceApp({ app, router }) {
     app.component('HomePage', HomePage)
     app.component('DownloadButton', DownloadButton)

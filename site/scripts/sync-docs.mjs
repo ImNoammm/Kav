@@ -26,28 +26,28 @@ const PAGES = new Map(DOCS)
 const HTML = new Set(['a', 'img', 'br', 'p', 'div', 'span', 'details', 'summary', 'sub', 'sup', 'kbd', 'b', 'i', 'em',
   'strong', 'code', 'pre', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'picture', 'source', 'hr'])
 
-function link(target, from) {
+function link(target, from, hebrew = false) {
   if (/^([a-z]+:|#|\/)/i.test(target)) return target
   const [path, hash = ''] = target.split('#')
   const file = posix.normalize(posix.join(posix.dirname(from), path))
   const page = PAGES.get(file)
-  if (page) return `/docs/${page}${hash ? '#' + hash : ''}`
+  if (page) return `${hebrew ? '/he' : ''}/docs/${page}${hash ? '#' + hash : ''}`
   if (/\.(png|jpe?g|gif|svg|webp)$/i.test(file)) return RAW + file
   return GITHUB + file + (hash ? '#' + hash : '')
 }
 
-function prose(text, from) {
+function prose(text, from, hebrew = false) {
   // Inline code stays as it is; Markdown links and bare tags in the rest are fixed.
   return text.split(/(`+[^`]*`+)/).map((part, i) => {
     if (i % 2) return part
-    part = part.replace(/(\]\()([^)\s]+)(\))/g, (_, a, target, b) => a + link(target, from) + b)
-    part = part.replace(/(<(?:img|a|source)\b[^>]*?\s(?:src|href|srcset)=")([^"]+)(")/g, (_, a, target, b) => a + link(target, from) + b)
+    part = part.replace(/(\]\()([^)\s]+)(\))/g, (_, a, target, b) => a + link(target, from, hebrew) + b)
+    part = part.replace(/(<(?:img|a|source)\b[^>]*?\s(?:src|href|srcset)=")([^"]+)(")/g, (_, a, target, b) => a + link(target, from, hebrew) + b)
     return part.replace(/<\/?([A-Za-z][\w-]*)([^>]*)>/g, (tag, name, rest) =>
       HTML.has(name.toLowerCase()) || /^:\/\/|@/.test(rest) ? tag : tag.replace(/</g, '&lt;'))
   }).join('')
 }
 
-function convert(markdown, from) {
+function convert(markdown, from, hebrew = false) {
   const out = []
   let fence = null
   for (const line of markdown.split('\n')) {
@@ -59,7 +59,7 @@ function convert(markdown, from) {
       fence = open[1]
       out.push(line)
     } else {
-      out.push(prose(line, from))
+      out.push(prose(line, from, hebrew))
     }
   }
   // v-pre: {{ }} in a doc is text, not a Vue expression.
@@ -78,6 +78,13 @@ for (const [file, page] of DOCS) {
   const title = (markdown.match(/^#\s+(.+)$/m) || [, page])[1].trim()
   const front = `---\ntitle: ${JSON.stringify(title)}\neditLink: true\nsource: ${JSON.stringify(file)}\n---\n\n`
   writeFileSync(join(site, 'docs', page + '.md'), front + convert(markdown, file))
+  const hebrewFile = file.replace(/\.md$/, '.he.md')
+  if (existsSync(join(repo, hebrewFile))) {
+    const hebrew = readFileSync(join(repo, hebrewFile), 'utf8')
+    const title = (hebrew.match(/^#\s+(.+)$/m) || [, page])[1].trim()
+    const front = `---\ntitle: ${JSON.stringify(title)}\neditLink: true\nsource: ${JSON.stringify(hebrewFile)}\n---\n\n`
+    writeFileSync(join(site, 'he', 'docs', page + '.md'), front + convert(hebrew, file, true))
+  }
 }
 console.log(`sync-docs: ${DOCS.length - missing} of ${DOCS.length} docs copied from ${normalize(repo)}`)
 if (missing) process.exitCode = 1

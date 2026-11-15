@@ -62,7 +62,7 @@ export function megabytes(bytes: number) {
   return `${(bytes / 1e6).toFixed(1)} MB`
 }
 
-export function day(iso: string) {
+export function day(iso: string, locale = 'en-GB') {
   // Israel's day, the same in the built page and in any browser.
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' })
+  return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' })
 }

@@ -1,10 +1,20 @@
 /* Kav's site: the system font, Apple's neutral greys, and Kav purple kept for links and the one main action.
    Contrast: #8e3cc4 on white 5.8:1, #bf5af2 on black 6.0:1, white on the dark button #a24ad8 4.7:1. */
 
+/* Only Heebo's Hebrew subset; Latin keeps its existing font. */
+@font-face {
+  font-family: 'Heebo Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/heebo/files/heebo-hebrew-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+
 :root {
-  --vp-font-family-base: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue',
+  --vp-font-family-base: Inter, 'Heebo Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue',
     Arial, 'Noto Sans Hebrew', sans-serif;
-  --vp-font-family-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --vp-font-family-mono: 'Heebo Variable', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
   --vp-c-brand-1: #8e3cc4;
   --vp-c-brand-2: #7a2fb0;
@@ -503,4 +513,84 @@
   .VPSidebarItem .link:hover .text {
     transform: translateX(2px);
   }
+}
+
+/* Keep file names, commands and embedded Latin text readable in either locale. */
+/*rtl:ignore*/
+pre, code, bdi {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/*rtl:ignore*/
+pre {
+  text-align: left;
+}
+
+/*rtl:ignore*/
+[dir='rtl'] .kav-link-chevron::after {
+  content: '\00a0‹';
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* Keep the brand in its original order in both languages. */
+/*rtl:ignore*/
+.VPNavBarTitle .title {
+  direction: ltr;
+}
+/*rtl:ignore*/
+.VPNavBarTitle .title .logo {
+  margin-right: 0;
+  margin-inline-end: 8px;
+}
+
+/*rtl:ignore*/
+[dir='rtl'] .VPNavBarTitle .title {
+  justify-content: flex-end;
+}
+
+/* These symbols follow reading direction; vertical and branded icons do not. */
+/*rtl:ignore*/
+[dir='rtl'] .vpi-align-left,
+[dir='rtl'] .VPLocalSearchBox .vpi-chevron-right,
+[dir='rtl'] .VPLocalSearchBox .vpi-layout-list,
+[dir='rtl'] .VPLocalSearchBox .vpi-corner-down-left,
+[dir='rtl'] .VPLocalSearchBox .vpi-delete {
+  transform: scaleX(-1);
+}
+
+/*rtl:ignore*/
+[dir='rtl'] .VPLocalSearchBox .vpi-arrow-left {
+  transform: rotate(0);
+}
+
+/* The other language is one tap away, including on phones. */
+.VPNavBarTranslations,
+.VPNavScreenTranslations,
+.VPNavBarExtra .translations {
+  display: none !important;
+}
+
+.kav-language-switch {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  line-height: var(--vp-nav-height);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--vp-c-text-1);
+  white-space: nowrap;
+  transition: color 0.25s;
+}
+
+.kav-language-switch:hover {
+  color: var(--vp-c-brand-1);
+}
+
+.kav-language-switch:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: -8px;
+  border-radius: 6px;
 }

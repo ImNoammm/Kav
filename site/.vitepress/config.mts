@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineConfig } from 'vitepress'
+import { he, searchHebrew } from './he'
 
 const GITHUB = 'https://github.com/ImNoammm/kav'
 const DESCRIPTION = 'Public transport in Israel, without the ads, the account or the tracking.'
@@ -9,6 +12,7 @@ function githubSlug(text: string) {
 
 export default defineConfig({
   lang: 'en',
+  locales: { root: { label: 'English', lang: 'en', dir: 'ltr' }, he },
   title: 'Kav',
   description: DESCRIPTION,
   cleanUrls: true,
@@ -27,7 +31,20 @@ export default defineConfig({
     ['meta', { property: 'og:image', content: 'https://kavapp.link/img/icon-512.png' }],
     ['meta', { name: 'twitter:card', content: 'summary' }],
   ],
-  transformPageData(page) {
+  transformPageData(page, { siteConfig }) {
+    const path = '/' + page.relativePath.replace(/(?:index)?\.md$/, '')
+    const englishPath = path.replace(/^\/he\//, '/')
+    // A page has a Hebrew twin when site/he/ has the same file. The language link in Layout.vue reads this too.
+    const english = page.relativePath.replace(/^he\//, '')
+    const translated = existsSync(join(siteConfig.srcDir, 'he', english))
+    page.frontmatter.translated = translated
+    page.frontmatter.head ??= []
+    page.frontmatter.head.push(['link', { rel: 'canonical', href: `https://kavapp.link${path}` }])
+    if (translated) {
+      for (const [lang, href] of [['en', englishPath], ['he', '/he' + (englishPath === '/' ? '/' : englishPath)], ['x-default', englishPath]]) {
+        page.frontmatter.head.push(['link', { rel: 'alternate', hreflang: lang, href: `https://kavapp.link${href}` }])
+      }
+    }
     const title = page.frontmatter.title || page.title
     page.frontmatter.head ??= []
     page.frontmatter.head.push(
@@ -73,7 +90,7 @@ export default defineConfig({
       ],
     },
     outline: { level: [2, 3], label: 'On this page' },
-    search: { provider: 'local' },
+    search: { provider: 'local', options: { locales: { he: searchHebrew } } },
     editLink: {
       // The imported docs are edited where they live in the repo, not in site/docs. (This runs in the browser on its
       // own, so it can't use GITHUB.)
