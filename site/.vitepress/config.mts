@@ -53,6 +53,7 @@ export default defineConfig({
           text: 'Docs',
           items: [
             { text: 'Overview', link: '/docs/' },
+            { text: 'For developers', link: '/docs/data' },
             { text: 'How Kav works', link: '/docs/how-it-works' },
             { text: 'Building from source', link: '/docs/building' },
             { text: 'License', link: '/docs/license' },

@@ -1,0 +1,128 @@
+name: Open data
+
+# Each night, Kav's open data (tools/open_data.py, described in site/docs/data.md): Israel's stops, lines, their roads,
+# the trains' roads and the official fares, from the Ministry of Transport's timetable, Tel Aviv's weekend lines and
+# OpenStreetMap. A night that passes the gate (tools/open_data.py check) is signed with the data key and goes on the
+# "data" release (tools/data_publish.sh); Kav's site takes it from there to kavapp.link/data/v1/
+# (site/scripts/data-pull.sh). Should any part fail, last night's files stay.
+on:
+  schedule:
+    # 01:45 in Israel in winter, 02:45 in summer: after the ministry's nightly feed, and after the timetable.
+    - cron: '45 23 * * *'
+  workflow_dispatch:
+    inputs:
+      accept_drop:
+        description: "Publish even if a file fell far below last night's, or stops moved far (a real change, checked by a person)"
+        type: boolean
+        default: false
+      first_run:
+        description: "The first night, with none published before it to compare with"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    env:
+      # The public half of the data key (KAV_DATA_KEY), as site/scripts/data-pull.sh pins it.
+      KEY: ${{ vars.KAV_DATA_PUBLIC_KEY }}
+      # pfaedle as tested with this workflow on 13 Nov 2026 (the image tagged latest then, built 24 Jul 2026).
+      PFAEDLE: ghcr.io/ad-freiburg/pfaedle@sha256:af4fdc647699ea1ffe5150fd1f9d264c465c2876710ea749e8cb284f13abd20d
+    steps:
+      - uses: actions/checkout@v7
+
+      # As the timetable's: Tel Aviv's weekend lines through the Worker near Tel Aviv, the city's own address after.
+      - name: Feeds
+        env:
+          NAIM_WORKER: ${{ secrets.NAIM_WORKER }}
+        run: |
+          tools/fetch.sh
+          zipped() { python3 -c 'import sys, zipfile; sys.exit(not zipfile.is_zipfile(sys.argv[1]))' .cache/naim-gtfs.zip; }
+          set -- $NAIM_WORKER
+          { [ -n "${1:-}" ] && curl -sSfL --retry 3 -A kav-server -H "x-kav-key: ${2:-}" -o .cache/naim-gtfs.zip "$1" && zipped; } ||
+            { curl -sSfL --retry 3 -A kav-server -o .cache/naim-gtfs.zip https://opendatasource.tel-aviv.gov.il/OpenData_Ducaments/gtfs.zip && zipped; } ||
+            { echo "::error::Weekend feed unavailable; keeping last night's files"; exit 1; }
+
+      # The trains' roads, which the ministry's feed has none of, matched to OpenStreetMap's tracks the way the planner's
+      # rebuild does (server/otp/rebuild.sh), on the timetable prepare.py cleans (pfaedle refuses an operator with no
+      # website), without Israel Railways' own timetable.
+      - name: Train roads
+        run: |
+          mkdir -p .cache/rail
+          curl -sSfL --retry 3 -o .cache/rail/israel.osm.pbf https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf
+          python3 -c 'import sys; sys.path.insert(0, "server/otp"); import prepare; print(prepare.clean(*sys.argv[1:], entrances={}))' \
+            .cache/israel-gtfs.zip .cache/rail/israel-gtfs.zip
+          python3 server/otp/rail_shapes.py cut .cache/rail
+          docker run --rm --user "$(id -u):$(id -g)" --memory=4g -v "$PWD/.cache/rail:/w" -w /w "$PFAEDLE" \
+            -x israel.osm.pbf -m rail -i rail.zip > .cache/rail/pfaedle.log 2>&1 || { tail -20 .cache/rail/pfaedle.log; exit 1; }
+          python3 server/otp/rail_shapes.py write .cache/rail .cache/rail
+          echo "KAV_OSM_SHA256=$(sha256sum .cache/rail/israel.osm.pbf | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      # Read only the saved public timetables. The restricted key must permit this rsync path alone.
+      # Pin a verified known_hosts entry; never accept an unverified host key in the workflow.
+      - name: Busy and fleet inputs
+        env:
+          TIMETABLE_SOURCE: ${{ secrets.KAV_DATA_TIMETABLE_SOURCE }}
+          READ_KEY: ${{ secrets.KAV_DATA_READ_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KAV_DATA_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p .cache/saved-timetables .cache/ssh
+          trap 'rm -f .cache/ssh/key' EXIT
+          printf '%s\n' "$READ_KEY" > .cache/ssh/key
+          printf '%s\n' "$KNOWN_HOSTS" > .cache/ssh/known_hosts
+          rsync -a -e "ssh -i .cache/ssh/key -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/ssh/known_hosts" \
+            "$TIMETABLE_SOURCE" .cache/saved-timetables/
+          python3 tools/open_data_extra.py .cache/israel-gtfs.zip .cache/saved-timetables .cache/extra.json
+
+      - name: Build
+        env:
+          KAV_GTFS: .cache/israel-gtfs.zip
+          KAV_NAIM: .cache/naim-gtfs.zip
+          KAV_RAIL_SHAPES: .cache/rail/rail-shapes.json
+          KAV_OUT: out
+          KAV_EXTRA: .cache/extra.json
+          GH_TOKEN: ${{ github.token }}
+          KAV_DATA_ACCEPT_DROP: ${{ inputs.accept_drop && '1' || '' }}
+          KAV_DATA_FIRST_RUN: ${{ inputs.first_run && '1' || '' }}
+        # The gate (what it checks, and what not: tools/open_data.py's own help): every file whole and well formed,
+        # above its floor and near last night's published one, the roads covering the lines and the stops served, every
+        # stop in Israel and the West Bank, none moved far from last night's. A night that fails it isn't signed or
+        # published; without last night's manifest and stops nothing is, but the first night, ticked by hand.
+        run: |
+          python3 tools/open_data.py
+          if gh release download data --pattern manifest.json --output last-manifest.json 2> /dev/null; then
+            gh release download data --pattern "$(jq -r .folder last-manifest.json).stops.csv.gz" --output last-stops.csv.gz ||
+              echo "::warning::Could not download last night's stops; the gate refuses to judge without them"
+          else
+            echo "::warning::Could not download last night's manifest: nothing is published without it but the first night (first_run)"
+          fi
+          python3 tools/open_data.py check out last-manifest.json last-stops.csv.gz
+
+      - name: Sign
+        env:
+          KAV_DATA_KEY: ${{ secrets.KAV_DATA_KEY }}
+        run: |
+          umask 077
+          trap 'rm -f key.pem' EXIT
+          printf '%s\n' "$KAV_DATA_KEY" > key.pem
+          openssl dgst -sha256 -sign key.pem out/manifest.json | base64 -w0 > out/manifest.json.sig
+          printf '%s' "$KEY" | base64 -d | openssl pkey -pubin -inform DER -out pub.pem
+          base64 -d out/manifest.json.sig > sig.der
+          openssl dgst -sha256 -verify pub.pem -signature sig.der out/manifest.json
+
+      # The night under names of its own, downloaded back and compared, and only then manifest.json switched to it: a
+      # reader never sees a mixed set, wherever the run stops (tools/test_data_publish.py).
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/data_publish.sh out
+
+      # GitHub may disable scheduled workflows after 60 days without repository activity.
+      # Monitor the last successful data build; re-enable and dispatch manually after a disable.
