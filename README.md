@@ -56,8 +56,7 @@ Installing, using Kav and running your own server are all covered on
 - Departure boards for every station, and a page for every line with its route
   on a map, its stops and its buses on the road.
 - Separate choices for trip planning, live locations and timetables. Pick
-  Kav, Bus Nearby, EGG or your own server for each. External providers receive
-  the requests you make to them and your IP address. The timetable kept on the
+  Kav or your own server for each. The timetable kept on the
   phone remains available without signal.
 - OLED black, light and dark, with liquid glass or solid bars.
 - Kav's own map, kept on the phone, with its places and streets named in Hebrew
@@ -76,10 +75,7 @@ Installing, using Kav and running your own server are all covered on
 - Private search, on by default, keeps your exact location out of searches:
   Google or OpenStreetMap's Photon search sees only the centre of the town
   you're in, or a place you pick. Choose the search provider in setup or Settings.
-- Pays for bus, train, light rail and Carmelit rides, if you want it to, with a
-  Rav-Pass account you sign up or sign in to right in Kav. Only payments use
-  it, and Rav-Pass gets your location only at the moment you scan or pay, as in
-  its own app, never in the background. Everything else stays anonymous.
+- Paying for rides inside Kav is not offered.
 - Reports a driver, a bus, an inspector or a train to the Ministry of Transport
   on its own form. Kav fills it in from your ride, and you check it and send it
   yourself. Your details stay on the phone and only go into that form.
@@ -198,9 +194,6 @@ your own server (below): Kav's server only answers the APKs from Releases.
 - Train times between two stations from Israel Railways' own timetable, asked
   only when you open that card, and the platforms of a train another planner
   planned, asked when you open that trip. It learns the two stations and the day.
-- Sharing a trip Bus Nearby or EGG planned also makes their own short links to
-  it, the way their apps' Share does: HopOn, which runs both, gets that trip and
-  a random ID Kav keeps for this.
 - Kav trip links save the selected itinerary, page choices and the picture
   chats show with the link on Kav's server (or your own) behind a random
   seven-character code. Links expire after 7 days by default;
@@ -218,8 +211,7 @@ your own server (below): Kav's server only answers the APKs from Releases.
   [@Kido130](https://github.com/Kido130) kept last night's buses on the departure
   board after midnight; [@donno2048](https://github.com/donno2048) made the
   release workflow build the APK on GitHub from the tagged code; and
-  [@GbaGuy](https://github.com/GbaGuy) added clear buttons to the search fields
-  and a check before closing quick pay.
+  [@GbaGuy](https://github.com/GbaGuy) added clear buttons to the search fields.
 - Thanks to the amazing team at [HTTP Toolkit](https://httptoolkit.com), who
   kindly gave Kav a free Pro licence.
 - A huge thanks to [@yair-654](https://github.com/yair-654) for all the support

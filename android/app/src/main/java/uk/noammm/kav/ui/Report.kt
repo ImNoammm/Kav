@@ -1,5 +1,13 @@
 package uk.noammm.kav.ui
 
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
@@ -89,7 +97,6 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.Transit
-import uk.noammm.kav.data.RavPass
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -333,8 +340,8 @@ internal class Answers(
     val recorded: String = "", val witnesses: String = "", val testifyAt: String = "", val willing: Boolean = false,
 )
 
-// How the rider paid for a fare or fine report, as the form numbers it (1 Rav-Kav, 2 an app, 3 a credit card; apps 1
-// Rav-Pass, 3 Pango, 4 Cello), when they paid or got on, and an appeal's demand number.
+// How the rider paid for a fare or fine report, as the form numbers it (1 Rav-Kav, 2 an app, 3 a credit card; apps 3
+// Pango, 4 Cello), when they paid or got on, and an appeal's demand number.
 internal class Payment(
     val means: String = "", val ravKav: String = "", val cardholder: String = "", val app: String = "",
     val appPhone: String = "", val paidAt: Long = 0, val demand: String = "",
@@ -482,14 +489,6 @@ internal fun reportJson(
     .put("consent", consent)
     .toString()
 
-// When the rider paid for this line with Rav-Pass in Kav: the ticket for it bought nearest the time, within three hours.
-internal fun paidWith(r: ReportFor, tickets: List<RavPass.Ticket>): Long? {
-    val number = r.line.filter(Char::isLetterOrDigit)
-    return tickets.map { it.line.filter(Char::isLetterOrDigit) to it.boughtUtc / 1000 }
-        .filter { (line, at) -> line == number && kotlin.math.abs(at - r.at) < 3 * 3600 }
-        .minByOrNull { (_, at) -> kotlin.math.abs(at - r.at) }?.second
-}
-
 // A report about the bus of a ride, the one the rider is on when Kav knows it, from where they got on to where they
 // got off.
 internal fun rideReport(ride: Transit.Leg, r: Transit.Resolved, bus: Transit.Arrival?, at: Long): ReportFor? {
@@ -575,7 +574,7 @@ internal class ReportPhoto(val file: File, val thumb: ImageBitmap)
 internal class Filling(val photos: List<File>, val json: (photoUrls: List<String>) -> String)
 
 // The report as the rider fills it in, a step at a time.
-private class Draft(val report: ReportFor, saved: Reporter?, account: RavPass.Account?) {
+private class Draft(val report: ReportFor, saved: Reporter?) {
     var step by mutableStateOf(ReportStep.ABOUT)
     var about by mutableStateOf<ReportAbout?>(null)
     var issue by mutableStateOf<ReportIssue?>(null)
@@ -594,21 +593,20 @@ private class Draft(val report: ReportFor, saved: Reporter?, account: RavPass.Ac
     var testifyAt by mutableStateOf(nearestTestimony(report.near))
     var willing by mutableStateOf(false)
     var photos by mutableStateOf(emptyList<ReportPhoto>())
-    // How the rider paid, for fares and fines. Riders who pay with Rav-Pass in Kav start from that, at the time of the
-    // ticket Kav bought for this line, if there's one.
+    // How the rider paid, for fares and fines.
     var demand by mutableStateOf("")
-    var means by mutableStateOf(if (account != null) "2" else "")
+    var means by mutableStateOf("")
     var ravKav by mutableStateOf("")
     var cardholder by mutableStateOf("")
-    var app by mutableStateOf(if (account != null) "1" else "")
-    var appPhone by mutableStateOf(account?.phone?.let(::formPhone).orEmpty())
-    var paidAt by mutableLongStateOf(paidWith(report, Payer.tickets) ?: report.at)
-    var first by mutableStateOf(saved?.first ?: account?.first?.takeIf(::hebrewName).orEmpty())
-    var last by mutableStateOf(saved?.last ?: account?.last?.takeIf(::hebrewName).orEmpty())
+    var app by mutableStateOf("")
+    var appPhone by mutableStateOf("")
+    var paidAt by mutableLongStateOf(report.at)
+    var first by mutableStateOf(saved?.first.orEmpty())
+    var last by mutableStateOf(saved?.last.orEmpty())
     var id by mutableStateOf(saved?.id.orEmpty())
     var gender by mutableStateOf(saved?.gender.orEmpty())
-    var phone by mutableStateOf(saved?.phone ?: account?.phone?.let(::formPhone).orEmpty())
-    var email by mutableStateOf(saved?.email ?: account?.email.orEmpty())
+    var phone by mutableStateOf(saved?.phone.orEmpty())
+    var email by mutableStateOf(saved?.email.orEmpty())
     var town by mutableStateOf(saved?.town.orEmpty())
     var consent by mutableStateOf(false)
     var kept by mutableStateOf(saved != null)
@@ -692,7 +690,7 @@ private class Draft(val report: ReportFor, saved: Reporter?, account: RavPass.Ac
 @Composable
 internal fun ReportScreen(report: ReportFor, onClose: () -> Unit) {
     val ctx = LocalContext.current
-    val d = remember(report) { Draft(report, Reporter.load(ctx), Payer.account) }
+    val d = remember(report) { Draft(report, Reporter.load(ctx)) }
     var filling by remember { mutableStateOf<Filling?>(null) }
     // Stops as the trip names them.
     val named: (ReportStop) -> ReportStop = { it }
@@ -813,7 +811,7 @@ private fun Paying(d: Draft) {
     AnimatedVisibility(d.means == "2", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         Column(verticalArrangement = Arrangement.spacedBy(K.gap3)) {
             Dropdown(T("App", "יישומון"), appName(d.app), T("Choose the app", "בחרו יישומון"),
-                listOf("1", "3", "4").map { it to appName(it).orEmpty() }, d.errors["app"]) { d.app = it }
+                listOf("3", "4").map { it to appName(it).orEmpty() }, d.errors["app"]) { d.app = it }
             Field(T("Phone number in the app", "מספר הטלפון ביישומון"), d.appPhone,
                 { d.appPhone = it.filter { c -> c.isDigit() || c == '-' || c == '+' }.take(16) },
                 error = d.errors["appPhone"], keyboard = KeyboardType.Phone)
@@ -832,7 +830,7 @@ private fun meansName(code: String) = when (code) {
 }
 
 private fun appName(code: String) = when (code) {
-    "1" -> T("Rav-Pass", "רב-פס"); "3" -> T("Pango", "פנגו"); "4" -> T("Cello", "סלו"); else -> null
+    "3" -> T("Pango", "פנגו"); "4" -> T("Cello", "סלו"); else -> null
 }
 
 @Composable
@@ -1560,4 +1558,31 @@ private fun MinistryForm(filling: Filling, onBack: () -> Unit, onDone: () -> Uni
             )
         }
     }
+}
+
+// The rider's saved details, sealed with a key of Kav's own in the phone's keystore. The key keeps its old name so
+// details saved before still open.
+internal object Seal {
+    private const val ALIAS = "kav-pay"
+
+    private fun key(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+        val spec = KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .build()
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply { init(spec) }.generateKey()
+    }
+
+    fun close(plain: String): String {
+        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+        return Base64.encodeToString(c.iv + c.doFinal(plain.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    }
+
+    fun open(sealed: String): String? = runCatching {
+        val b = Base64.decode(sealed, Base64.NO_WRAP)
+        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, b, 0, 12)) }
+        String(c.doFinal(b, 12, b.size - 12), Charsets.UTF_8)
+    }.getOrNull()
 }

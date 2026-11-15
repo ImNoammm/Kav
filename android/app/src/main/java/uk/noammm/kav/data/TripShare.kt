@@ -45,7 +45,9 @@ internal object TripShare {
     // host: the server the link is on, Kav's own or a copy of it.
     fun read(id: String, host: String = TripLink.HOST): JSONObject {
         require(id.matches(Regex("[A-Za-z0-9]{7}")))
-        return request("https://$host", "/api/share/$id")
+        // Checked again here, however the host got this far: any other is never asked.
+        val at = TripLink.allowedHost(host) ?: throw TripLink.NotKavs()
+        return request("https://$at", "/api/share/$id")
     }
 
     private fun request(at: String, path: String, doc: JSONObject? = null, card: Int = 0): JSONObject {
@@ -100,7 +102,6 @@ internal object TripShare {
                 o.getJSONObject("stops").getJSONObject(id.toString()).put("displayName", name)
             }
         }
-        o.getJSONArray("trips").getJSONObject(0).remove("original")
         val bytes = o.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "This trip is too large to share" }
         val out = ByteArrayOutputStream()

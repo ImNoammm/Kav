@@ -52,7 +52,7 @@ it straight from the browser, because those are verified for Kav's own key.
 
 ::: info Kav's server answers official builds only
 The app signs its requests to Kav's server with a key that isn't in the repository. A build of your own works with
-every other source: Bus Nearby, EGG and [a server of your own](/docs/self-hosting).
+[a server of your own](/docs/self-hosting).
 :::
 
 ## The timetable

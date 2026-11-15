@@ -1,14 +1,13 @@
 ---
 title: Download
-description: Download Kav for Android, and every version so far.
+description: Kav for Android.
 aside: false
 editLink: false
 ---
 
 # Download Kav
 
-For Android 8.0 or newer. Open the APK to install it; Kav then keeps itself up to date from GitHub, with no store and no
-update service in between.
+For Android 8.0 or newer.
 
 <div class="kav-download">
   <DownloadButton caption />

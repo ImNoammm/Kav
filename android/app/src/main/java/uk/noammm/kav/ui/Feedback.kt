@@ -38,7 +38,7 @@ internal fun deviceName(maker: String, model: String): String {
 
 // In English, for whoever reads the issue: where live times and trips are set to come from, each its own choice.
 internal fun setupLine(live: Source, plan: Source, lang: Lang, englishNames: Boolean, timetable: Source = Source.KAV): String {
-    fun from(s: Source, server: String, own: String) = when (s) { Source.KAV -> server; Source.OWN -> own; Source.BUS_NEARBY -> "Bus Nearby"; Source.EGG -> "EGG"; Source.GOOGLE -> "Google" }
+    fun from(s: Source, server: String, own: String) = when (s) { Source.KAV -> server; Source.OWN -> own; Source.GOOGLE -> "Google" }
     return "Live: ${from(live, "Kav's server", "own server")}. " +
         "Trips: ${from(plan, "Kav's planner", "own server's planner")}. " +
         "Timetable: ${from(timetable, "Kav's week", "own server's week")}. " +

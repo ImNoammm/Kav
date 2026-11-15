@@ -33,7 +33,6 @@ import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.RailTrip
 import uk.noammm.kav.data.Transit
-import uk.noammm.kav.data.HopOnShare
 import uk.noammm.kav.data.shownName
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +43,7 @@ import java.util.Locale
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.text.font.FontWeight
 
-// The message a shared trip goes out as with Kav's own link: the trip's page on Kav's server, which offers it in the
-// other apps the Link customization names too. The Share sheet sends it. card: the picture chats show with the link,
+// The message a shared trip goes out as with Kav's own link: the trip's page on Kav's server. The Share sheet sends it. card: the picture chats show with the link,
 // asked for only when one is made.
 internal suspend fun shareText(
     ctx: android.content.Context, trip: Transit.Itinerary, r: Transit.Resolved, fromLabel: String, toLabel: String,
@@ -61,14 +59,12 @@ internal suspend fun shareText(
         }
         railShare(trip, r, fromName, toName, link)
     } else {
-        val (egg, busNearby) = if (trip.rides.isNotEmpty() && style.apps.any { it == "egg" || it == "bnb" })
-            withContext(Dispatchers.IO) { HopOnShare.links(ctx, trip, r) } else null to null
         val colors = routeTints(trip.legs.filter { it.shape.size >= 2 && it.kind != Transit.LegKind.WALK }, r)
             .map { "#%06x".format(Locale.US, it.toArgb() and 0xffffff) }
         val picture = card()
         val url = withContext(Dispatchers.IO) {
             uk.noammm.kav.data.TripShare.create(checkNotNull(KavPlan.sharePayload(trip, fromName, toName, r, rides = KavPlan.owns(trip),
-                egg = egg, busNearby = busNearby, colors = colors, style = style)), style.expiryDays, picture)
+                colors = colors, style = style)), style.expiryDays, picture)
         }
         T("$fromName → $toName\n$url", "$fromName ← $toName\n$url")
     }
@@ -175,8 +171,7 @@ fun TripDetailScreen(
             onTrack = { leg, stopId -> tracking = leg to stopId },
             onStart = { navigating = true; planFromNavigation = false; onStart() },
             onReport = { model.report = it },
-            onShare = { sharingOpen = true },
-            pay = if (Shown.payments) { leg, ride -> TripPay(model, leg, ride, r, trip) } else null)
+            onShare = { sharingOpen = true })
     }
     androidx.compose.animation.AnimatedContent(
         targetState = Triple(tracking != null, navigating || planFromNavigation, tracking),
@@ -233,7 +228,6 @@ private fun TripDetailBody(
     onStart: () -> Unit,
     onReport: (ReportFor) -> Unit,
     onShare: () -> Unit,
-    pay: (@Composable (legIndex: Int, ride: Transit.Leg) -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -260,7 +254,7 @@ private fun TripDetailBody(
                 me = me, heading = heading, onShown = onMapShown)
             Summary(trip, r)
             Spacer(Modifier.height(K.gap3))
-            Timeline(trip, r, fromLabel, toLabel, onTrack, onReport, pay)
+            Timeline(trip, r, fromLabel, toLabel, onTrack, onReport)
             Spacer(Modifier.height(K.gap8))
         }
     }
@@ -347,7 +341,6 @@ private fun Timeline(
     toLabel: String,
     onTrack: (Transit.Leg, Int) -> Unit,
     onReport: (ReportFor) -> Unit,
-    pay: (@Composable (legIndex: Int, ride: Transit.Leg) -> Unit)? = null,
 ) {
     val shaped = trip.legs.filter { it.shape.size >= 2 && it.kind != Transit.LegKind.WALK }
     val fares = remember(trip) { rideFares(trip) }
@@ -429,7 +422,7 @@ private fun Timeline(
                                 streetView = (board?.point ?: l.shape.firstOrNull())?.let { lookAt(it, l, r) },
                             )
                             Spacer(Modifier.height(K.gap2))
-                            BoardCard(l, wait, r, onTrack, onReport) { RideSummary(l, r, i, fares[i], pay) }
+                            BoardCard(l, wait, r, onTrack, onReport) { RideSummary(l, r, fares[i]) }
                         }
                     }
                     val alight = r.stop(l.toStop)
@@ -455,7 +448,7 @@ private fun Timeline(
                                 ChangeBlock(it)
                             }
                             Spacer(Modifier.height(K.gap2))
-                            BoardCard(next, nextWait, r, onTrack, onReport) { RideSummary(next, r, n, fares[n], pay) }
+                            BoardCard(next, nextWait, r, onTrack, onReport) { RideSummary(next, r, fares[n]) }
                         }
                         boarded = n
                     } else {
@@ -485,11 +478,10 @@ private fun Timeline(
     }
 }
 
-// Under a ride's line: how many stops and minutes it rides and its own fare (rideFares), and paying for it.
+// Under a ride's line: how many stops and minutes it rides, its own fare (rideFares), and where paying for it was.
 @Composable
 private fun RideSummary(
-    l: Transit.Leg, r: Transit.Resolved, legIndex: Int, fare: Int?,
-    pay: (@Composable (legIndex: Int, ride: Transit.Leg) -> Unit)?,
+    l: Transit.Leg, r: Transit.Resolved, fare: Int?,
 ) {
     Separator(0.dp)
     Box(Modifier.padding(vertical = K.gap1)) {
@@ -497,7 +489,7 @@ private fun RideSummary(
         if (l.options.size == 1) RideStops(l, r) { Step(rideLabel(l), price) }
         else if (price != null) Step(T("Fare", "מחיר"), price)
     }
-    pay?.let { Box(Modifier.padding(bottom = K.gap2)) { it(legIndex, l) } }
+    Text(payRemovedNote(), style = K.type.caption, color = K.dim, modifier = Modifier.padding(bottom = K.gap2))
 }
 
 // Each ride's own fare, by leg index. A plan gives every ride of a stretch one ticket covers the whole ticket's price

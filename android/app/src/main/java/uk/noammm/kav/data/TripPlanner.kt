@@ -28,19 +28,6 @@ class ServerPlanner(private val at: String) : TripPlanner {
     }
 }
 
-// Bus Nearby or EGG, whose planner leaves out stops on the way it's given (LegByLeg adds them) and gives its routes no
-// labels (RouteTags adds them).
-class HopOnPlanner private constructor(private val app: Source) : TripPlanner {
-    override fun plan(r: PlanRequest) = KavPlan.parse(
-        BusNearby.plan(r.from, r.to, r.whenMs, r.timeType, r.routeTypes, app),
-    ).let { p -> KavPlan.Planned(Transit.Plan(RouteTags.of(p.plan.itineraries), p.plan.sections), p.resolved, p.errors) }
-
-    companion object {
-        val BUS_NEARBY = HopOnPlanner(Source.BUS_NEARBY)
-        val EGG = HopOnPlanner(Source.EGG)
-    }
-}
-
 // Stops on the way for a planner that takes none: each part planned on its own, one request a part, and joined end to
 // end. Leaving at a time, the first part leaves then and each next part leaves once the one before arrives; arriving by
 // a time (or the last way tonight), it goes back from the end. A stop the rider stays at is left that much after getting
@@ -120,14 +107,11 @@ class LegByLeg(private val inner: TripPlanner) : TripPlanner {
     }
 }
 
-// The planner at a server address (KavPlan.planner, plannerOf): `by` tells HopOn's two apps apart, which share one.
-fun plannerFor(at: String, by: Source): TripPlanner = when (at) {
-    BusNearby.SERVER -> LegByLeg(if (by == Source.EGG) HopOnPlanner.EGG else HopOnPlanner.BUS_NEARBY)
-    else -> ServerPlanner(at)
-}
+// The planner at a server address (KavPlan.planner, plannerOf).
+fun plannerFor(at: String): TripPlanner = ServerPlanner(at)
 
 // The labels Kav's server gives its routes (server/live.py tag()), worked out on the phone for routes that come with
-// none: Bus Nearby's and EGG's, and routes joined part by part. Warnings first, then what a route is best at; two at most.
+// none: routes joined part by part. Warnings first, then what a route is best at; two at most.
 // Whether a ride is a line's last of the day isn't known here, so "Last trip" never shows.
 internal object RouteTags {
     private const val TIGHT = 120L // seconds to spare at a change, at most, for a tight connection
@@ -178,7 +162,7 @@ internal object RouteTags {
         return routes.mapIndexed { i, t ->
             val tags = found[i].distinct().sortedBy(ORDER::indexOf).take(2)
             Transit.Itinerary(t.guid, t.group, t.legs, t.dep, t.arr, t.fare, t.currency, t.co2g, t.accessible, tags,
-                t.section, t.sectionId, t.original)
+                t.section, t.sectionId)
         }
     }
 }

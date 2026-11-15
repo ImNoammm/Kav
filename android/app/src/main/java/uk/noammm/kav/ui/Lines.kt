@@ -1679,7 +1679,7 @@ internal fun wayLabels(net: Net, ways: List<Schedules.Way>): List<String> {
 
 // A provider's stop and town as shown. In English, by the week's names for its code first: a provider can name a stop its
 // own way, and the week's translations, found by name, then miss it. A stop the week has is in the week's town, as the
-// week's line pages show it: none for a train station, which Bus Nearby puts in the town "תחנת רכבת".
+// week's line pages show it: none for a train station, which a provider can put in the town "תחנת רכבת".
 internal fun providerStopName(net: Net, s: Schedules.Stop): String =
     weekStopOf(net, s)?.let { net.nameEn.getOrNull(it)?.ifEmpty { null } } ?: shownName(s.name)
 
@@ -1773,4 +1773,16 @@ internal fun openTimetableLine(model: KavModel, route: Int, stop: Int) {
     model.rememberReturn(uk.noammm.kav.Tab.Lines)
     model.scheduleLine = null
     model.lineFocusStop = stop; model.lineRoute = route; model.tab = uk.noammm.kav.Tab.Lines
+}
+
+// The time, every second, while its screen shows: a tab behind another, or Kav away, doesn't tick.
+@Composable
+@android.annotation.SuppressLint("ProduceStateDoesNotAssignValue")
+internal fun rememberNow(): Long {
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    return produceState(System.currentTimeMillis(), lifecycle) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) { value = System.currentTimeMillis(); delay(1000) }
+        }
+    }.value
 }

@@ -18,9 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import uk.noammm.kav.data.JourneyFile
-import uk.noammm.kav.data.RavPass
 import uk.noammm.kav.ui.Fix
-import uk.noammm.kav.ui.Payer
 import uk.noammm.kav.ui.T
 import uk.noammm.kav.ui.buildSteps
 import uk.noammm.kav.ui.journeyProgress
@@ -71,14 +69,12 @@ class TripService : Service() {
         T.lang = Prefs.lang(this)
         uk.noammm.kav.ui.Shown.twelveHour = Prefs.twelveHour(this)
         ensureChannel(this)
-        Payer.init(this)
         if (Prefs.spokenAlerts(this) || Prefs.spokenTurns(this)) Speaker.warm(this)
         running = this
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACT_END) { end(); return START_NOT_STICKY }
-        if (intent?.action == ACT_PAY) pay()
         if (intent?.action == ACT_REPOST) shown = null
         if (!foreground && !goForeground()) { stopSelf(); return START_NOT_STICKY }
         if (journey() == null) { finish(); return START_NOT_STICKY }
@@ -214,24 +210,12 @@ class TripService : Service() {
         }
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
         val now = System.currentTimeMillis() / 1000
-        val due = listOfNotNull(
-            tripAlert(journey, step, latest, now),
-            busTicket(journey, now * 1000).let { (ticket, leg) -> transferAlert(journey, step, ticket?.transferUntilUtc?.div(1000), now, leg) },
-        ).firstOrNull { it.key !in fired } ?: return
+        val due = tripAlert(journey, step, latest, now)?.takeIf { it.key !in fired } ?: return
         fired.add(due.key)
         sent.edit().clear().putString(trip, fired.joinToString(",")).apply()
         alert(this, due.title, due.text)
         val spoken = if (due.turn) Prefs.spokenTurns(this) else Prefs.spokenAlerts(this)
         if (spoken && Speaker.mayTalk(this)) Speaker.sayAfterSound(this, due.spoken)
-    }
-
-    // This trip's ticket whose free transfer lasts longest, with the leg it paid for: one bought from the trip's own cards,
-    // else one bought since the trip set out (from the home screen, say). Not a train's, and not an earlier trip's.
-    private fun busTicket(journey: ActiveJourney, nowMs: Long): Pair<RavPass.Ticket?, Int?> {
-        val bus = Payer.tickets.filter { it.agencyCode != RavPass.RAILWAYS && it.transferUntilUtc > nowMs }
-        val legOf = journey.paid.entries.associate { (leg, key) -> key to leg }
-        bus.filter { it.id.toString() in legOf }.maxByOrNull { it.transferUntilUtc }?.let { return it to legOf[it.id.toString()] }
-        return bus.filter { it.boughtUtc >= (journey.trip.dep - 1_800) * 1000 }.maxByOrNull { it.transferUntilUtc } to null
     }
 
     private var arrivedAt = 0L
@@ -262,27 +246,7 @@ class TripService : Service() {
     private fun notice(): TripNotice? {
         val (journey, step) = journey() ?: return null
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
-        return tripNotice(journey, step, latest, System.currentTimeMillis() / 1000, Prefs.accent(this))?.copy(pay = when {
-            Payer.payingLater -> T("Paying…", "משלמים…")
-            Payer.pending != null -> T("QUICK PAY", "תשלום מהיר!")
-            Payer.paidLater != null -> T("Paid", "שולם")
-            else -> null
-        })
-    }
-
-    // "QUICK PAY": the bus ride kept with Asshole mode is bought. A failure comes as an alert with HopOn's reason; "Paid"
-    // stays on the button for a few seconds, as on the app's square.
-    private fun pay() {
-        Payer.payLater(this, { key, leg, journey -> notePaid(this, key, leg, journey) }) {
-            val paid = Payer.paidLater
-            if (Payer.pending != null) Payer.laterError?.let { alert(this, T("Not paid", "לא שולם"), it) }
-            post(force = true)
-            if (paid != null) handler.postDelayed({
-                if (Payer.paidLater == paid) Payer.paidLater = null
-                post(force = true)
-            }, PAID_MS)
-        }
-        post(force = true)
+        return tripNotice(journey, step, latest, System.currentTimeMillis() / 1000, Prefs.accent(this))
     }
 
     private fun post(force: Boolean = false) {
@@ -320,8 +284,6 @@ class TripService : Service() {
         private val BUZZ = longArrayOf(0, 300, 150, 300)
         private const val ACT_END = "uk.noammm.kav.trip.END"
         private const val ACT_REPOST = "uk.noammm.kav.trip.REPOST"
-        private const val ACT_PAY = "uk.noammm.kav.trip.PAY"
-        private const val PAID_MS = 5_000L
         private const val PROMOTED = "android.requestPromotedOngoing"
         private const val TICK_MS = 15_000L
         private const val MIN_GAP_MS = 2_000L
@@ -336,19 +298,6 @@ class TripService : Service() {
         }
 
         fun repost() { running?.post() }
-
-        // A ride paid from the notification or the app's square goes on its trip leg's card: in the app's trip when it
-        // is open, else in the saved one.
-        fun notePaid(ctx: Context, key: String, leg: Int?, trip: String?) {
-            if (leg == null || trip == null) return
-            TripBridge.journey?.let { current ->
-                if (current()?.first?.paymentKey == trip) TripBridge.paid?.invoke(leg, key)
-                return
-            }
-            val (journey, step) = JourneyFile.load(ctx) ?: return
-            if (journey.paymentKey != trip) return
-            JourneyFile.save(ctx, journey.copy(paid = journey.paid + (leg to key)), step)
-        }
 
         fun stop(ctx: Context) {
             ctx.stopService(Intent(ctx, TripService::class.java))
@@ -431,7 +380,6 @@ class TripService : Service() {
                 .setLargeIcon(Icon.createWithBitmap(plateIcon(n.glyph, n.tint)))
                 .setStyle(style)
                 .setShortCriticalText(n.chip)
-                .apply { n.pay?.let { addAction(Notification.Action.Builder(null as Icon?, it, act(ctx, ACT_PAY)).build()) } }
                 .addAction(Notification.Action.Builder(null as Icon?, T("End trip", "סיום נסיעה"), act(ctx, ACT_END)).build())
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))
@@ -455,7 +403,6 @@ class TripService : Service() {
                 .setSubText(n.arrive)
                 .setLargeIcon(plateIcon(n.glyph, n.tint))
                 .setProgress(n.max, n.progress, false)
-                .apply { n.pay?.let { addAction(0, it, act(ctx, ACT_PAY)) } }
                 .addAction(0, T("End trip", "סיום נסיעה"), act(ctx, ACT_END))
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))
@@ -475,5 +422,4 @@ object TripBridge {
     @Volatile var journey: (() -> Pair<ActiveJourney, Int>?)? = null
     @Volatile var fix: ((Fix) -> Unit)? = null
     @Volatile var fixNow: (() -> Fix?)? = null
-    @Volatile var paid: ((leg: Int, key: String) -> Unit)? = null
 }

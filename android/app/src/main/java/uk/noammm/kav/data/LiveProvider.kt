@@ -16,26 +16,7 @@ interface LiveProvider {
     fun shapeNow(route: Int): List<Pair<Double, Double>> = emptyList()
 }
 
-// Bus Nearby and EGG, HopOn's two apps, which answer by stop.
-class HopOnLive private constructor(private val app: Source) : LiveProvider {
-    override val nearbyOnly get() = true
-    override fun follow(routes: List<Int>) = BusNearby.follow(routes, app)
-    override fun area(box: DoubleArray) = BusNearby.area(box, app)
-    override fun line(number: String, codes: List<Int>) = BusNearby.line(number, app, codes)
-    override fun stops(codes: Collection<Int>) = BusNearby.stops(codes, app)
-    override fun shape(route: Int) = BusNearby.shape(route, app)
-
-    companion object {
-        val BUS_NEARBY = HopOnLive(Source.BUS_NEARBY)
-        val EGG = HopOnLive(Source.EGG)
-    }
-}
-
-// The provider a choice of live locations asks: Kav's server or the rider's own (KavLive.Server, at KavLive.server),
-// or one of HopOn's apps. Google gives no live locations (Source.live is false), so it never gets here.
+// The provider a choice of live locations asks: Kav's server or the rider's own (KavLive.Server, at KavLive.server).
+// Google gives no live locations (Source.live is false), so it never gets here.
 val Source.liveProvider: LiveProvider
-    get() = when (this) {
-        Source.BUS_NEARBY -> HopOnLive.BUS_NEARBY
-        Source.EGG -> HopOnLive.EGG
-        else -> KavLive.Server
-    }
+    get() = KavLive.Server

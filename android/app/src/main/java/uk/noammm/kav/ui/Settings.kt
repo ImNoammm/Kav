@@ -73,7 +73,6 @@ import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.QrCodeScanner
-import androidx.compose.material.icons.rounded.Schedule
 import uk.noammm.kav.data.RideAlerts
 import uk.noammm.kav.data.RiderProxy
 import uk.noammm.kav.data.GoogleCrowd
@@ -123,12 +122,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
     }
 
-    // Everything about a trip, from what a plan may show to paying for it.
+    // Everything about a trip, from what a plan may show to its alerts.
     val offered = filtersOf(KavPlan.source)
     val ways = offered.count { it in model.filters }
     var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
     var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
-    var keepQuickPay by remember { mutableStateOf(Prefs.keepQuickPay(ctx)) }
     part(
         "trips",
         T("Trips", "נסיעות"),
@@ -136,43 +134,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             if (ways == offered.size) T("Every way of getting there", "כל הדרכים להגיע")
             else T("$ways of ${offered.size} ways of getting there", "$ways מתוך ${offered.size} דרכים להגיע"),
             if (spoken) T("alerts said out loud", "התראות בקול") else T("alerts on the screen", "התראות על המסך"),
-            when {
-                !Shown.payments -> T("paying hidden", "תשלום מוסתר")
-                Payer.signedIn -> T("Rav-Pass account", "חשבון רב-פס")
-                else -> null
-            },
         ).joinToString(" · "),
     ) {
         PlanChoices(model)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it })
-            InfoHeader(T("Paying", "תשלום"), T("On Home and on each ride. Off, Kav shows nothing about paying.", "במסך הבית ובכל נסיעה. כשכבוי, Kav לא מציגה שום דבר על תשלום."))
-            ListGroup {
-                row {
-                    ToggleRow(T("Paying in Kav", "תשלום ב-Kav"), Shown.payments, { Canvas(Modifier.size(18.dp)) { drawQr() } }) { on ->
-                        Shown.payments = on; Prefs.setShowPayments(ctx, on)
-                    }
-                }
-                // A rider can end the trip in Kav while still on the bus, which closes quick pay with it.
-                if (Shown.payments) row {
-                    ToggleRow(
-                        T("Keep quick pay after a trip ends", "להשאיר תשלום מהיר אחרי סיום הנסיעה"), keepQuickPay,
-                        { Icon(Icons.Rounded.Schedule, contentDescription = null, tint = toggleInk(keepQuickPay), modifier = Modifier.size(20.dp)) },
-                        subtitle = T("Until you pay or close it", "עד שתשלמו או תסגרו אותו"),
-                    ) { on -> keepQuickPay = on; Prefs.setKeepQuickPay(ctx, on) }
-                }
-            }
-        }
-        // Folds away on sign out, and opens again on sign in.
-        AnimatedVisibility(
-            Payer.signedIn,
-            enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = Alignment.Top),
-        ) {
-            Column {
-                Spacer(Modifier.height(K.gap2))
-                PaymentsSection(model)
-            }
         }
     }
 
@@ -259,12 +225,10 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
         Sub(T("Not in Kav", "מה שאין ב-Kav"))
         Absent(
-            T("No account, unless you pay", "אין חשבון, אלא אם משלמים"),
+            T("No account", "אין חשבון"),
             T(
-                "Planning, live times and search need no sign-in, profile or sync. Paying for a ride signs in to " +
-                    "your own Rav-Pass account, used for nothing but paying.",
-                "תכנון, זמנים בזמן אמת וחיפוש לא דורשים התחברות, פרופיל או סנכרון. תשלום על נסיעה מתחבר " +
-                    "לחשבון רב-פס שלכם, שמשמש רק לתשלומים.",
+                "Planning, live times and search need no sign-in, profile or sync.",
+                "תכנון, זמנים בזמן אמת וחיפוש לא דורשים התחברות, פרופיל או סנכרון.",
             ),
         )
         Absent(
@@ -901,8 +865,8 @@ private fun FareProfileChoice() {
     BottomSheet({ open = false }, scrolls = true) { close ->
         SheetHeader(T("Fare profile", "פרופיל הנחה"), { close { open = false } })
         NoteCard(T(
-            "Changes single-ride estimates only. Monthly caps and passes are not included. Payments use your approved Rav-Pass profile.",
-            "משנה רק את הערכת המחיר של נסיעות בודדות. תקרות חודשיות ומנויים אינם נכללים. התשלום משתמש בפרופיל המאושר ברב-פס.",
+            "Changes single-ride estimates only. Monthly caps and passes are not included.",
+            "משנה רק את הערכת המחיר של נסיעות בודדות. תקרות חודשיות ומנויים אינם נכללים.",
         ))
         for (profile in uk.noammm.kav.data.FareProfile.entries) ListRow(
             fareProfileName(profile),
@@ -1006,7 +970,6 @@ private fun AlertsSource() {
                     "Your own copy of Kav's server sends the whole list the same way, from the GTFS-Realtime alerts feed it's set up with, such as the Ministry of Transport's.",
                     "עותק משלכם של השרת של Kav שולח את כל הרשימה באותה דרך, מפיד התראות ה-GTFS-Realtime שהוגדר בו, כמו זה של משרד התחבורה.",
                 )
-                Source.BUS_NEARBY, Source.EGG -> ""
             }
         },
         Source.ALERTS, RideAlerts.source, { s -> RideAlerts.source = s; Prefs.setAlertSource(ctx, s) },
@@ -1061,12 +1024,12 @@ internal fun ProxyChoice() {
     InfoHeader(T("Proxy", "פרוקסי"), T(
         "Send everything Kav asks for through a proxy of your own: Kav's server, Google, the planners, the maps and the " +
             "pages Kav shows then see the proxy's address instead of yours. If the proxy can't be reached, nothing loads " +
-            "until it's back or turned off. Pages shown in Kav (Street View, Rav-Pass, the report form) can log in to an " +
+            "until it's back or turned off. Pages shown in Kav (Street View, the report form) can log in to an " +
             "HTTP proxy but not to a SOCKS5 one. A connection Kav already has open can carry on as it was for a few " +
             "minutes; close and reopen Kav for everything to switch at once.",
         "שליחת כל מה ש-Kav מבקשת דרך פרוקסי משלכם: השרת של Kav, Google, המתכננים, המפות והעמודים ש-Kav מציגה רואים " +
             "אז את הכתובת של הפרוקסי במקום שלכם. אם אי אפשר להגיע לפרוקסי, שום דבר לא נטען עד שהוא חוזר או נכבה. עמודים " +
-            "שמוצגים ב-Kav (Street View, רב-פס, טופס הדיווח) יכולים להתחבר לפרוקסי HTTP אבל לא לפרוקסי SOCKS5. " +
+            "שמוצגים ב-Kav (Street View, טופס הדיווח) יכולים להתחבר לפרוקסי HTTP אבל לא לפרוקסי SOCKS5. " +
             "חיבור ש-Kav כבר פתחה יכול להמשיך כמו שהיה עוד כמה דקות; סגרו ופתחו את Kav כדי שהכול יעבור מיד.",
     ))
     val kinds = RiderProxy.Kind.entries
@@ -1139,16 +1102,13 @@ internal fun LiveSource() {
     SourceChoice(
         T("Live locations and arrival times", "מיקומים וזמני הגעה בזמן אמת"),
         { s ->
-            if (s.hopOn) T(
-                "${sourceName(s)} supplies arrivals and vehicle positions. The map shows vehicles serving nearby stops, not every vehicle in the area. Requests go directly to HopOn, which sees your IP address and the requested area or stops.",
-                "${sourceName(s)} מספק זמני הגעה ומיקומי כלי רכב. המפה מציגה כלי רכב המשרתים תחנות סמוכות, ולא את כל כלי הרכב באזור. הבקשות נשלחות ישירות להופאון, שרואה את כתובת ה-IP ואת האזור או התחנות המבוקשים.",
-            ) else when (s) {
-                Source.BUS_NEARBY, Source.EGG, Source.GOOGLE -> ""
+            when (s) {
+                Source.GOOGLE -> ""
                 Source.KAV -> T("Buses and trains straight from the Ministry of Transport, with Kav's own arrival times. ",
                     "אוטובוסים ורכבות ישירות ממשרד התחבורה, עם זמני ההגעה של Kav. ")
                 Source.OWN -> T("Your own copy of Kav's server, from server/selfhost. As set now, ",
                     "עותק משלכם של השרת של Kav, מ-server/selfhost. כפי שמוגדר עכשיו, ") + kavStill() + " "
-            } + if (s.hopOn) "" else T(
+            } + T(
                 "A server sees only the lines and area you look at, never your IP address, and keeps no logs.",
                 "השרת רואה רק את הקווים והאזור שאתם צופים בהם, אף פעם לא את כתובת ה-IP שלכם, ולא שומר יומנים.",
             )
@@ -1161,14 +1121,12 @@ internal fun LiveSource() {
         val answers = c as? KavLive.Check.Answers
         when {
             c == null -> K.textTertiary to T("Checking the connection", "בודקים את החיבור")
-            answers?.live == true && KavLive.source.hopOn -> K.realtime to T("Connected · nearby-stop coverage", "מחובר · כיסוי לפי תחנות סמוכות")
             answers?.live == true -> K.realtime to T(
                 "Connected · ${"%,d".format(answers.vehicles)} buses live",
                 "מחובר · ${"%,d".format(answers.vehicles)} אוטובוסים בזמן אמת",
             )
             answers != null -> K.problem to T("Connected, but no live buses yet", "מחובר, אבל עוד אין אוטובוסים בזמן אמת")
-            else -> K.problem to if (KavLive.source.hopOn) T("Provider unavailable. Try again later.", "הספק לא זמין. נסו שוב מאוחר יותר.")
-                else T("Not reachable. Tap for details", "לא זמין. הקישו לפרטים")
+            else -> K.problem to T("Not reachable. Tap for details", "לא זמין. הקישו לפרטים")
         }
     }
 }
@@ -1184,10 +1142,6 @@ internal fun PlanningSource() {
             when (s) {
                 // Google gives line alerts only, never offered here.
                 Source.GOOGLE -> ""
-                Source.BUS_NEARBY, Source.EGG -> T(
-                    "${sourceName(s)} plans trips through HopOn. The provider receives the trip's points, time and your IP address. Last-trip searches arrive by 02:30, as in its app. Taxi cards are available with Kav's planner.",
-                    "${sourceName(s)} מתכנן מסלולים דרך הופאון. הספק מקבל את נקודות המסלול, השעה וכתובת ה-IP. חיפוש נסיעה אחרונה הוא להגעה עד 02:30, כמו ביישומון שלו. כרטיסי מוניות זמינים בתכנון של Kav.",
-                )
                 Source.KAV -> T(
                     "Kav's planner works out the trips you search for on Kav's server, on the ministry's timetable. It sees each trip's two points and time, never your IP address, and keeps no logs.",
                     "המתכנן של Kav מחשב את המסלולים שאתם מחפשים בשרת של Kav, לפי לוח הזמנים של משרד התחבורה. הוא רואה את שתי הנקודות והשעה של כל מסלול, אף פעם לא את כתובת ה-IP שלכם, ולא שומר יומנים.",
@@ -1244,10 +1198,6 @@ internal fun TimetableSource() {
             when (s) {
                 // Google gives line alerts only, never offered here.
                 Source.GOOGLE -> ""
-                Source.BUS_NEARBY, Source.EGG -> T(
-                    "${sourceName(s)} gives the Lines tab's lines, each line's stops and times, and each stop's departures, asked through HopOn as you open them. HopOn sees the lines and stops you open, and your IP address.",
-                    "${sourceName(s)} נותן את רשימת הקווים, את התחנות והזמנים של כל קו ואת היציאות מכל תחנה, דרך הופאון, כשפותחים אותם. הופאון רואה את הקווים והתחנות שאתם פותחים ואת כתובת ה-IP שלכם.",
-                )
                 Source.KAV -> T(
                     "The week of scheduled departures on your phone, built each night on GitHub from the Ministry of Transport's timetable. Lines and stop boards open without signal and ask no one.",
                     "שבוע היציאות המתוכננות שבטלפון, שנבנה כל לילה ב-GitHub מלוח הזמנים של משרד התחבורה. קווים ולוחות תחנות נפתחים בלי קליטה ולא שואלים אף אחד.",
@@ -1331,8 +1281,6 @@ internal fun ShareServerChoice() {
 internal fun sourceName(source: Source): String = when (source) {
     Source.KAV -> "Kav"
     Source.OWN -> T("My own", "שרת משלי")
-    Source.BUS_NEARBY -> T("Bus Nearby", "אוטובוס קרוב")
-    Source.EGG -> "EGG"
     Source.GOOGLE -> "Google"
 }
 
@@ -1358,7 +1306,7 @@ private fun SourceChoice(
     LaunchedEffect(server, source) {
         inUse = null
         val at = server ?: return@LaunchedEffect
-        val c = withContext(Dispatchers.IO) { KavLive.check(at, KavLive.keyFor(at), source) }
+        val c = withContext(Dispatchers.IO) { KavLive.check(at, KavLive.keyFor(at)) }
         inUse = c
         checked(at, c)
     }
@@ -1665,8 +1613,8 @@ private fun ShareLinks() {
     val on = if (TripShare.server != KavLive.KAV_SERVER) T("your server", "שרת שלכם") else T("Kav's server", "שרת של Kav")
     InfoHeader(
         T("Trips you share", "נסיעות שאתם משתפים"),
-        T("A Kav link keeps the trip you picked, with its stops and map, on $on until it expires. A Bus Nearby or EGG trip also goes to HopOn for their app links.",
-            "קישור Kav שומר את הנסיעה שבחרתם, עם התחנות והמפה, ב$on עד שתוקפו פג. נסיעה של אוטובוס קרוב או EGG נשלחת גם ל-HopOn ליצירת קישורי האפליקציות שלהם."),
+        T("A Kav link keeps the trip you picked, with its stops and map, on $on until it expires.",
+            "קישור Kav שומר את הנסיעה שבחרתם, עם התחנות והמפה, ב$on עד שתוקפו פג."),
     )
 }
 
@@ -1727,7 +1675,7 @@ private fun LinkCustomization() {
         }
         SwitchOrderRows(
             style.order, { it },
-            { id -> when (id) { "egg" -> "EGG"; "bnb" -> T("Bus Nearby", "אוטובוס קרוב"); else -> "Kav" } },
+            { "Kav" },
             on = { it in style.apps },
             onToggle = { id -> save(style.copy(apps = if (id in style.apps) style.apps - id else style.apps + id)) },
             onOrder = { save(style.copy(order = it)) },
@@ -1856,7 +1804,7 @@ private fun serverUses(): String {
         KavLive.KAV_SERVER -> T("Kav's server", "השרת של Kav")
         else -> T("your server", "השרת שלכם")
     }
-    val live = if (KavLive.source.hopOn) sourceName(KavLive.source) else named(KavLive.server)
+    val live = named(KavLive.server)
     val trips = if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
     val timetable = if (Schedules.source.provider) sourceName(Schedules.source)
         else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else "Kav"

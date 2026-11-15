@@ -4952,63 +4952,6 @@ KAV_ICON = (
     "6W8ApT8vFApJqTbZ9Jdramqqtm17vG3bYy3LquOcj2SMVdi2PQSA4uig89dAnHNTkqRvCSEdkiT9k1LaTin9q6qqf9mxY8ehzLfU19dLqUawPlvo"
     "/w+esQb3B57cHwAAAABJRU5ErkJggg=="
 )
-EGG_ICON = (
-    "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABIFBMVEX///////7+/////v/+/v/+/v79/v7+/f79/f/9/f79/f39/P38/f78/P78"
-    "/P37/P78+/37+/77+/36+/76+v329/vy8vrt7fjo6Pbl5Pbi4vXe3/Lb2/HT1e3IzOixt+Khp92ZodqWm9iNldVqlvR8g89lf9ljc8ldbMJgasRV"
-    "acVTX75IWr8/Tbc4RrQ1Q7I0Q7E0QrAzQ7AyQrMzQrAyQrA0QbQzQbAyQbAxQa8yQLExQLAxP68wQK8wQK4wP7AwP68vP68xPrAvPq8vPq4uPq8w"
-    "PbEuPa8sPK8sO60sOK0pOq4nN60kN60lNK0jM6wgMqshMaseMqweMKsjLK8fLqsdL6kdLKobLqocLakbLKkiKq8hKa8aKaoYJ6kRIKbwybGWAAAF"
-    "6klEQVR42u2Xa3uaWBCAxxTTsBtiTbzFG0aWeAFRtjQS0QbXJMSIGlE00aL//1/sHFDTdp+QfumzX5g8UTgD8545M2fOCL3fLBAAAkAACAABIAAE"
-    "gAAQAAJAAAgA/yegpbQ7nU672fxpXGu0tE7n61a63b2iSV74uhd/wJ2mjJfWavXNerY19XvzsulY9rfVVmYzs+MpFG2ytPbjqHnwA9zJ5kLk8tl0"
-    "JndRfZrIu3FDMdc1ns2mz7eSTnJz10XFtqrFfGavOE9Vx+rbAMWW2I+wlbzwrHZ341eFGPwgF0ul19M7TiX34ziUn5pvAuR5JQEQZWLRWCxKAfDr"
-    "luuXMiknyTjtCUVRMeriRenp2roIQEXpV8UR5QOQ7XIYokC5EzkA+hi4pezOv0wDAmlmP80oEMCXdQGiNFCRo72C8vFAG0hJwMchzpVKBfymIlCd"
-    "qL324CoJx+RdCH06OTn542ALkF94vIAw2v3zhCjeASgOCwyEqWRtvVhseHz2+EPOvu7JOE+GvJovCaIgCLU0hAlA7t8naTKh2EWFKGr4CuUDaI3E"
-    "T+gqgytfkyRpkYND9EeYyAMpjt7QIX69GJso6ywcEoCEDjBoP11b20PT7K+rcOgHkB3ODUDi4flpOh1viPuuHYfYYaC4aeBW07Qvqy2gvshT6EC8"
-    "tqgrOF63yv4AbZp3I5AquyIU4Qjvc5Y8L1DRMCQfjbb7XOfbFqDdJ0iYCmvJcDf09B2APj7fJtCrhOF8pVo5wKXOP2/3zw4wNYUQUAyUHG8/vgfQ"
-    "+7WEC6BiZ0Ri0UgkchZJSH0COAb2SfMevN4DynBAHUPp5dcAbVOM/ccDFMH0PMjaTXcl9DuyMlsAUKfAO3XXQGOJUfPzYFCLk9yHJFfkXCkWyX/N"
-    "mBZwpWlGeJHIY9KGxBwB804LSRglRyWL17xeezF8MwZ3gxSq8YXN3JWXzfoFv/oNp4QW0QXDue5c99dikg7DLosYzARuY6JiuOHw2g+gTnPuDNKj"
-    "RlNRms16WXyYzUZd/aGeoMIY70xltlpdccRPL3/nPESISbY2W81E1t3SPgBlSfYBLq84xKg1R2IolkylWeufv3GDnAHCIZXNxN0Lr1Toiyy5QbfT"
-    "2TRghP0BrbFIHX3A1WA3g2utuym4IS8ula6OYUbCIbEMDL0vdupEiGAQwKuBnsK3Fi1Z4jINrLSyR0WgKZpJ3A9ueq3BZ5wqQ1GHWJKjcBDfVVP5"
-    "mQ9hOaUoHGeOIU5j3voA2oPPSa+qxbK5JJn/GfDkWMH1umPdEo51FFJCBvcKcE4DFXO8ceeNwvLhIwpCwrj11nnQnIgJUvddl2k4PIOC88U9MVu6"
-    "LbCpE4BYpvgofaRI+q8RYNTHN3w+EYJQIl/CNMKX47WB/hbAaDyL5wCRKHN6GjnFnCtYt97Dmm2Opg9CuSwOR5uiW0PLE1wJrf80sCeSUK5Kk/kw"
-    "DVSYylr624e+0Zi0CondHs6WnK5X37oDXrRtczAeD7AoxzE4VMok3JHI3y8mA3M8MoZ4auC5R7LCp6swlD52D8U8ClcZzlVvMpgt8CnPizNruJI4"
-    "UlCieJiinToaTV1UWjPLmgks2UXHZzVT82282vJos7Gs5+Vm2d5lg7JmsRjh+ufz2TiJaAQyQ0PH8iXFMe0gmcvn0m6kSezldzo7Q7ysSn2pein2"
-    "je1BMRLjUZqJeAvHkAgnayOsP8rigo6Fo96JTzGY1cA6mn9nd/Mo/oWiXeJH9dHripo2RwxHGE/Ql1xtIiNdt7Jkz23HsQpA4amrvweoEoBEPi77"
-    "N7tCW2ETrwX8nDNHDeKd/nDF5/Z9GnzIV5xe+53mt2t8xsmLxI9LaQfo9SbLq1IBO8rzTK5QGi4M1dgeUi+2yLO5zHk6m+cEe6Lo73bXXeOx13/s"
-    "9vv3j/3XBlptPiznlk2a4vni9tWMrqgj54n0vra1HKvqr7Tv3e5t7wb/bm+63w/rskq6emzrlZ+6/UaLKLSWrAY/oQJAAAgAASAABIAAEAACQAD4"
-    "jfIvPZJwhgk0bdIAAAAASUVORK5CYII="
-)
-BUS_NEARBY_ICON = (
-    "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABIFBMVEX////+//7+/f78+/38+v328Prl2/DTxebEpt6shNG3adG8Z9K6Z9G5ZtG4"
-    "ZtG3ZdC1ZdC0ZM+zY86xY86wYs6vYs2uYc2lYsqtYMyrYMyqYMupX8unXsqmXcqkXcmjXMihW8igW8eeWsacWcaeVsaZWMSXV8SWVsOUVcKSVMGS"
-    "U8GOVMCNUsCLUr+LUb6IUL6NTb+HT72FTryFSryCTbuATLp/S7p9S7l8Srh6Sbh5SLd3SLd2R7ZzR7V3RbZyRbVwRbRvRLNsQ7JtQrNpQbFzPLRn"
-    "QLBnOrBkQK9iPq5gPa5ePK1bO6xZOqtYOapWOKlVOKlTN6lSN6hSNqhRNqdPNqdUNKlONaZNNKZMM6VKM6VJMqRIMqRJMaRUK6hFMaNNJ6fJAAAI"
-    "a0lEQVR42rWYCXvaSBKGKzJnJjNxnElYxw42RogbhLmNuS9zJtnZYTLZRPP//8VWdevobslJnn3MC7Sqvy7Vh7obYQO/HBk4usGLF7+8eEGNfXjq"
-    "GH4lXvzq8cQx/HZk4OXL317a/HaMGE5PX52esubl6TFiOH3lcYwYzs5enZ1RQ4+nj8/g9euzM3yxw9kRYnj9u8Pr348Rw9u3bwhq3x4jRoPjAufn"
-    "//I4QowGxwUuLi7e2Q/+/Nn44t3523OahHM+F+coBuSTwcXF5YXHz8bv3usyl++C8uHy/+RCP4/JnOvvAvLQ4P17PL6nx/tHY4aoX+qxMMiEY3rA"
-    "uZD8KfSrS6l/qccBNKk+9uL6pe9MuLpKJq+wsQ9BcfJKf36pJwU9mXoT1jQIi6BDRE/66qDBj9GjWjihJz0hqUfgBGL6tcuVHgMIvdZ958K1kPRI"
-    "rCfw8iP6lasnCzGsH8lep1L2k0kQesOSpDqQ+gn0KIQgVriyu9f68xONrunazbgqxNkUXfvOhZsfk9ITOMNaPHvNuzdsguKFaylD8zJE0CCNzzQ/"
-    "8IZDR66nU/j+TiCcYkPplEkXFC2k0t65aEnXmBLr8BjSfnAgm8Ukj5QZo5pmikaZW0QXEmxL8yagWJBBxkzF4+mCpOXYtqESRhJn4+R5wat2Y9Ka"
-    "h28y6SCDjA/DiIW1k3CskPa0dC4R0rRQIpdOm7aVN1ZgY8/FfA8wDKxoUFkCD5lClH80Y2ba1Y00e5eRQoZNVsTM8BHKzxrcMi3XsWM0yGYNarIG"
-    "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"
-)
 # Map glyphs from the app's ModeIcons.kt.
 TRIP_MODES = {0: ['M15 0h-4C9.528 0 8.238 0.808 7.544 2H8.77C9.32 1.388 10.115 1 11 1h4c0.885 0 1.68 0.388 2.23 1h1.226C17.762 0.808 16.472 0 15 0z', 'M14.5 0.5h1l-2 3.5h-1z', 'M11.5 0.5h-1l2 3.5h1zM17 4H9C6.791 4 5 5.791 5 8v9c0 2.209 3.582 4 8 4s8-1.791 8-4V8c0-2.209-1.791-4-4-4zM8 17c-0.552 0-1-0.448-1-1s0.448-1 1-1 1 0.448 1 1-0.448 1-1 1zm10 0c-0.552 0-1-0.448-1-1s0.448-1 1-1 1 0.448 1 1-0.448 1-1 1zm1-5s0 2-6 2-6-2-6-2V8c0-1.105 0.895-2 2-2h8c1.105 0 2 0.895 2 2v4zM8.349 21.646L6.004 26h1.704l2.113-3.926zm7.83 0.428L18.292 26h1.704l-2.345-4.354z'], 1: ['M13 4c-4.971 0-9 3.358-9 7.5v5C4 18.847 5.612 21 7.6 21h10.8c1.988 0 3.6-2.153 3.6-4.5v-5C22 7.358 17.971 4 13 4zM7.5 19c-0.552 0-1-0.448-1-1s0.448-1 1-1 1 0.448 1 1-0.448 1-1 1zm11 0c-0.552 0-1-0.448-1-1s0.448-1 1-1 1 0.448 1 1-0.448 1-1 1zm1.5-4H6v-3.5C6 8.467 9.14 6 13 6s7 2.467 7 5.5V15zm-3 7l0.536 1H8.464L9 22H7.144L5 26h16l-2.144-4H17zm-9.608 3l0.536-1h10.144l0.536 1H7.392z', 'M23.5 20.5c1.431-2.089 2.5-4.777 2.5-7.5 0-7.18-5.82-13-13-13S0 5.82 0 13c0 2.723 1.069 5.411 2.5 7.5V17C2.046 15.796 2 14.361 2 13 2 6.935 6.935 2 13 2s11 4.935 11 11c0 1.361-0.046 2.296-0.5 3.5v4z'], 2: ['M21 7.177C21 4.623 19.142 3.6 16.569 3.6H16.2V2.8c0-0.442-0.358-0.8-0.8-0.8h-4.8c-0.442 0-0.8 0.358-0.8 0.8v0.8H9.308C6.735 3.6 5 4.623 5 7.177V16.4l1.412 1.592-0.731 0.829c-0.333 0-0.434 0.619-0.132 0.779 0 0 7.367 1.644 7.451 1.6l7.327-1.615c0.302-0.16 0.202-0.767-0.132-0.767L19.4 17.92 21 16.4V7.177zM9.4 18.4c-0.663 0-1.2-0.537-1.2-1.2 0-0.663 0.537-1.2 1.2-1.2 0.663 0 1.2 0.537 1.2 1.2 0 0.663-0.537 1.2-1.2 1.2zm7.2 0c-0.663 0-1.2-0.537-1.2-1.2 0-0.663 0.537-1.2 1.2-1.2 0.663 0 1.2 0.537 1.2 1.2 0 0.663-0.537 1.2-1.2 1.2zm2.4-5.765c0 0.71-2.431 1.714-6 1.714s-6-1.004-6-1.714V7.597C7 6.651 7.48 5.5 8.5 5.5h9c0.995 0 1.5 1.151 1.5 2.097v5.038zM7.5 25h11v1h-11zm0-2h11v1h-11z', 'M8.349 21.646L6.004 26h1.704l2.113-3.926zm7.83 0.428L18.292 26h1.704l-2.345-4.354z'], 3: ['M22.5 7V6c0-2.303-0.638-4-2.952-4H6.714C4.4 2 3.5 3.697 3.5 6v1H2v4h1.5l0.071 11.429C3.571 23.296 4.275 24 5.143 24H7c0.868 0 1.5-0.632 1.5-1.5V21h9v1.5c0 0.868 0.632 1.5 1.5 1.5h1.857c0.868 0 1.571-0.704 1.571-1.571L22.5 11H24V7h-1.5zM6.714 19.278c-0.864 0-1.571-0.704-1.571-1.564 0-0.86 0.707-1.564 1.571-1.564s1.571 0.704 1.571 1.564c0.001 0.86-0.706 1.564-1.571 1.564zM13 15c-3.866 0-7.5-1.605-7.5-2.381V5.968C5.5 4.934 5.895 4 7 4h12.25c1.105 0 1.25 0.934 1.25 1.968v6.651C20.5 13.395 16.866 15 13 15zm7.857 2.714c0 0.86-0.707 1.564-1.571 1.564s-1.571-0.704-1.571-1.564c0-0.86 0.707-1.564 1.571-1.564s1.571 0.704 1.571 1.564z'], 4: ['M22.257 10.03C21.812 8.249 20.212 7 18.377 7H15.5V4.5C15.5 4.224 15.276 4 15 4s-0.5 0.224-0.5 0.5V7H11V4.5C11 4.224 10.776 4 10.5 4S10 4.224 10 4.5V7H7.623c-1.835 0-3.435 1.249-3.881 3.03L2.5 13h21l-1.243-2.97zM8.5 11H5.438S6.522 9 7.44 9H8.5v2zm4 0h-3V9h3v2zm4 0h-3V9h3v2zm1 0V9h1.06c0.918 0 2.002 2 2.002 2H17.5zm-8.834 8.5c2.11 0 3.135-0.237 4.221-0.487 1.093-0.252 2.222-0.513 4.446-0.513 2.224 0 3.354 0.261 4.446 0.513 0.433 0.1 0.86 0.197 1.347 0.278L26 14H1l-1 4.5c2.223 0 3.353 0.261 4.446 0.513 1.085 0.25 2.11 0.487 4.22 0.487zm14.459 1.291c-0.487-0.081-0.913-0.178-1.347-0.278C20.687 20.261 19.557 20 17.333 20s-3.353 0.261-4.446 0.513C11.801 20.763 10.776 21 8.666 21c-2.109 0-3.135-0.237-4.22-0.487C3.353 20.261 2.223 20 0 20v1c2.11 0 3.135 0.237 4.22 0.487C5.313 21.739 6.442 22 8.666 22c2.224 0 3.354-0.261 4.446-0.513C14.198 21.237 15.223 21 17.333 21s3.135 0.237 4.221 0.487C22.646 21.739 22.776 22 25 22v-1c-1.268 0-1.141-0.086-1.875-0.209z'], 5: ['M5 26h1.856L9 22H7.144zm12-4l2.144 4H21l-2.144-4zM4.5 20h17v1h-17zM23 10v8h-1V5c0.552 0 1-0.448 1-1s-0.448-1-1-1h-4.5V2H18c0-1.105-2.239-2-5-2S8 0.895 8 2h0.5v1H4C3.448 3 3 3.448 3 4s0.448 1 1 1v13H3v-8H2v9h22v-9h-1zm-3-5v6h-4V5h4zm-6.035 10.25C13.853 15.681 13.465 16 13 16c-0.465 0-0.853-0.319-0.965-0.75C12.015 15.17 12 15.087 12 15c0-0.552 0.448-1 1-1s1 0.448 1 1c0 0.087-0.015 0.17-0.035 0.25zM11 11V5h4v6h-4zm-1-6v6H6V5h4z'], 6: ['M12.5 2.5h1V7h-1z', 'M12.5 2.5h1v6h-1z', 'M12.5 7.5h1l-2 2.5h-1z', 'M13.5 7.5h-1l2 2.5h1zM22 1.01L4 5V3.99L22 0zM18 10H8c-2.2 0-5 2.287-5 4.471v5.967C3 22.352 4.484 24.094 6.619 25c0.932 0.458 1.294 1 3.381 1h6c2.087 0 2.449-0.542 3.381-1C21.516 24.094 23 22.352 23 20.438v-5.967C23 12.287 20.2 10 18 10zm3 4.471V18h-4v-6h1c1.215 0 3 1.513 3 2.471zM16 12v6h-6v-6h6zM5 14.471C5 13.513 6.785 12 8 12h1v6H5v-3.529z'], 7: ['M23 6.799C23 4.673 21.159 3 18.889 3H7.111C4.841 3 3 4.673 3 6.799v12.849L23 15.7V6.799zM21 13H5V7.121C5 6.044 5.947 5 7.111 5h11.778C20.053 5 21 6.044 21 7.121V13z', 'M9 4.958h1V5H9zM9 5h1v8H9zm7-0.042h1V5h-1zM16 5h1v8h-1zm8 12.021l-22 4.5v1.958l22-4.5z']}
 # A general chat preview: the private fragment is unavailable to preview fetchers.
@@ -5401,10 +5344,10 @@ TRIP_PAGE = """<!doctype html>
 <meta name="color-scheme" content="dark"><meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
 <title>A trip shared with you · Kav</title>
-<meta name="description" content="See the route, stops and map. Open your trip in Kav or your transit app.">
+<meta name="description" content="See the route, stops and map. Open your trip in Kav.">
 <meta name="theme-color" content="#000000">
 <meta property="og:type" content="website"><meta property="og:title" content="A trip shared with you · Kav">
-<meta property="og:description" content="See the route and stops. Choose your transit app and go.">
+<meta property="og:description" content="See the route and stops. Open in Kav and go.">
 <meta property="og:image" content="PUBLIC_URL/t/preview.png">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Kav. Your trip, ready to go.">
@@ -5502,7 +5445,7 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
   var root = document.documentElement, theme = /^(oled|dark|light)$/.test(p.theme || "") ? p.theme : "oled";
   root.dataset.theme = theme; root.style.colorScheme = theme === "light" ? "light" : "dark";
   document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#f2f2ef" : theme === "dark" ? "#101012" : "#000000";
-  var shownApps = Object.prototype.hasOwnProperty.call(p, "apps") ? p.apps.split(",").filter(function (v, i, a) { return ["egg", "bnb", "kav"].indexOf(v) >= 0 && a.indexOf(v) === i; }) : ["egg", "bnb", "kav"];
+  var shownApps = ["kav"];
   var fromName = (p.fromName || "").slice(0, 120), toName = (p.toName || "").slice(0, 120);
   function t(en, hb) { return he ? hb : en; }
   var releases = "RELEASES";
@@ -5546,12 +5489,6 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
   }
   function app(key, href, label, icon, name, native, install) {
     if (shownApps.indexOf(key) < 0) return;
-    var packages = {egg: "com.egged.egg", bnb: "com.mosko.bus"};
-    if (android && packages[key] && native) {
-      var scheme = native.split("://")[0];
-      native = "intent://" + native.slice(scheme.length + 3) + "#Intent;scheme=" + scheme + ";package=" + packages[key] +
-        ";S.browser_fallback_url=" + encodeURIComponent(install || href) + ";end";
-    }
     var a = document.createElement("a");
     a.className = "go"; a.href = href; a.rel = "noreferrer"; a.dataset.app = key;
     a.style.setProperty("--i", document.querySelectorAll("#apps a").length);
@@ -5582,17 +5519,6 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
     };
     document.getElementById("apps").appendChild(a);
   }
-  function id(v) { return /^[A-Za-z0-9]{4,32}$/.test(v || "") ? v : null; }
-  var query = "?to_ll=" + to.join("_") + "&to=" + encodeURIComponent(toName) + "&locale=" + (he ? "he" : "en");
-  if (from) query += "&from_ll=" + from.join("_") + "&from=" + encodeURIComponent(fromName);
-  app("egg", id(p.egg) ? "https://egg.hopon.co/itinerary/" + p.egg : "https://egg.hopon.co/" + query,
-    id(p.egg) ? t("Open in EGG", "פתיחה ב-EGG") : t("Search in EGG", "חיפוש ב-EGG"), "data:image/png;base64,EGG_ICON", "EGG",
-    id(p.egg) ? "egged://itinerary/" + p.egg : "egged://" + query,
-    android && id(p.egg) ? "https://play.google.com/store/apps/details?id=com.egged.egg" : null);
-  app("bnb", id(p.bnb) ? "https://busnearby.co.il/itinerary/" + p.bnb : "https://busnearby.co.il/plan" + query,
-    id(p.bnb) ? t("Open in Bus Nearby", "פתיחה ב-אוטובוס קרוב") : t("Search in Bus Nearby", "חיפוש באוטובוס קרוב"), "data:image/png;base64,BUS_NEARBY_ICON", t("Bus Nearby", "אוטובוס קרוב"),
-    id(p.bnb) ? "busnearby://itinerary/" + p.bnb : "busnearby://" + query,
-    android && id(p.bnb) ? "https://play.google.com/store/apps/details?id=com.mosko.bus" : null);
   app("kav", android ? tripUrl : releases, t("Open in Kav", "פתיחה ב-Kav"), document.querySelector("img.icon").src, "Kav", kav);
   var apps = document.getElementById("apps");
   shownApps.forEach(function (key, i) { var a = apps.querySelector('[data-app="' + key + '"]'); if (a) { a.style.setProperty("--i", i); apps.appendChild(a); } });
@@ -5674,8 +5600,7 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
   }
 })();
 </script></body></html>
-""".replace("RELEASES", RELEASES).replace("APP_OPEN", APP_OPEN).replace("PUBLIC_URL", PUBLIC_URL).replace("KAV_ICON", KAV_ICON).replace(
-    "EGG_ICON", EGG_ICON).replace("BUS_NEARBY_ICON", BUS_NEARBY_ICON).replace("MODE_PATHS", json.dumps(TRIP_MODES)).encode()
+""".replace("RELEASES", RELEASES).replace("APP_OPEN", APP_OPEN).replace("PUBLIC_URL", PUBLIC_URL).replace("KAV_ICON", KAV_ICON).replace("MODE_PATHS", json.dumps(TRIP_MODES)).encode()
 ASSET_LINKS = json.dumps([{"relation": ["delegate_permission/common.handle_all_urls"], "target": {
     "namespace": "android_app", "package_name": "uk.noammm.kav", "sha256_cert_fingerprints": [
         "9D:18:3D:43:86:58:40:59:F5:33:76:98:7C:E0:A5:DE:49:60:CD:7A:9B:F4:49:5E:2C:F0:E1:20:F0:58:0F:44"]}}]).encode()
@@ -5740,9 +5665,9 @@ CARD_LIMIT = 300 * 1024  # bytes of a shared trip's card, a 1200 x 630 JPEG
 
 # What the trip page tells a chat it's linked in until the trip is known: replaced, each once, with a link's own.
 TRIP_TITLE = b"<title>A trip shared with you \xc2\xb7 Kav</title>"
-TRIP_DESCRIPTION = b'<meta name="description" content="See the route, stops and map. Open your trip in Kav or your transit app.">'
+TRIP_DESCRIPTION = b'<meta name="description" content="See the route, stops and map. Open your trip in Kav.">'
 TRIP_OG_TITLE = b'<meta property="og:title" content="A trip shared with you \xc2\xb7 Kav">'
-TRIP_OG_DESCRIPTION = b'<meta property="og:description" content="See the route and stops. Choose your transit app and go.">'
+TRIP_OG_DESCRIPTION = b'<meta property="og:description" content="See the route and stops. Open in Kav and go.">'
 TRIP_OG_IMAGE = b'<meta property="og:image" content="%s/t/preview.png">' % PUBLIC_URL.encode()
 TRIP_OG_ALT = b'<meta property="og:image:alt" content="Kav. Your trip, ready to go.">'
 WEEKDAYS = {False: ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),

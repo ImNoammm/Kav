@@ -73,7 +73,7 @@ object KavPlan {
     // The selected trip itself, with its stop and line details and the sender's page choices.
     fun sharePayload(
         trip: Transit.Itinerary, fromName: String, toName: String, resolved: Transit.Resolved,
-        rides: Boolean = true, egg: String? = null, busNearby: String? = null, colors: List<String> = emptyList(),
+        rides: Boolean = true, colors: List<String> = emptyList(),
         style: ShareStyle = ShareStyle(),
     ): JSONObject? {
         val start = trip.legs.firstNotNullOfOrNull { leg -> leg.shape.firstOrNull() }
@@ -87,7 +87,6 @@ object KavPlan {
             .put("fromName", net?.shown(fromName, inEnglish) ?: fromName).put("toName", net?.shown(toName, inEnglish) ?: toName)
             .put("at", trip.dep.toString()).put("data", TripShare.encode(trip, resolved, colors, inEnglish))
             .put("trip", if (rides) trip.rides.joinToString("~") { "${it.lineId}.${it.tripId}.${it.dep}" } else "")
-            .put("egg", egg).put("bnb", busNearby)
     }
 
     // Whether an id is one given here.
@@ -124,12 +123,12 @@ object KavPlan {
         return String.format(Locale.US, "plan/%.6f,%.6f,%.6f,%.6f/%d%s%s", from.first, from.second, to.first, to.second, at, way, only) + via
     }
 
-    // at: the server that plans (planner, linkPlanner); by: the planner it is, for HopOn's two apps.
+    // at: the server that plans (planner, linkPlanner).
     fun plan(
         from: Pair<Double, Double>, to: Pair<Double, Double>, whenMs: Long, timeType: Int, routeTypes: List<Int>, taxi: Boolean,
-        stopovers: List<Transit.Place> = emptyList(), at: String, by: Source = source,
+        stopovers: List<Transit.Place> = emptyList(), at: String,
     ): Planned {
-        val planned = plannerFor(at, by).plan(PlanRequest(from, to, whenMs, timeType, routeTypes, taxi, stopovers))
+        val planned = plannerFor(at).plan(PlanRequest(from, to, whenMs, timeType, routeTypes, taxi, stopovers))
         // The server's timetable runs two weeks ahead. Walking and cycling don't need it.
         if (planned.plan.itineraries.none { it.rides.isNotEmpty() } && "OUTSIDE_SERVICE_PERIOD" in planned.errors) {
             throw NoTimetable()
@@ -193,7 +192,7 @@ object KavPlan {
     // stopNames: the names of the stops on the way, in order, for the legs that come after one.
     internal fun parse(body: String, stopNames: List<String> = emptyList()): Planned {
         val response = JSONObject(body)
-        val o = if (response.has("plan")) BusNearby.planBody(response) else response
+        val o = response
         val stops = HashMap<Int, Transit.StopInfo>()
         o.optJSONObject("stops")?.let { s ->
             for (k in s.keys()) {
@@ -281,7 +280,6 @@ object KavPlan {
                 group = 2, legs = legs, dep = it.optLong("dep"), arr = it.optLong("arr"), tags = tags,
                 sectionId = it.optInt("sec", SECTION_MAIN),
                 accessible = it.optBoolean("access"),
-                original = it.optJSONObject("hopOn")?.toString().orEmpty(),
             )
         }
         val errors = (o.optJSONArray("errors") ?: JSONArray()).let { e -> (0 until e.length()).map { e.optString(it) } }

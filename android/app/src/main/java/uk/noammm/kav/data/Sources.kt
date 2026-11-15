@@ -5,11 +5,10 @@ import org.json.JSONObject
 // Live locations, planning and timetables have independent providers and share one own-server
 // configuration. Unknown stored choices use the legacy switches (Sources.fromOld).
 enum class Source(val key: String) {
-    KAV("kav"), OWN("own"), BUS_NEARBY("bus-nearby"), EGG("egg"), GOOGLE("google");
+    KAV("kav"), OWN("own"), GOOGLE("google");
 
-    val hopOn get() = this == BUS_NEARBY || this == EGG
     // Another app's own service rather than a copy of Kav's server: nothing of it to set up or tap through.
-    val provider get() = hopOn || this == GOOGLE
+    val provider get() = this == GOOGLE
     // Google only gives line alerts: live locations never come from it.
     val live get() = this != GOOGLE
 
@@ -17,12 +16,13 @@ enum class Source(val key: String) {
         fun of(key: String?): Source? = entries.firstOrNull { it.key == key }
         // A stored choice: one this Kav no longer has is Kav's own from now on; null for none stored.
         fun stored(key: String?): Source? = of(key) ?: key?.takeIf { it.isNotEmpty() }?.let { KAV }
-        fun liveOf(key: String?): Source? = of(key)?.takeIf { it.live }
+        // The same for live times: null too for a choice that gives none.
+        fun storedLive(key: String?): Source? = stored(key)?.takeIf { it.live }
 
         // Each choice's options, in the order Settings offers them.
-        val LIVE = listOf(KAV, BUS_NEARBY, EGG, OWN)
-        val PLANNING = listOf(KAV, BUS_NEARBY, EGG, OWN)
-        val TIMETABLE = listOf(KAV, BUS_NEARBY, EGG, OWN)
+        val LIVE = listOf(KAV, OWN)
+        val PLANNING = listOf(KAV, OWN)
+        val TIMETABLE = listOf(KAV, OWN)
         val ALERTS = listOf(KAV, GOOGLE, OWN)
     }
 }
@@ -41,7 +41,21 @@ internal object Sources {
         val old = if (o.has("liveFromKav") || o.has("planWithKav")) {
             fromOld(o.optBoolean("liveFromKav"), o.optBoolean("planWithKav"), ownSet)
         } else null
-        return (Source.liveOf(o.optString("liveSource")) ?: old?.first) to (Source.stored(o.optString("planSource")) ?: old?.second)
+        return (Source.storedLive(o.optString("liveSource")) ?: old?.first) to (Source.stored(o.optString("planSource")) ?: old?.second)
+    }
+
+    // 4.3.2: what the settings still hold of the providers this Kav no longer has, as it's written back. A choice of one
+    // is Kav's own; the planners' tabs go without them. Only what changes.
+    fun migrated(stored: Map<String, *>): Map<String, String> {
+        val out = mutableMapOf<String, String>()
+        for (key in listOf("liveSource", "planSource", "timetableSource"))
+            (stored[key] as? String)?.takeIf { it.isNotEmpty() && Source.of(it) == null }?.let { out[key] = Source.KAV.key }
+        for (key in listOf("plannerTabs", "plannerTabsHidden")) {
+            val tabs = stored[key] as? String ?: continue
+            val kept = tabs.split(',').filter { Source.of(it) != null }.joinToString(",")
+            if (kept != tabs) out[key] = kept
+        }
+        return out
     }
 
     // The timetable for a rider who hasn't picked one: the week from the rider's own server when either other choice

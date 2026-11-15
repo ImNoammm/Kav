@@ -64,7 +64,7 @@ object Schedules {
     fun base(day: LocalDate): Long = day.atTime(12, 0).atZone(israel).toEpochSecond() - 43_200
 
     // The provider's lines, kept on the phone: asked again once a day on Wi-Fi, and on mobile data only once a week, as
-    // the list is a big one (HopOn's is 1.6 MB) and changes little. A provider that can't be reached leaves the copy.
+    // the list is a big one and changes little. A provider that can't be reached leaves the copy.
     private const val FRESH_MS = 86_400_000L
     private const val FRESH_METERED_MS = 7 * 86_400_000L
     @Volatile private var listed: Pair<Source, List<Line>>? = null
@@ -86,7 +86,6 @@ object Schedules {
                     val part = File(file.path + ".part")
                     part.writeText(writeLines(got))
                     if (!part.renameTo(file)) { file.delete(); part.renameTo(file) }
-                    if (s.hopOn && file.exists()) File(ctx.filesDir, "schedules/${s.key}-lines.json").delete()
                 }
             }
         } catch (e: Exception) {
@@ -107,7 +106,7 @@ object Schedules {
         return kept
     }
 
-    private fun linesFile(ctx: Context, s: Source) = File(ctx.filesDir, "schedules/${s.key}-lines${if (s.hopOn) "-grouped" else ""}.json")
+    private fun linesFile(ctx: Context, s: Source) = File(ctx.filesDir, "schedules/${s.key}-lines.json")
 
     private fun providerOf(s: Source) = s.timetable ?: throw IllegalStateException("${s.key} is no timetable provider")
 
@@ -125,7 +124,7 @@ object Schedules {
     }
 
     // The ways a line's page offers. Two of the provider's calling at the very same stops are one, with both's trips.
-    // byEnd: a HopOn train line, whose times at a station are all its trains to the way's end, has one way to each end,
+    // byEnd: a train line, whose times at a station are all its trains to the way's end, has one way to each end,
     // along its longest train's stops, as the week's train line page has it. The first way to each end comes first, so
     // both directions show before the branches.
     internal fun arrange(ways: List<Way>, byEnd: Boolean): List<Way> {
@@ -156,7 +155,7 @@ object Schedules {
         }
     }
 
-    // HopOn gives a stop's day directly.
+    // The provider gives a stop's day directly.
     val boards get() = source.timetable != null
 
     // A stop's departures on a day, by its code, soonest first; kept for the day.

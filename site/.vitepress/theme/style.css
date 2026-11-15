@@ -200,22 +200,6 @@
   margin: 36px 0 20px;
 }
 
-.kav-hero__trailer {
-  display: block;
-  width: 100%;
-  max-width: 960px;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  margin-top: 32px;
-  border-radius: var(--kav-radius);
-  background: #000000;
-}
-
-.kav-hero__trailer:focus-visible {
-  outline: 3px solid var(--vp-c-brand-1);
-  outline-offset: 3px;
-}
-
 .kav-features {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

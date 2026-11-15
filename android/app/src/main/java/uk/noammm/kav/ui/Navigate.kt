@@ -377,7 +377,6 @@ fun NavigateScreen(
                             steps[page], r, active = page == currentStep, now = now,
                             chosen = chosen, fix = fix,
                             onChoose = ::choose,
-                            pay = if (Shown.payments) { leg, ride -> TripPay(model, leg, ride, r) } else null,
                             report = { model.report = it },
                         )
                     }
@@ -487,8 +486,6 @@ internal fun StepCard(
     chosen: Map<Int, Int> = emptyMap(),
     fix: Fix? = null,
     onChoose: (leg: Int, option: Int) -> Unit = { _, _ -> },
-    // The ride's payment, or its ticket once bought, on its riding card; a train's on the way to its station too.
-    pay: (@Composable (legIndex: Int, ride: Transit.Leg) -> Unit)? = null,
     // Reporting the bus ridden to the ministry.
     report: ((ReportFor) -> Unit)? = null,
 ) {
@@ -506,10 +503,6 @@ internal fun StepCard(
                 Spacer(Modifier.height(K.gap2))
             } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(T("Leave at ${hm.format(Date(step.time * 1000))}", "יציאה בשעה ${hm.format(Date(step.time * 1000))}"), fontSize = 12.sp, color = K.dim)
-            // A trip starting at its station: the train is paid at the gates, before its waiting card.
-            if (pay != null && board != null && step.boardLeg >= 0 && paidAtEntry(board, r)) {
-                pay(step.boardLeg, boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).first)
-            }
         }
 
         is Step.Arrive -> Card(T("Arrive", "הגעה"), active) {
@@ -548,11 +541,6 @@ internal fun StepCard(
                         turnText(turn) + if (metres >= 10) " · " + distanceLabel(metres) else "",
                         style = K.type.subhead, color = K.textSecondary,
                     )
-                }
-                // A train is paid at the station's gates, reached on the way to it: its payment is on this card too.
-                val ride = step.toRide
-                if (pay != null && ride != null && step.toLeg >= 0 && paidAtEntry(ride, r)) {
-                    pay(step.toLeg, boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0).first)
                 }
             }
         }
@@ -676,18 +664,11 @@ internal fun StepCard(
                     Box(Modifier.weight(1f)) { LineRow(ride, r) }
                     if (report != null) rideReport(ride, r, busOn(ride, r, trip), now)?.let { ReportButton { report(it) } }
                 }
-                // Above the stops, so a long ride's payment is in sight without scrolling.
-                pay?.invoke(step.legIndex, ride)
                 if (stops.size > 1) {
                     // The rail draws its first stop 5 dp into its row, hence the 5 dp less above it.
-                    if (pay != null) {
-                        // The pay card already parts the line from the stops: the same gap below it as above.
-                        Spacer(Modifier.height(K.gap3 - 5.dp))
-                    } else {
-                        Spacer(Modifier.height(K.gap2))
-                        Box(Modifier.height(1.dp).fillMaxWidth().background(K.border))
-                        Spacer(Modifier.height(K.gap2 - 5.dp))
-                    }
+                    Spacer(Modifier.height(K.gap2))
+                    Box(Modifier.height(1.dp).fillMaxWidth().background(K.border))
+                    Spacer(Modifier.height(K.gap2 - 5.dp))
                     StopRail(
                         stops, names, progress, ride.arr, times,
                         Modifier.onGloballyPositioned { railTop = it.positionInParent().y.toInt() },

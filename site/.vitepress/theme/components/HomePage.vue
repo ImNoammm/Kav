@@ -30,7 +30,7 @@ const features = [
   },
   {
     title: 'Your choice of source',
-    text: 'Plan with Kav, Bus Nearby, EGG or your own server. Choose OpenStreetMap or Google for place search.',
+    text: 'Plan with Kav or your own server. Choose OpenStreetMap or Google for place search.',
     glyph: 'M4 7h10m4 0h2M4 17h4m4 0h8M14 5v4m-6 6v4',
   },
 ]
@@ -46,18 +46,6 @@ const features = [
         <DownloadButton caption />
       </div>
       <a class="kav-link-chevron kav-enter" style="--i: 4" :href="REPO">Explore on GitHub</a>
-      <video
-        class="kav-hero__trailer"
-        controls
-        playsinline
-        preload="none"
-        poster="/img/trailer.jpg"
-        aria-label="Kav trailer"
-        width="1920"
-        height="1080"
-      >
-        <source src="/trailer.mp4" type="video/mp4" />
-      </video>
     </section>
 
     <section class="kav-features" aria-label="What Kav does">

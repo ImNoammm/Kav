@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
@@ -19,11 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -125,28 +119,13 @@ internal fun HomeScreen(
                         onRemove = { f -> save(favourites.filter { it.id != f.id }) },
                     )
                 }
-                // Each card comes, goes and moves with a fade and a glide: a trip starting or ending, paying hidden, the
-                // first recent trip.
+                // Each card comes, goes and moves with a fade and a glide: a trip starting or ending, the first recent trip.
                 model.activeJourney?.let { journey -> item(key = "journey") { Box(listMotion().padding(top = K.gap4)) { JourneyCard(model, journey, onResume) } } }
                 if (model.activeJourney == null) item(key = "suggestions") {
                     HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4))
                 }
-                // Paying, the tickets still running and the history, in one card, unless the rider has hidden paying.
-                if (Shown.payments) item(key = "payments") {
-                    Column(listMotion().padding(top = K.gap4).fillMaxWidth().panel(K.rCard)
-                        .animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
-                        ListRow(
-                            T("Pay for a ride", "תשלום על נסיעה"),
-                            leading = { Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(24.dp)) },
-                            onClick = { model.payOpen = true },
-                        )
-                        if (Payer.signedIn) {
-                            PayTicketsCard(model)
-                            Separator()
-                            SpendSummary { model.payHistoryOpen = true }
-                        }
-                    }
-                }
+                // Where paying for a ride was: a plain note that it's gone for now.
+                item(key = "payments") { NoteCard(payRemovedNote(), listMotion().padding(top = K.gap4)) }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
                 if (recentTrips.isNotEmpty()) item(key = "recent") {
                     Column(listMotion().padding(top = K.gap4).fillMaxWidth().panel(K.rCard)
@@ -278,7 +257,6 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
                         model.activeJourney?.takeIf { it.trip === journey.trip }
                             ?.let { model.activeJourney = it.copy(chosen = it.chosen + (leg to option)) }
                     },
-                    pay = if (Shown.payments) { leg, ride -> TripPay(model, leg, ride, journey.resolved) } else null,
                     report = { model.report = it })
             }
         }
@@ -299,15 +277,6 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
             }
         }
     }
-}
-
-internal fun DrawScope.drawQr() {
-    val w = size.width
-    for ((x, y) in listOf(.10f to .10f, .58f to .10f, .10f to .58f)) {
-        drawRoundRect(K.accent, Offset(w * x, w * y), Size(w * .32f, w * .32f), CornerRadius(w * .06f), style = Stroke(w * .08f))
-    }
-    drawRect(K.accent, Offset(w * .62f, w * .62f), Size(w * .12f, w * .12f))
-    drawRect(K.accent, Offset(w * .80f, w * .80f), Size(w * .10f, w * .10f))
 }
 
 // How many times Kav has come to the front: counted by MainActivity, so the hint below plays once per opening and not
@@ -384,3 +353,9 @@ private fun TypingCaret() {
     )
     Box(Modifier.padding(start = 1.dp).size(1.5.dp, 20.dp).graphicsLayer { alpha = on }.background(K.accentInk))
 }
+
+// Shown on Home and under a trip's rides, where paying for a ride was.
+internal fun payRemovedNote() = T(
+    "Paying in Kav has been removed for now. We're looking into ways to bring it back.",
+    "התשלום בתוך Kav הוסר בינתיים. אנחנו בודקים דרכים להחזיר אותו.",
+)

@@ -16,8 +16,7 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 import uk.noammm.kav.BuildConfig
 
-// Live buses from Kav's ministry-feed server, a self-hosted copy, Bus Nearby or egg. HopOn providers show vehicles
-// serving nearby stops rather than a whole-area snapshot. All use the ministry's route ids; a tracked journey's key
+// Live buses from Kav's ministry-feed server or a self-hosted copy. Both use the ministry's route ids; a tracked journey's key
 // is route_firstdeparture_vehicle, so the same arrival model serves every screen.
 object KavLive {
     // Kav's own server, or the rider's: a copy of server/ answering over HTTPS, at the address set in Settings, with the
@@ -52,7 +51,6 @@ object KavLive {
 
     // The server a choice asks: the rider's own once it's set up, Kav's otherwise.
     fun serverOf(s: Source): String = when {
-        s.hopOn -> BusNearby.SERVER
         s == Source.OWN && ownServer.isNotEmpty() -> ownServer
         else -> KAV_SERVER
     }
@@ -66,7 +64,6 @@ object KavLive {
     // What requests to a server are signed with: the key Kav is built with for Kav's, the rider's for their own.
     fun keyFor(at: String, own: String = key): String = when (at) {
         KAV_SERVER, OLD_KAV_SERVER -> BuildConfig.KAV_LIVE_KEY
-        BusNearby.SERVER -> ""
         else -> own
     }
 
@@ -247,8 +244,7 @@ object KavLive {
         enum class Why { NO_SUCH_HOST, HTTPS, TIMEOUT, NO_ANSWER }
     }
 
-    fun check(at: String, key: String, using: Source = source.takeIf { it.hopOn } ?: KavPlan.source): Check {
-        if (at == BusNearby.SERVER) return BusNearby.check(using)
+    fun check(at: String, key: String): Check {
         val c = try {
             RiderProxy.open(URL("$at/live/v1/status")) as HttpURLConnection
         } catch (e: java.io.IOException) {
@@ -380,7 +376,7 @@ object KavLive {
         override fun shapeNow(route: Int) = synchronized(shapes) { shapes[server to route] }.orEmpty()
     }
 
-    // Google's encoded polyline: Kav uses five decimal places, HopOn's points6 uses six.
+    // Google's encoded polyline: Kav uses five decimal places.
     fun decodePolyline(encoded: String?, precision: Int = 5): List<Pair<Double, Double>> {
         val scale = if (precision == 6) 1e6 else 1e5
         if (encoded.isNullOrEmpty()) return emptyList()
@@ -471,7 +467,6 @@ object KavLive {
 
     internal fun parseBoard(body: String): Board {
         val o = JSONObject(body)
-        if (!o.has("a") && o.keys().asSequence().any { it.toIntOrNull() != null }) return BusNearby.board(o)
         val rows = o.optJSONArray("a") ?: JSONArray()
         val due = ArrayList<Due>(rows.length())
         for (i in 0 until rows.length()) {

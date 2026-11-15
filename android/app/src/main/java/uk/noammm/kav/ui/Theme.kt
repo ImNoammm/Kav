@@ -295,8 +295,6 @@ object Shown {
     var accessibility by mutableStateOf(true)
     var fareProfile by mutableStateOf(uk.noammm.kav.data.FareProfile.REGULAR)
     var twelveHour by mutableStateOf(false)
-    // Paying for rides: the home screen's card and a ride's. Off, Kav shows nothing of it.
-    var payments by mutableStateOf(true)
     // A popup and a dot on Settings when a new version is out. Off for riders who update another way, as with Obtainium.
     var updatePrompts by mutableStateOf(true)
 }

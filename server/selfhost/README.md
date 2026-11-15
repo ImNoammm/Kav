@@ -80,7 +80,7 @@ The images are `ghcr.io/imnoammm/kav-live`, `kav-otp`, `kav-build`, `kav-eta`, `
 
 In Kav, **Settings › Live times and planners** has a choice for each thing the app gets from a server: live times, trip
 planning, the timetable and where share links are made. Each choice is its own: after you connect your own server, you
-can set any of them to **My own** and leave the rest on Kav's server, Bus Nearby or EGG, in any mix. Set all of
+can set any of them to **My own** and leave the rest on Kav's server. Set all of
 them to your own and the app needs nothing from Kav's server. Everything Kav's server does, your server can do:
 
 | What the app asks for | From your server | Address on your server |

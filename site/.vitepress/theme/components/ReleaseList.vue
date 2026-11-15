@@ -2,10 +2,10 @@
 import { computed, onUpdated } from 'vue'
 import { reveal } from '../reveal'
 import { data as built } from '../releases.data'
-import { REPO, day, megabytes, useLiveReleases } from '../releases'
+import { day, megabytes, useLiveReleases } from '../releases'
 
 const live = useLiveReleases()
-const releases = computed(() => (live.value?.length ? live.value : built))
+const releases = computed(() => (live.value ?? built))
 // A release GitHub has that the build didn't rises in like the rest.
 onUpdated(reveal)
 </script>
@@ -28,8 +28,9 @@ onUpdated(reveal)
       </p>
     </article>
     <p v-if="!releases.length" class="kav-muted">
-      The version history couldn't be loaded here. Every version is on
-      <a :href="`${REPO}/releases`">GitHub</a>.
+      The next version will appear here.
+      <br>
+      <span lang="he" dir="rtl">הגרסה הבאה תופיע כאן.</span>
     </p>
   </div>
 </template>

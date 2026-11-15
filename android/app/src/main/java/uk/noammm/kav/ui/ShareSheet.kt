@@ -100,8 +100,7 @@ import kotlin.math.tan
 
 // A trip's sharing. Its card, the card's map and the picture chats show with Kav's link are made on the phone while the
 // trip's page is open, a moment after it opens, so the Share sheet opens on them done. Its links are made only once Share
-// is tapped: Kav's keeps the trip on Kav's server, and EGG's and Bus Nearby's ask HopOn for the trip and register it
-// there, as their own apps do only for a trip shared. What's made is kept for the session (ShareLinks, RouteShots).
+// is tapped: Kav's keeps the trip on Kav's server. What's made is kept for the session (ShareLinks, RouteShots).
 @Stable
 internal class SharePrep(
     val trip: Transit.Itinerary, val fromLabel: String, val toLabel: String, val style: ShareStyle, val card: CardLook,

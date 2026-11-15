@@ -14,7 +14,7 @@ object JourneyFile {
     @Volatile private var lastKey: Int? = null
 
     private fun key(journey: ActiveJourney, step: Int): Int = listOf(
-        System.identityHashCode(journey.trip), journey.chosen, journey.paid, step,
+        System.identityHashCode(journey.trip), journey.chosen, step,
         journey.fromLabel, journey.toLabel,
         journey.resolved.lines.size, journey.resolved.stops.size,
         journey.resolved.routeTypes.size, journey.resolved.shapes.size,
@@ -60,7 +60,6 @@ object JourneyFile {
         .put("from", journey.fromLabel)
         .put("to", journey.toLabel)
         .put("chosen", JSONObject().apply { journey.chosen.forEach { (leg, opt) -> put(leg.toString(), opt) } })
-        .put("paid", JSONObject().apply { journey.paid.forEach { (leg, key) -> put(leg.toString(), key) } })
         .put("fromHere", journey.fromHere)
         .put("stopovers", JSONArray().apply {
             journey.stopovers.forEach {
@@ -85,8 +84,6 @@ object JourneyFile {
             fromLabel = o.optString("from"),
             toLabel = o.optString("to"),
             chosen = counts(o.optJSONObject("chosen")),
-            paid = o.optJSONObject("paid")?.let { p -> p.keys().asSequence().associate { it.toInt() to p.getString(it) } }
-                ?: emptyMap(),
             fromHere = o.optBoolean("fromHere", true),
             stopovers = o.optJSONArray("stopovers")?.let { a ->
                 (0 until a.length()).mapNotNull { i -> a.optJSONObject(i) }.map {
@@ -134,7 +131,6 @@ object JourneyFile {
         .put("fare", t.fare).put("cur", t.currency).put("co2", t.co2g)
         .put("acc", t.accessible).put("tags", JSONArray(t.tags))
         .put("sec", t.section).put("secId", t.sectionId)
-        .put("original", t.original)
 
     private fun itinerary(o: JSONObject) = Transit.Itinerary(
         guid = o.optString("guid"), group = o.optInt("group"),
@@ -144,9 +140,6 @@ object JourneyFile {
         co2g = o.optInt("co2", -1), accessible = o.optBoolean("acc"),
         tags = strings(o.optJSONArray("tags")).mapNotNull(KavPlan::tagOf),
         section = o.optString("sec"), sectionId = o.optInt("secId", -1),
-        // HopOn's original, which only a trip Kav's own parser made carries: one kept from a provider this Kav no longer
-        // has leaves its own behind.
-        original = o.optString("original").takeIf { o.optString("guid").startsWith("kav-") }.orEmpty(),
     )
 
     private fun json(l: Transit.Leg): JSONObject {

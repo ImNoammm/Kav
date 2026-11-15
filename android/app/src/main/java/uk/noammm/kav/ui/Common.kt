@@ -256,13 +256,6 @@ fun modeOf(type: Int): Mode = when (type) {
 
 fun isRail(routeType: Int, agencyId: Int) = routeType == 2 || agencyId == 854820
 
-// Israel Railways is paid at the station's gates, before the platform, so a train's payment comes with the way to its
-// station as well as with the ride. Light rail, buses and the rest are paid as they are ridden.
-internal fun paidAtEntry(ride: Transit.Leg, r: Transit.Resolved): Boolean {
-    val agency = r.line(ride.lineId)?.agencyId ?: -1
-    return isRail(r.routeType(agency), agency)
-}
-
 data class ModePlate(val fill: Color, val edge: Color, val ink: Color)
 
 private val TramPlate = ModePlate(Color(0xFFD8232A), Color(0xFFA81A20), Color(0xFFFCF4F4))

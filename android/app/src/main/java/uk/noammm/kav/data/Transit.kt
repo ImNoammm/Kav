@@ -208,8 +208,6 @@ object Transit {
         val tags: List<String> = emptyList(),
         val section: String = "",
         val sectionId: Int = -1,
-        // The provider's original itinerary, kept for its own Share request, including after reopening a saved trip.
-        val original: String = "",
     ) {
         val durationMin get() = ((arr - dep) / 60).toInt()
         val rides get() = legs.filter { it.kind == LegKind.RIDE }

@@ -1,6 +1,6 @@
 package uk.noammm.kav.data
 
-// Single-ride estimates, using Rav-Pass's published profile rules. Monthly caps are priced by the payment service.
+// Single-ride estimates, by the published fare profiles' discounts. Monthly caps aren't priced here.
 enum class FareProfile(val discount: Int) {
     REGULAR(0), YOUTH(50), STUDENT(33), SENIOR_WOMAN(50), SENIOR(100),
     DISABILITY(50), NATIONAL_INSURANCE(50), DISCHARGED(100), BLIND(100), GEOGRAPHIC(0), YOUNG(0);

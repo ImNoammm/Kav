@@ -28,7 +28,7 @@ data class ShareStyle(
         .put("apps", order.filter { it in apps }.joinToString(",")).put("map", if (map) "1" else "0")
 
     companion object {
-        val APPS = listOf("egg", "bnb", "kav")
+        val APPS = listOf("kav")
 
         fun read(o: JSONObject): ShareStyle {
             val defaults = ShareStyle()

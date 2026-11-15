@@ -20,12 +20,12 @@ for what it can't know itself: where the buses are now, and trips planned agains
 
 ## Sources you pick
 
-Planning, live buses and timetables are three separate choices in Settings. Each can be Kav's server, Bus Nearby, EGG or
+Planning, live buses and timetables are three separate choices in Settings. Each can be Kav's server or
 your own server. Only the providers you picked are ever asked. The [privacy policy](/privacy-policy) lists what each one gets.
 
 Place search is a separate choice: Google or OpenStreetMap through Photon. Both respect private search.
 GovMap provides house-number fallback and two online map choices. The standard offline map can show 3D buildings
-when tilted.
+when tilted. Supported Nothing phones also offer Glyph alerts and trip progress in Settings.
 
 ## Line alerts
 

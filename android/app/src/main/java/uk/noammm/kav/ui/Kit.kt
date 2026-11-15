@@ -266,7 +266,7 @@ fun KavChip(
 
 // One choice of a few that changes a view: segments in one capsule, the chosen one on an accent thumb that slides to it,
 // as a chosen chip is filled. Up to three are equal; four or five (the providers) are each as wide as its name needs,
-// with the room left shared out evenly, so a long name (Bus Nearby) isn't squeezed. Text only; five segments at most.
+// with the room left shared out evenly, so a long name isn't squeezed. Text only; five segments at most.
 @Composable
 fun KavSegmented(
     options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,

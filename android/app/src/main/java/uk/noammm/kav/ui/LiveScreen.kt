@@ -488,12 +488,6 @@ private fun LiveScreenForSource(model: KavModel) {
         // Where they come from: the live locations' choice in Settings.
         Text(
             when {
-                KavLive.source.liveProvider.nearbyOnly -> T(
-                    "Buses and times come from ${sourceName(KavLive.source)}'s service (HopOn), about every 20s. " +
-                        "The map shows vehicles serving the stops around you, not every vehicle in the area.",
-                    "האוטובוסים והזמנים מגיעים מהשירות של ${sourceName(KavLive.source)} (הופאון), בערך כל 20 שניות. " +
-                        "המפה מציגה כלי רכב המשרתים את התחנות סביבכם, ולא את כל כלי הרכב באזור.",
-                )
                 KavLive.own -> T(
                     "Buses and times come straight from the Ministry of Transport through your server, about every 15s. " +
                         "A vehicle shows here once one of the stops around you has a bus reporting its position.",

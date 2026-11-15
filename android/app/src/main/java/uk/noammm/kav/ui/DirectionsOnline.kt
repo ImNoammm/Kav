@@ -81,7 +81,7 @@ internal fun startedNow(trip: Transit.Itinerary, now: Long): Transit.Itinerary {
     if (trip.rides.isNotEmpty() || late <= LEFT_S) return trip
     return Transit.Itinerary(
         trip.guid, trip.group, trip.legs.map { it.copy(dep = it.dep + late, arr = it.arr + late) }, trip.dep + late, trip.arr + late,
-        trip.fare, trip.currency, trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId, trip.original,
+        trip.fare, trip.currency, trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId,
     )
 }
 
@@ -290,7 +290,7 @@ fun DirectionsOnline(model: KavModel) {
             val kav = if (link == null && planner in tabs) {
                 every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain), planner, tabs) { by ->
                     val at = KavPlan.plannerOf(by) ?: throw java.io.IOException("no planner answering")
-                    KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at, by)
+                    KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at)
                 }.also { kept = it.isCompleted }.await().getOrThrow()
             } else {
                 kept = false
@@ -373,7 +373,6 @@ fun DirectionsOnline(model: KavModel) {
                     "Kav's planner has no timetable for that day yet. Try a nearer date.",
                     "לתכנון של Kav עוד אין לוח זמנים ליום הזה. נסו תאריך קרוב יותר.",
                 )
-                planner.provider -> T("The selected trip provider didn't answer.", "ספק תכנון המסלולים שנבחר לא ענה.")
                 KavLive.serverOf(planner) != KavLive.KAV_SERVER -> T("Your server didn't answer.", "השרת שלכם לא ענה.")
                 else -> T("Kav's server didn't answer.", "השרת של Kav לא ענה.")
             }

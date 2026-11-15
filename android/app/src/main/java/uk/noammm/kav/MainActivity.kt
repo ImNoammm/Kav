@@ -206,7 +206,6 @@ class MainActivity : ComponentActivity() {
         uk.noammm.kav.data.GoogleCrowd.init(this)
         uk.noammm.kav.data.GoogleCrowd.enabled = Prefs.googleCrowd(this)
         uk.noammm.kav.ui.StopPhotos.enabled = Prefs.stopPhotos(this)
-        Shown.payments = Prefs.showPayments(this)
         Shown.updatePrompts = Prefs.updatePrompts(this)
         Pip.allowed = Prefs.pipNavigation(this)
         Shown.twelveHour = Prefs.twelveHour(this)
@@ -225,11 +224,6 @@ class MainActivity : ComponentActivity() {
         uk.noammm.kav.data.PlacePhotos.init(this)
         // Home's card opens with the latest route and its end's photo already read.
         Thread { uk.noammm.kav.ui.LatestRoute.preload(applicationContext) }.start()
-        Payer.init(this)
-        // The trip notification's QUICK PAY button follows the ride kept with Asshole mode.
-        lifecycleScope.launch {
-            snapshotFlow { Triple(Payer.pending, Payer.payingLater, Payer.paidLater) }.collect { TripService.repost() }
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             addOnPictureInPictureModeChangedListener { Pip.active = it.isInPictureInPictureMode }
         }
@@ -297,10 +291,15 @@ class MainActivity : ComponentActivity() {
         linkOf(intent)?.let { PendingLink.plan = it }
     }
 
-    // A link opened in Kav, or the first link that opens a trip in a message shared to Kav: Bus Nearby and egg share
-    // theirs inside one. A message without one says so.
+    // A link opened in Kav, or the first link that opens a trip in a message shared to Kav. A message without one says so,
+    // as does a link Kav doesn't open (one naming a server that isn't Kav's or the rider's own): nothing is asked of it.
     private fun linkOf(intent: Intent?): TripLink.Plan? {
-        if (intent?.action != Intent.ACTION_SEND) return TripLink.parse(intent?.dataString)
+        if (intent?.action != Intent.ACTION_SEND) return TripLink.parse(intent?.dataString) ?: run {
+            if (intent?.dataString?.let { Regex("^(kav|https?)://", RegexOption.IGNORE_CASE).containsMatchIn(it) } == true)
+                android.widget.Toast.makeText(this, T("Couldn't open this shared trip.", "לא ניתן לפתוח את הנסיעה המשותפת."),
+                    android.widget.Toast.LENGTH_LONG).show()
+            null
+        }
         return TripLink.inText(intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()) ?: run {
             android.widget.Toast.makeText(this, T("There's no trip link in what was shared.", "אין קישור לנסיעה במה ששותף."),
                 android.widget.Toast.LENGTH_LONG).show()
@@ -315,17 +314,13 @@ data class ActiveJourney(
     val fromLabel: String,
     val toLabel: String,
     val chosen: Map<Int, Int> = emptyMap(),
-    // Per ride leg, the key of the ticket bought for it from its card.
-    val paid: Map<Int, String> = emptyMap(),
     // The rider began the trip where it starts: leaving that spot early starts it. A trip from elsewhere waits for its time.
     val fromHere: Boolean = true,
     // The stops on the way it was planned through (a search with "Add a stop"), so it's planned through them again.
     val stopovers: List<Transit.Place> = emptyList(),
     // The trip as it was opened, when this one is that trip set out later: a screen showing it shows this one.
     val before: List<Transit.Itinerary> = emptyList(),
-) {
-    val paymentKey get() = trip.paymentKey
-}
+)
 
 // A search that found routes: where from and to, planned afresh when opened again.
 data class RecentTrip(
@@ -346,10 +341,6 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
 
     var tab by mutableStateOf(Tab.Directions)
     var settingsOpen by mutableStateOf(false)
-    var payOpen by mutableStateOf(false)
-    var payHistoryOpen by mutableStateOf(false)
-    // A bus ride's pay row in a trip asking Pay to scan for that ride.
-    internal var payFor by mutableStateOf<uk.noammm.kav.ui.PayFor?>(null)
     // The bus being reported to the ministry, while its report is open.
     internal var report by mutableStateOf<uk.noammm.kav.ui.ReportFor?>(null)
     var activeJourney by mutableStateOf<ActiveJourney?>(null)
@@ -470,7 +461,6 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         uk.noammm.kav.data.RideAlerts.language = Prefs.alertLanguage(ctx)
         uk.noammm.kav.data.GoogleCrowd.enabled = Prefs.googleCrowd(ctx)
         uk.noammm.kav.ui.StopPhotos.enabled = Prefs.stopPhotos(ctx)
-        Shown.payments = Prefs.showPayments(ctx)
         Shown.updatePrompts = Prefs.updatePrompts(ctx)
         Checks.ensure(ctx)
         Pip.allowed = Prefs.pipNavigation(ctx)
@@ -690,8 +680,7 @@ private fun Root() {
                     val answering = (check(live) as? KavLive.Check.Answers)?.live == true
                     if (!answering && opening) android.widget.Toast.makeText(
                         app,
-                        if (KavLive.source.hopOn) T("The selected live provider isn't answering", "ספק המיקומים שנבחר לא עונה")
-                        else if (KavLive.own) T("Your server isn't answering", "השרת שלכם לא עונה")
+                        if (KavLive.own) T("Your server isn't answering", "השרת שלכם לא עונה")
                         else T("Kav's server is offline", "השרת של Kav לא זמין"),
                         android.widget.Toast.LENGTH_LONG,
                     ).show()
@@ -701,8 +690,7 @@ private fun Root() {
                     val c = check(plans) as? KavLive.Check.Answers
                     if (c == null && opening && plans != live) android.widget.Toast.makeText(
                         app,
-                        if (KavPlan.source.provider) T("The selected trip provider isn't answering", "ספק תכנון המסלולים שנבחר לא עונה")
-                        else if (plans != KavLive.KAV_SERVER) T("Your server isn't answering · no trip planning", "השרת שלכם לא עונה · אין תכנון מסלולים")
+                        if (plans != KavLive.KAV_SERVER) T("Your server isn't answering · no trip planning", "השרת שלכם לא עונה · אין תכנון מסלולים")
                         else T("Kav's server is offline · no trip planning", "השרת של Kav לא זמין · אין תכנון מסלולים"),
                         android.widget.Toast.LENGTH_LONG,
                     ).show()
@@ -804,12 +792,6 @@ private fun Shell(model: KavModel) {
         }
         model.restored = true
         snapshotFlow { model.activeJourney to model.journeyStep }.collect { (journey, step) ->
-            // A ride kept with Asshole mode for a trip goes with that trip, however it ended: there's no ride left to pay.
-            // Unless the rider keeps quick pay past a trip's end (they end the trip in Kav while still on the bus): then
-            // it goes only when another trip takes its place.
-            Payer.pending?.journey?.let { kept ->
-                if (kept != journey?.paymentKey && !(journey == null && Prefs.keepQuickPay(ctx))) Payer.dropPending()
-            }
             withContext(Dispatchers.IO) {
                 if (journey == null) JourneyFile.clear(ctx) else JourneyFile.save(ctx, journey, step)
             }
@@ -953,16 +935,12 @@ private fun Shell(model: KavModel) {
                 else model.track(it.lat, it.lon, it.speed, it.at, it.accuracy)
             }
             TripBridge.fixNow = { model.fix }
-            TripBridge.paid = { leg, key ->
-                model.activeJourney?.let { model.activeJourney = it.copy(paid = it.paid + (leg to key)) }
-            }
         }
         onDispose {
             TripBridge.end = null
             TripBridge.journey = null
             TripBridge.fix = null
             TripBridge.fixNow = null
-            TripBridge.paid = null
         }
     }
     LaunchedEffect(model.navigating, Pip.allowed, lifecycle, model.tripMapShown, model.tab == Tab.Live) {
@@ -992,8 +970,6 @@ private fun Shell(model: KavModel) {
     var exitAsk by remember { mutableStateOf(false) }
     BackHandler(enabled = !model.navigating) {
         when {
-            model.payHistoryOpen -> model.payHistoryOpen = false
-            model.payOpen -> model.payOpen = false
             model.settingsOpen -> { model.settingsOpen = false; model.tab = Tab.Directions }
             model.tab != Tab.Directions -> {
                 model.resetOpenPages()
@@ -1018,7 +994,7 @@ private fun Shell(model: KavModel) {
         },
         bottomBar = {
             // Settings covers the bar in the overlay above this scaffold; its opening doesn't resize the tabs.
-            val covered = model.payOpen || model.payHistoryOpen || model.report != null || uk.noammm.kav.ui.Sheets.open > 0
+            val covered = model.report != null || uk.noammm.kav.ui.Sheets.open > 0
             val shown = !model.navigating && !covered
             Box(Modifier.graphicsLayer { alpha = if (model.settingsOpen) 0f else 1f }) {
                 if (!shown) Spacer(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.safeDrawing))
@@ -1078,22 +1054,6 @@ private fun Shell(model: KavModel) {
                     }
                 }
             }
-            androidx.compose.animation.AnimatedVisibility(
-                model.payOpen,
-                enter = uk.noammm.kav.ui.modalIn(), exit = uk.noammm.kav.ui.modalOut(),
-            ) {
-                PayScreen(model) { model.payOpen = false }
-            }
-            androidx.compose.animation.AnimatedVisibility(
-                model.payHistoryOpen,
-                enter = uk.noammm.kav.ui.modalIn(), exit = uk.noammm.kav.ui.modalOut(),
-            ) {
-                PayHistoryScreen(onClose = { model.payHistoryOpen = false }, onTicket = { key ->
-                    Payer.showRef = key
-                    model.payHistoryOpen = false
-                    model.payOpen = true
-                })
-            }
             var lastReport by remember { mutableStateOf(model.report) }
             model.report?.let { lastReport = it }
             androidx.compose.animation.AnimatedVisibility(
@@ -1108,10 +1068,6 @@ private fun Shell(model: KavModel) {
     }
     // A map drawn out of sight once, so the first screen with a map shows it whole at once.
     uk.noammm.kav.ui.MapWarmUp(model.here)
-    // Asshole mode: the kept purchase floats over every screen until it is paid or dropped.
-    if (Payer.signedIn) PendingFloat(model, Modifier.align(Alignment.TopEnd)
-        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
-        .padding(top = 76.dp, end = K.gap3))
     }
     }
 }
@@ -1798,11 +1754,9 @@ object Prefs {
     fun stopPhotos(ctx: Context): Boolean = store(ctx).getBoolean("stopPhotos", true)
     fun setStopPhotos(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("stopPhotos", on).apply()
 
-    // Navigation in a small window when Kav is left, and paying for rides shown.
+    // Navigation in a small window when Kav is left.
     fun pipNavigation(ctx: Context): Boolean = store(ctx).getBoolean("pipNavigation", true)
     fun setPipNavigation(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("pipNavigation", on).apply()
-    fun showPayments(ctx: Context): Boolean = store(ctx).getBoolean("showPayments", true)
-    fun setShowPayments(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("showPayments", on).apply()
     fun updatePrompts(ctx: Context): Boolean = store(ctx).getBoolean("updatePrompts", true)
     fun setUpdatePrompts(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("updatePrompts", on).apply()
     // Kav downloading new versions by itself, to install when the rider says so (Checks, AutoUpdate): on unless turned
@@ -1838,9 +1792,6 @@ object Prefs {
     private fun liveFromKav(ctx: Context): Boolean = store(ctx).getBoolean("liveFromKav", false)
 
     // A started trip goes straight to its first walk instead of waiting for its time or for the rider to move off.
-    // Quick pay (a ride kept with Asshole mode) stays after its trip is ended, until it's paid or closed.
-    fun keepQuickPay(ctx: Context): Boolean = store(ctx).getBoolean("keepQuickPay", false)
-    fun setKeepQuickPay(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("keepQuickPay", on).apply()
     fun beginTripsImmediately(ctx: Context): Boolean = store(ctx).getBoolean("beginTripsImmediately", false)
     fun setBeginTripsImmediately(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("beginTripsImmediately", on).apply()
 
@@ -1862,8 +1813,8 @@ object Prefs {
     // written for an older Kav, and one choice's mustn't move the other.
     private fun sources(ctx: Context): Pair<Source, Source> {
         val s = store(ctx)
-        val live = Source.liveOf(s.getString("liveSource", null))
-        val plan = Source.of(s.getString("planSource", null))
+        val live = Source.storedLive(s.getString("liveSource", null))
+        val plan = Source.stored(s.getString("planSource", null))
         if (live != null && plan != null) return live to plan
         val old = Sources.fromOld(liveFromKav(ctx), planWithKav(ctx), ownServer(ctx).isNotEmpty())
         val both = (live ?: old.first) to (plan ?: old.second)
@@ -1872,7 +1823,7 @@ object Prefs {
     }
 
     // Where the timetable comes from, a choice of its own; the first time, where the week came from until then.
-    fun timetableSource(ctx: Context): Source = Source.of(store(ctx).getString("timetableSource", null))
+    fun timetableSource(ctx: Context): Source = Source.stored(store(ctx).getString("timetableSource", null))
         ?: Sources.timetableOf(liveSource(ctx), planSource(ctx), ownServer(ctx).isNotEmpty())
             .also { store(ctx).edit().putString("timetableSource", it.key).apply() }
     fun setTimetableSource(ctx: Context, s: Source) = store(ctx).edit().putString("timetableSource", s.key).apply()
@@ -1891,11 +1842,6 @@ object Prefs {
         uk.noammm.kav.data.TripShare.picked = shareServer(ctx)
         uk.noammm.kav.data.Schedules.source = timetableSource(ctx)
     }
-
-    // The random device id HopOn is given when a trip it planned is shared (HopOnShare), made the first time.
-    fun hopOnDevice(ctx: Context): String = store(ctx).getString("hopOnDevice", null) ?: java.security.SecureRandom().let { r ->
-        ByteArray(8).also(r::nextBytes).joinToString("") { "%02x".format(it) }
-    }.also { store(ctx).edit().putString("hopOnDevice", it).apply() }
 
     internal fun linkStyle(ctx: Context): uk.noammm.kav.data.ShareStyle = runCatching {
         uk.noammm.kav.data.ShareStyle.read(org.json.JSONObject(store(ctx).getString("linkStyle", "{}")!!))
@@ -1986,11 +1932,11 @@ object Prefs {
     fun pickSupport(ctx: Context): Boolean = store(ctx).getBoolean("pickSupport", false)
     fun supportShown(ctx: Context) = store(ctx).edit().remove("pickSupport").apply()
 
-    // Runs once, the first time 2.0, 3.0, 4.0 and then 4.3 open on an install that had an older version.
+    // Runs once, the first time 2.0, 3.0, 4.0, 4.3 and then 4.3.2 open on an install that had an older version.
     fun upgrade(ctx: Context) {
         val s = store(ctx)
         val version = s.getInt("prefsVersion", 0)
-        if (version >= 5) return
+        if (version >= 6) return
         val e = s.edit()
         if (version < 2) {
             s.getStringSet("filtersOff", null)?.let { off ->
@@ -2017,7 +1963,14 @@ object Prefs {
             }
             e.remove("shareLinks")
         }
-        e.putInt("prefsVersion", 5).apply()
+        // 4.3.2: choices of the providers this Kav no longer has are Kav's own (Sources.migrated). The sign-in kept for
+        // paying for rides and the device id made for sharing trips to those providers go; nothing is sent anywhere.
+        if (version < 6) {
+            Sources.migrated(s.all).forEach { (key, value) -> e.putString(key, value) }
+            e.remove("hopOnDevice")
+            ctx.getSharedPreferences("rav-pass", Context.MODE_PRIVATE).edit().remove("session").apply()
+        }
+        e.putInt("prefsVersion", 6).apply()
     }
 
     fun filters(ctx: Context): Set<ResultFilter> {
@@ -2090,7 +2043,6 @@ object Prefs {
             .put("googleCrowd", googleCrowd(ctx))
             .put("stopPhotos", stopPhotos(ctx))
             .put("pipNavigation", pipNavigation(ctx))
-            .put("showPayments", showPayments(ctx))
             .put("updatePrompts", updatePrompts(ctx))
             .put("autoUpdate", autoUpdate(ctx))
             .put("updatesOnMobile", updatesOnMobile(ctx))
@@ -2128,7 +2080,7 @@ object Prefs {
         val (live, plan) = Sources.fromBackup(o, (server ?: ownServer(ctx).ifEmpty { KavLive.KAV_SERVER }) != KavLive.KAV_SERVER)
         live?.let { e.putString("liveSource", it.key).putBoolean("liveFromKav", true) }
         plan?.let { e.putString("planSource", it.key).putBoolean("planWithKav", true) }
-        Source.of(o.optString("timetableSource"))?.let { e.putString("timetableSource", it.key) }
+        Source.stored(o.optString("timetableSource"))?.let { e.putString("timetableSource", it.key) }
         for (l in Lang.entries) Source.of(o.optString("alertSource.${l.code}"))?.takeIf { it in Source.ALERTS }
             ?.let { e.putString("alertSource.${l.code}", it.key) }
         o.optString("alertLanguage").takeIf { it in ALERT_LANGUAGES }?.let { e.putString("alertLanguage", it) }
@@ -2145,7 +2097,7 @@ object Prefs {
         if (o.has("plannerTabsHidden")) e.putString("plannerTabsHidden", o.optString("plannerTabsHidden"))
         Source.of(o.optString("shareServer"))?.takeIf { it == Source.KAV || it == Source.OWN }?.let { e.putString("shareServer", it.key) }
         o.optJSONObject("linkStyle")?.let { e.putString("linkStyle", uk.noammm.kav.data.ShareStyle.read(it).json().toString()) }
-        for (key in listOf("pipNavigation", "showPayments", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos")) {
+        for (key in listOf("pipNavigation", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos")) {
             if (o.has(key)) e.putBoolean(key, o.optBoolean(key))
         }
         alertsSwitch(o.keys().asSequence().asIterable())?.let { e.putBoolean("rideAlerts", o.optBoolean(it)) }

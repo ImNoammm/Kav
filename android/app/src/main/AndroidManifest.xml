@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- Only to read the QR code on a bus when paying for a ride; asked for then,
+    <!-- Only to read the QR code on a server's setup page in Settings; asked for then,
          and a phone without a camera can still install Kav. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -100,27 +100,6 @@
                 <data android:pathPattern="/......." />
                 <data android:pathPrefix="/l/" />
                 <data android:pathPrefix="/s/" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="busnear.by" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="busnearby.co.il" android:pathPrefix="/itinerary/" />
-                <data android:scheme="https" android:host="*.busnearby.co.il" android:pathPrefix="/itinerary/" />
-                <data android:scheme="https" android:host="egg.hopon.co" android:pathPrefix="/itinerary/" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="busnearby" android:host="itinerary" />
-                <data android:scheme="egged" android:host="itinerary" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

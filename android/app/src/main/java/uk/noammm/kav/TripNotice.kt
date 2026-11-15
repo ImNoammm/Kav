@@ -33,7 +33,6 @@ import uk.noammm.kav.ui.distanceToPath
 import uk.noammm.kav.ui.drawModeMark
 import uk.noammm.kav.ui.drawWalker
 import uk.noammm.kav.ui.isFresh
-import uk.noammm.kav.ui.isRail
 import uk.noammm.kav.ui.legMode
 import uk.noammm.kav.ui.nextTurn
 import uk.noammm.kav.ui.turnText
@@ -43,7 +42,6 @@ import uk.noammm.kav.ui.minutesToAlight
 import uk.noammm.kav.ui.platformChange
 import uk.noammm.kav.ui.riderTrip
 import uk.noammm.kav.ui.modeName
-import uk.noammm.kav.ui.modeOf
 import uk.noammm.kav.ui.pathLength
 import uk.noammm.kav.ui.routeTints
 import uk.noammm.kav.ui.stopAlongs
@@ -66,8 +64,6 @@ internal data class TripNotice(
     val progress: Int,
     val glyph: Glyph,
     val tint: Int,
-    // The notification's button for a bus ride kept with Asshole mode: "QUICK PAY", then "Paying" and "Paid".
-    val pay: String? = null,
     // The time the title and chip give (when the bus leaves your stop, or gets you to the one you get off at) as the
     // title writes it, and how live it is, for the picture-in-picture to colour it as the search results do.
     val dueText: String = "",
@@ -318,37 +314,6 @@ private const val LAST_STRETCH_M = 1_000.0
 private const val LAST_STRETCH_BUS_M = 400.0
 private const val LAST_STRETCH_S = 90.0
 private const val TRAFFIC_AHEAD_S = 30 * 60L
-private const val TRANSFER_WARN_S = 10 * 60L
-
-// Ten minutes before the ticket's free transfers run out, while a ride is still to be boarded: that one may cost again.
-// Only when it can use the ticket: not on a train, and the next ride is a bus or light rail, which a bus
-// ticket's transfer covers, costing no more than the ride the ticket paid for (`paidLeg`, when known).
-internal fun transferAlert(journey: ActiveJourney, current: Int, transferEndsUtc: Long?, now: Long, paidLeg: Int? = null): TripAlert? {
-    val ends = transferEndsUtc ?: return null
-    if (ends - now !in 1..TRANSFER_WARN_S) return null
-    val steps = buildSteps(journey.trip, journey.fromLabel, journey.toLabel)
-    if (steps.isEmpty()) return null
-    val at = current.coerceIn(0, steps.lastIndex)
-    val r = journey.resolved
-    fun covered(ride: Transit.Leg): Boolean {
-        val agency = r.line(ride.lineId)?.agencyId ?: -1
-        val type = r.routeType(agency)
-        return !isRail(type, agency) && modeOf(type) in setOf(Mode.BUS, Mode.TRAM, Mode.SUBWAY)
-    }
-    fun chosen(ride: Transit.Leg, wait: Transit.Leg?, leg: Int) = boardingChoice(ride, wait, journey.chosen[leg] ?: 0).first
-    (steps[at] as? Step.Ride)?.let { if (!covered(chosen(it.ride, it.wait, it.legIndex))) return null }
-    val next = steps.drop(at).firstOrNull { it is Step.Wait } as? Step.Wait ?: return null
-    val ride = chosen(next.ride, next.wait, next.legIndex)
-    if (!covered(ride)) return null
-    val paid = paidLeg?.let { chosenLegs(journey.trip, journey.chosen).getOrNull(it) }
-    if (paid != null && paid.fare > 0 && ride.fare > paid.fare) return null
-    val left = (ends - now + 59) / 60
-    return TripAlert(
-        "transfer-$ends", T("Free transfer ends in $left min", "המעבר בחינם מסתיים בעוד $left דק׳"),
-        T("A ride you board after that is paid again", "נסיעה שתעלו אליה אחרי זה תשולם מחדש"),
-        T("Your free transfer ends in ", "המעבר בחינם מסתיים בעוד ") + T.count(left, "1 minute", "דקה אחת", "minutes", "דקות"),
-    )
-}
 
 internal fun tripAlert(journey: ActiveJourney, current: Int, fix: Fix?, now: Long): TripAlert? {
     val steps = buildSteps(journey.trip, journey.fromLabel, journey.toLabel)

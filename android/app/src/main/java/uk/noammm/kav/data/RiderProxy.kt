@@ -16,7 +16,7 @@ import java.net.SocketAddress
 import java.net.URI
 
 // The rider's own proxy, for everything Kav asks for: its server, Google, the planners, the maps and the pages it shows
-// (Street View, Rav-Pass, the report form). One ProxySelector for the whole app, put in before
+// (Street View, the report form). One ProxySelector for the whole app, put in before
 // anything connects (KavApp), reads the setting at each connection, so a change counts from the next request. Off, the
 // phone's own choice stands (none, or the Wi-Fi's). The phone's own network (127.x, the home network) is never sent to it.
 object RiderProxy {

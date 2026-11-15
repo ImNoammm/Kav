@@ -40,9 +40,6 @@ receive their IP address, and Esri sees the map area.
 Some features ask a service directly. They receive what's needed for the request, and your IP address, like any website
 you visit:
 
-- **Trip planning, live buses and timetables from another provider**, when you pick one in Settings: Bus Nearby or
-  EGG (both run by HopOn). Only the providers you picked are
-  asked. Sharing a trip one of them planned also asks it for its own link to that trip.
 - **Line alerts**, only once you turn them on in Settings, from the source you pick: Kav's server (or your own)
   sends Israel's whole list, and your lines are found in it on your phone, so it learns nothing of your trip. Google Maps is asked about each ride of a trip you open, at most every five minutes: it
   gets the stop you board at and the stop you leave at, without a key or an account. For these requests only, Kav keeps
@@ -63,9 +60,6 @@ you visit:
 - **OpenFreeMap maps** (Liberty, Bright, Dark and Fiord): OpenFreeMap, for the area on screen, until you download them in
   Settings; after that they're drawn from your phone and nothing is asked. OpenFreeMap's own policy says its access logs
   keep no IP addresses.
-- **Paying for a ride**, if you want to: Rav-Pass, the Ministry of Transport's payment service run by HopOn, with your
-  own Rav-Pass account. It gets your location only at the moment you scan or pay, never in the background. Nothing else
-  in Kav uses that account.
 - **Reporting a driver, bus, inspector or train**: the Ministry of Transport's own form, which you check and send
   yourself. Your details stay on the phone until then.
 
@@ -86,6 +80,8 @@ Aviv.
 Your places, favourites, recent trips and settings stay on your phone. Backups are a `.kav` file you save where you
 choose. Location is used on the phone to plan from where you are and to follow your trip; it isn't sent anywhere except
 as described above.
+
+Glyph alerts and trip progress on supported Nothing phones run on the phone and send nothing.
 
 ## This website
 

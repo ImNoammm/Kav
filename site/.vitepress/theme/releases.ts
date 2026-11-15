@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 
 export const REPO = 'https://github.com/ImNoammm/kav'
-export const LATEST_PAGE = `${REPO}/releases/latest`
 export const RELEASES_API = 'https://api.github.com/repos/ImNoammm/kav/releases?per_page=100'
 
 export interface Release {
