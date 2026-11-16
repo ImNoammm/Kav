@@ -1025,23 +1025,32 @@ internal fun ProxyChoice() {
         "Send everything Kav asks for through a proxy of your own: Kav's server, Google, the planners, the maps and the " +
             "pages Kav shows then see the proxy's address instead of yours. If the proxy can't be reached, nothing loads " +
             "until it's back or turned off. Pages shown in Kav (Street View, the report form) can log in to an " +
-            "HTTP proxy but not to a SOCKS5 one. A connection Kav already has open can carry on as it was for a few " +
+            "HTTP proxy but not to a SOCKS5 one. Tor sends it all through Orbot on this phone, names included, so " +
+            "nobody on the way sees where Kav connects. A connection Kav already has open can carry on as it was for a few " +
             "minutes; close and reopen Kav for everything to switch at once.",
         "שליחת כל מה ש-Kav מבקשת דרך פרוקסי משלכם: השרת של Kav, Google, המתכננים, המפות והעמודים ש-Kav מציגה רואים " +
             "אז את הכתובת של הפרוקסי במקום שלכם. אם אי אפשר להגיע לפרוקסי, שום דבר לא נטען עד שהוא חוזר או נכבה. עמודים " +
             "שמוצגים ב-Kav (Street View, טופס הדיווח) יכולים להתחבר לפרוקסי HTTP אבל לא לפרוקסי SOCKS5. " +
+            "Tor שולחת הכול דרך Orbot בטלפון הזה, כולל שמות האתרים, כך שאף אחד בדרך לא רואה לאן Kav מתחברת. " +
             "חיבור ש-Kav כבר פתחה יכול להמשיך כמו שהיה עוד כמה דקות; סגרו ופתחו את Kav כדי שהכול יעבור מיד.",
     ))
     val kinds = RiderProxy.Kind.entries
+    val tor = saved.kind == RiderProxy.Kind.TOR
     var kind by remember { mutableStateOf(saved.kind) }
-    var host by remember { mutableStateOf(saved.host) }
-    var port by remember { mutableStateOf(saved.port.takeIf { it > 0 }?.toString().orEmpty()) }
+    var host by remember { mutableStateOf(if (tor) "" else saved.host) }
+    var port by remember { mutableStateOf(if (tor) "" else saved.port.takeIf { it > 0 }?.toString().orEmpty()) }
+    var torPort by remember { mutableStateOf((if (tor) saved.port else RiderProxy.TOR_PORT).toString()) }
     var user by remember { mutableStateOf(saved.user) }
     var password by remember { mutableStateOf(saved.password) }
     // null: not tried since a change; "": works; else what went wrong.
     var tried by remember { mutableStateOf<String?>(null) }
     var trying by remember { mutableStateOf(false) }
-    val draft = RiderProxy.Setting(kind, host.trim(), port.trim().toIntOrNull() ?: 0, user, password)
+    fun draftOf(k: RiderProxy.Kind): RiderProxy.Setting = when (k) {
+        RiderProxy.Kind.TOR -> RiderProxy.tor(torPort.toIntOrNull() ?: 0)
+        RiderProxy.Kind.OFF, RiderProxy.Kind.HTTP, RiderProxy.Kind.SOCKS ->
+            RiderProxy.Setting(k, host.trim(), port.trim().toIntOrNull() ?: 0, user, password)
+    }
+    val draft = draftOf(kind)
     fun save(s: RiderProxy.Setting) {
         RiderProxy.set(ctx, s)
         tried = null
@@ -1053,11 +1062,19 @@ internal fun ProxyChoice() {
         }
     }
     KavSegmented(
-        listOf(T("Off", "כבוי"), "HTTP", "SOCKS5"), kinds.indexOf(kind),
+        kinds.map { k ->
+            when (k) {
+                RiderProxy.Kind.OFF -> T("Off", "כבוי")
+                RiderProxy.Kind.HTTP -> "HTTP"
+                RiderProxy.Kind.SOCKS -> "SOCKS5"
+                RiderProxy.Kind.TOR -> "Tor"
+            }
+        },
+        kinds.indexOf(kind),
         { i ->
             kind = kinds[i]
-            // Off at once; a kind with its address already filled in, too.
-            val next = draft.copy(kind = kinds[i])
+            // Off at once; a kind with its address already filled in, too, as Tor always has.
+            val next = draftOf(kinds[i])
             if (next.kind == RiderProxy.Kind.OFF || next.on) save(next)
         },
     )
@@ -1067,19 +1084,34 @@ internal fun ProxyChoice() {
         exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = androidx.compose.ui.Alignment.Top) + fadeOut(tween(120)),
     ) {
         Column(Modifier.fillMaxWidth().padding(top = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
-                KavField(host, { host = it; tried = null }, T("Address", "כתובת"), Modifier.weight(1f),
-                    keyboard = androidx.compose.ui.text.input.KeyboardType.Uri)
-                KavField(port, { v -> port = v.filter(Char::isDigit).take(5); tried = null }, T("Port", "פורט"), Modifier.width(110.dp),
+            if (kind == RiderProxy.Kind.TOR) {
+                Text(
+                    T("Start Orbot and connect it first. Kav uses its SOCKS5 port on this phone, ${RiderProxy.TOR_HOST}.",
+                        "הפעילו את Orbot וחברו אותו קודם. Kav משתמשת בפורט ה-SOCKS5 שלו בטלפון הזה, ${RiderProxy.TOR_HOST}."),
+                    style = K.type.subhead, color = K.textSecondary,
+                )
+                KavField(torPort, { v -> torPort = v.filter(Char::isDigit).take(5); tried = null },
+                    T("Orbot's SOCKS port", "פורט ה-SOCKS של Orbot"), Modifier.width(220.dp),
                     keyboard = androidx.compose.ui.text.input.KeyboardType.Number)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
+                    KavField(host, { host = it; tried = null }, T("Address", "כתובת"), Modifier.weight(1f),
+                        keyboard = androidx.compose.ui.text.input.KeyboardType.Uri)
+                    KavField(port, { v -> port = v.filter(Char::isDigit).take(5); tried = null }, T("Port", "פורט"), Modifier.width(110.dp),
+                        keyboard = androidx.compose.ui.text.input.KeyboardType.Number)
+                }
+                KavField(user, { user = it; tried = null }, T("Username (if it has one)", "שם משתמש (אם יש)"), Modifier.fillMaxWidth())
+                KavField(password, { password = it; tried = null }, T("Password", "סיסמה"), Modifier.fillMaxWidth(),
+                    keyboard = androidx.compose.ui.text.input.KeyboardType.Password, secret = true)
             }
-            KavField(user, { user = it; tried = null }, T("Username (if it has one)", "שם משתמש (אם יש)"), Modifier.fillMaxWidth())
-            KavField(password, { password = it; tried = null }, T("Password", "סיסמה"), Modifier.fillMaxWidth(),
-                keyboard = androidx.compose.ui.text.input.KeyboardType.Password, secret = true)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
                 val said = when {
                     trying -> T("Trying…", "בודקים…") to K.textSecondary
+                    tried == "" && kind == RiderProxy.Kind.TOR -> T("Works: Kav goes through Tor", "עובד: Kav עוברת דרך Tor") to K.realtime
                     tried == "" -> T("Works: Kav goes through it", "עובד: Kav עוברת דרכו") to K.realtime
+                    tried != null && kind == RiderProxy.Kind.TOR ->
+                        T("Couldn't reach Tor: $tried. Is Orbot running and connected?",
+                            "אין חיבור ל-Tor: $tried. האם Orbot פועל ומחובר?") to K.problem
                     tried != null -> T("Couldn't connect: $tried", "אין חיבור: $tried") to K.problem
                     draft != saved -> T("Not saved yet", "עוד לא נשמר") to K.textSecondary
                     else -> null

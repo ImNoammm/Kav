@@ -20,13 +20,25 @@ import java.net.URI
 // anything connects (KavApp), reads the setting at each connection, so a change counts from the next request. Off, the
 // phone's own choice stands (none, or the Wi-Fi's). The phone's own network (127.x, the home network) is never sent to it.
 object RiderProxy {
-    enum class Kind(val key: String) { OFF("off"), HTTP("http"), SOCKS("socks") }
+    enum class Kind(val key: String) { OFF("off"), HTTP("http"), SOCKS("socks"), TOR("tor") }
 
     data class Setting(val kind: Kind, val host: String, val port: Int, val user: String, val password: String) {
         val on get() = kind != Kind.OFF && host.isNotBlank() && port in 1..65535
+        val socks get() = when (kind) {
+            Kind.SOCKS, Kind.TOR -> true
+            Kind.OFF, Kind.HTTP -> false
+        }
     }
 
     private val OFF = Setting(Kind.OFF, "", 0, "", "")
+
+    // Tor on the phone (Orbot) takes SOCKS5 here unless its settings move the port. Every name is handed to it unresolved,
+    // so Tor looks it up at the exit and the phone's own DNS never sees where Kav connects.
+    const val TOR_HOST = "127.0.0.1"
+    const val TOR_PORT = 9050
+    private const val TOR_CHECK = "https://check.torproject.org/api/ip"
+
+    fun tor(port: Int = TOR_PORT) = Setting(Kind.TOR, TOR_HOST, port, "", "")
 
     var setting by mutableStateOf(OFF)
         private set
@@ -39,10 +51,10 @@ object RiderProxy {
 
     fun load(ctx: Context): Setting {
         val p = store(ctx)
-        return Setting(
-            Kind.entries.firstOrNull { it.key == p.getString("kind", null) } ?: Kind.OFF,
-            p.getString("host", "").orEmpty(), p.getInt("port", 0), p.getString("user", "").orEmpty(), p.getString("password", "").orEmpty(),
-        )
+        val kind = Kind.entries.firstOrNull { it.key == p.getString("kind", null) } ?: Kind.OFF
+        val port = p.getInt("port", 0)
+        if (kind == Kind.TOR) return tor(port.takeIf { it in 1..65535 } ?: TOR_PORT)
+        return Setting(kind, p.getString("host", "").orEmpty(), port, p.getString("user", "").orEmpty(), p.getString("password", "").orEmpty())
     }
 
     @Synchronized fun install(ctx: Context) {
@@ -83,7 +95,7 @@ object RiderProxy {
             val at = InetSocketAddress.createUnresolved(s.host, s.port)
             // A plain socket (socket://) is asked about by the socket itself: only a SOCKS proxy carries one.
             return when {
-                s.kind == Kind.SOCKS -> listOf(Proxy(Proxy.Type.SOCKS, at))
+                s.socks -> listOf(Proxy(Proxy.Type.SOCKS, at))
                 uri.scheme == "socket" -> listOf(Proxy.NO_PROXY)
                 else -> listOf(Proxy(Proxy.Type.HTTP, at))
             }
@@ -125,7 +137,7 @@ object RiderProxy {
         val s = setting
         val run = java.util.concurrent.Executor { it.run() }
         if (s.on) {
-            val scheme = if (s.kind == Kind.SOCKS) "socks5" else "http"
+            val scheme = if (s.socks) "socks5" else "http"
             val config = ProxyConfig.Builder().addProxyRule("$scheme://${s.host}:${s.port}")
                 .addBypassRule("localhost").addBypassRule("127.0.0.1").build()
             ProxyController.getInstance().setProxyOverride(config, run) {}
@@ -142,22 +154,34 @@ object RiderProxy {
     fun open(url: java.net.URL): java.net.URLConnection {
         val s = setting
         if (!s.on || local(url.host)) return url.openConnection()
-        val type = if (s.kind == Kind.SOCKS) Proxy.Type.SOCKS else Proxy.Type.HTTP
+        val type = if (s.socks) Proxy.Type.SOCKS else Proxy.Type.HTTP
         return url.openConnection(Proxy(type, InetSocketAddress.createUnresolved(s.host, s.port)))
     }
 
-    // Whether the proxy carries a request now: Kav's website asked through it. Null when it does, else why not.
+    // Whether the proxy carries a request now: Kav's website asked through it, or for Tor, the Tor Project's own check
+    // that the request left from a Tor exit. Null when it does, else why not.
     fun check(): String? = try {
-        val c = open(java.net.URL("https://kavapp.link/")) as java.net.HttpURLConnection
-        c.connectTimeout = 8_000; c.readTimeout = 8_000
+        val tor = setting.kind == Kind.TOR
+        val c = open(java.net.URL(if (tor) TOR_CHECK else "https://kavapp.link/")) as java.net.HttpURLConnection
+        // A new Tor circuit can take a good while to build.
+        val timeout = if (tor) 30_000 else 8_000
+        c.connectTimeout = timeout; c.readTimeout = timeout
         c.setRequestProperty("User-Agent", "Kav")
         try {
             val code = c.responseCode
-            if (code in 200..399) null else "HTTP $code"
+            when {
+                code !in 200..399 -> "HTTP $code"
+                !tor -> null
+                isTor(c.inputStream.bufferedReader().use { it.readText() }) -> null
+                else -> "the connection didn't leave through Tor"
+            }
         } finally {
             c.disconnect()
         }
     } catch (e: Exception) {
         e.message ?: e.javaClass.simpleName
     }
+
+    internal fun isTor(answer: String): Boolean =
+        runCatching { org.json.JSONObject(answer).optBoolean("IsTor") }.getOrDefault(false)
 }
