@@ -1094,7 +1094,11 @@ private fun NavigateMap(
     }
 
     // Walking, the arrow is the way the phone faces; riding, the way the vehicle goes.
-    val arrow = if (follow == null) null else if (step is Step.Ride) follow.bearing else heading
+    val arrow = when (step) {
+        is Step.Walk -> heading
+        is Step.Ride -> follow?.bearing
+        else -> null
+    }
     val nowSec = System.currentTimeMillis() / 1000
     fun tintOf(v: Transit.Arrival) = if (v.vehicleStatus == 2) MapInk.icons.problem else mapFreshColour(freshnessOf(v.sampleUtc, nowSec))
     val vehicleMarks = vehicles.map { v -> v to ringedMark(vehicleModes[v.tripId] ?: Mode.BUS, tintOf(v), 12f, 10f, density) }
@@ -1120,6 +1124,7 @@ private fun NavigateMap(
             fitMaxZoom = if (step is Step.Walk || step is Step.Arrive) 18.4f else Geo.MAX_Z.toFloat(),
             recenterOn = remember(shownHere, legs) { recentreOn(shownHere, legs.map { it.shape }) },
             contentPadding = contentPadding, follow = follow,
+            riderHeading = heading, headingUpOn = shownHere.takeIf { following && step is Step.Walk },
             geometry = geometry, live = live, attribution = attribution,
             onTap = { at, proj ->
                 onTap(vehicles.map { it to (proj.point(it.lat, it.lon) - at).getDistance() }

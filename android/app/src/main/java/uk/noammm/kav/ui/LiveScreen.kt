@@ -169,8 +169,9 @@ fun LiveScreen(model: KavModel) {
 @android.annotation.SuppressLint("ProduceStateDoesNotAssignValue")
 private fun LiveScreenForSource(model: KavModel) {
     val ctx = LocalContext.current
-    val here = model.here ?: (32.0759 to 34.7745)
-    val located = model.here != null
+    val riderAt = model.here
+    val here = riderAt ?: (32.0759 to 34.7745)
+    val located = riderAt != null
     var locGranted by remember { mutableStateOf(hasLocationPermission(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         if (granted.values.any { it }) {
@@ -540,7 +541,7 @@ private fun LiveScreenForSource(model: KavModel) {
         ) {
             CompositionLocalProvider(LocalLiquidBackdrop provides liveLiquid) {
                 LiveMap(
-                    here, model.heading, near, vehicles, open, openStop, openVehicle, lineStops, route, onRoad, model.liveShow,
+                    here, riderAt, model.heading, near, vehicles, open, openStop, openVehicle, lineStops, route, onRoad, model.liveShow,
                     keep = (focus as? LiveFocus.Vehicle)?.tripId,
                     onKept = { mapKept = it },
                     following = !moved,
@@ -748,6 +749,7 @@ private fun lineLook(
 @Composable
 private fun LiveMap(
     center: Pair<Double, Double>,
+    riderAt: Pair<Double, Double>?,
     heading: Float?,
     stops: List<Transit.Stop>,
     vehicles: List<Tracked>,
@@ -870,8 +872,8 @@ private fun LiveMap(
         g.copy(markers = markers, images = images)
     }
     // The rider as navigation draws them, an arrow the way the phone faces, gliding from fix to fix as the vehicles do.
-    val me = remember(center, heading != null, density, K.look, MapInk.icons) {
-        riderArrowGeometry(center, heading?.let { 0f }, density)
+    val me = remember(riderAt, heading != null, density, K.look, MapInk.icons) {
+        riderArrowGeometry(riderAt, heading?.let { 0f }, density)
     }
     val live = remember(moving, me) {
         // The rider's halo the vehicles' size here, so all the halos pulse by one plain radius (TileMap): a halo of
@@ -899,6 +901,7 @@ private fun LiveMap(
         riderHeading = heading,
         onLiveTaken = { g -> if (g === live) onKept(kept) },
         followRider = withMe && following && focus == null,
+        headingUpOn = riderAt.takeIf { focus == null },
         onTap = { at, proj ->
             val tappable = if (chosen == null) shown else shown.filter { it.tripId == chosen }
             val vehicle = tappable.map { it to (proj.point(it.arrival.lat, it.arrival.lon) - at).getDistance() }

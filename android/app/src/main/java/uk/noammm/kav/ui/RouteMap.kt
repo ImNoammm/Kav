@@ -18,9 +18,7 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
@@ -271,16 +269,6 @@ internal fun headingMark(fill: Color, outer: Float, density: Density): Pair<Stri
         }
     }
 
-// The rider on a trip's map: their dot, and from it a cone the way the phone faces, which the map turns with itself so it
-// points the same way on the ground. Nothing without a fix, and no cone without a compass. Its images: riderImages.
-internal fun riderGeometry(at: Pair<Double, Double>?, heading: Float?): MapGeometry {
-    val (lat, lon) = at ?: return MapGeometry()
-    return MapGeometry(
-        halos = listOf(MapDot(lat, lon, MapInk.text.copy(alpha = 0.16f), 15f, id = "me:halo")),
-        markers = listOf(MapMarker(lat, lon, riderIcon(cone = heading != null), heading ?: 0f, turns = true, id = "me")),
-    )
-}
-
 // The rider as navigation draws them: the arrow the way the phone faces, else their dot without a compass. Its id makes it
 // glide from fix to fix as a vehicle does (TileMap), not jump.
 internal fun riderArrowGeometry(at: Pair<Double, Double>?, heading: Float?, density: Density, alpha: Float = 1f): MapGeometry {
@@ -288,30 +276,21 @@ internal fun riderArrowGeometry(at: Pair<Double, Double>?, heading: Float?, dens
     val halo = MapDot(lat, lon, MapInk.text.copy(alpha = 0.16f * alpha), 15f, id = "me:halo")
     return if (heading != null) MapGeometry(halos = listOf(halo),
         markers = listOf(MapMarker(lat, lon, mapArrowIcon(), heading, alpha, turns = true, id = "me")))
-    else MapGeometry(halos = listOf(halo), markers = listOf(MapMarker(lat, lon, riderIcon(cone = false), 0f, alpha, id = "me")),
-        images = riderImages(density))
+    else {
+        val (name, bitmap) = riderDot(density)
+        MapGeometry(halos = listOf(halo), markers = listOf(MapMarker(lat, lon, name, 0f, alpha, id = "me")),
+            images = mapOf(name to bitmap))
+    }
 }
 
-private fun riderIcon(cone: Boolean) = "kav-me-${if (cone) "cone" else "dot"}-${MapInk.icons.text.toArgb()}-${MapInk.icons.bg.toArgb()}"
-
-internal fun riderImages(density: Density): Map<String, ImageBitmap> = with(density) {
+private fun riderDot(density: Density): Pair<String, ImageBitmap> = with(density) {
     val ink = MapInk.icons
-    val reach = 40.dp.toPx()
-    listOf(false, true).associate { cone ->
-        icon(riderIcon(cone), 2 * reach, 2 * reach, density, LayoutDirection.Ltr) {
-            val at = Offset(reach, reach)
-            if (cone) {
-                // 70 degrees wide, pointing north for the map to turn, fading out from the dot.
-                val wedge = Path().apply {
-                    moveTo(reach, reach)
-                    arcTo(Rect(at, reach), -125f, 70f, false)
-                    close()
-                }
-                drawPath(wedge, Brush.radialGradient(listOf(ink.text.copy(alpha = 0.4f), ink.text.copy(alpha = 0f)), at, reach))
-            }
-            drawCircle(ink.bg, 8.dp.toPx(), at)
-            drawCircle(ink.text, 5.dp.toPx(), at)
-        }
+    val name = "kav-me-dot-${ink.text.toArgb()}-${ink.bg.toArgb()}"
+    val reach = 9.dp.toPx()
+    icon(name, 2 * reach, 2 * reach, density, LayoutDirection.Ltr) {
+        val at = Offset(reach, reach)
+        drawCircle(ink.bg, 8.dp.toPx(), at)
+        drawCircle(ink.text, 5.dp.toPx(), at)
     }
 }
 
@@ -419,7 +398,7 @@ internal fun pointOnRoute(path: List<Pair<Double, Double>>, along: Double): Pair
     return path.last()
 }
 
-// me and heading: where the rider is and which way the phone faces (riderGeometry). onShown says whether the map is on
+// me and heading: where the rider is and which way the phone faces. onShown says whether the map is on
 // screen, scrolled into view, for as long as it's there.
 @Composable
 fun RouteMap(
@@ -467,8 +446,9 @@ fun RouteMap(
     val moving = remember(vehicles, density, MapInk.icons) {
         vehicleGeometry(vehicles, density)
     }
-    val rider = remember(me, heading != null, MapInk.text, MapInk.icons) { riderGeometry(me, heading?.let { 0f }) }
-    val riderBitmaps = remember(density, MapInk.icons) { riderImages(density) }
+    val rider = remember(me, heading != null, density, MapInk.text, MapInk.icons) {
+        riderArrowGeometry(me, heading?.let { 0f }, density)
+    }
     TileMap(
         points,
         modifier.fillMaxWidth().height(height).panel(K.rTile)
@@ -476,11 +456,12 @@ fun RouteMap(
         geometry = geometry,
         live = moving.copy(
             halos = moving.halos + rider.halos,
-            images = if (me == null) moving.images else moving.images + riderBitmaps,
+            images = moving.images + rider.images,
             // All in one source as they glide, so a glow is never in two at once, drawn twice and brighter.
             together = true,
         ),
         rider = rider.markers.firstOrNull(),
         riderHeading = heading,
+        headingUpOn = me,
     )
 }

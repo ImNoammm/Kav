@@ -715,7 +715,8 @@ private class MapCamera {
     private var framedZoom: Float? = null
 
     fun update(
-        points: List<WorldPoint>, viewport: Viewport, focus: Any?, padding: Float, maxZoom: Float, keepZoom: Boolean, scope: CoroutineScope,
+        points: List<WorldPoint>, viewport: Viewport, focus: Any?, padding: Float, maxZoom: Float,
+        keepZoom: Boolean, withRider: Boolean, scope: CoroutineScope,
     ) {
         if (points.isEmpty() || viewport.w <= 0 || viewport.h <= 0) return
         // Moved by hand, the map only reframes for something new to show, not for a resize.
@@ -729,6 +730,7 @@ private class MapCamera {
         previousViewport = viewport
         previousPadding = padding
         previousMaxZoom = maxZoom
+        if (withRider && value != null) return
         if (reframe) {
             reset(points, viewport, padding, if (keepZoom) current?.zoom ?: maxZoom else maxZoom, scope)
         } else if (!manual && current != null && changed.any { !viewport.contains(it, current) }) {
@@ -1109,12 +1111,21 @@ fun TileMap(
     warming: Boolean = false,
     // The map goes with the rider (recenterOn) as they move, centred on them, until a hand moves it.
     followRider: Boolean = false,
+    // Offer a compass control that follows this position and turns the map with riderHeading.
+    headingUpOn: Pair<Double, Double>? = null,
 ) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val scope = rememberCoroutineScope()
     val camera = remember { MapCamera() }
+    val headingTarget = headingUpOn?.let { (lat, lon) ->
+        riderHeading?.takeIf { it.isFinite() && lat.isFinite() && lon.isFinite() }?.let { Follow(lat, lon, it) }
+    }
+    val canFollowHeading = headingTarget != null
+    var headingUp by remember(canFollowHeading) { mutableStateOf(false) }
+    val headingFollow = headingTarget.takeIf { headingUp }
+    val cameraFollow = follow ?: headingFollow
     var inViewport by remember { mutableStateOf(true) }
     camera.duration = moveMs
     val worldPoints = remember(points) {
@@ -1889,19 +1900,19 @@ fun TileMap(
         // made again at each frame's size; with its room to grow (reserve) it's that size before and after too.
         val viewH = if (settle != null) maxOf(base, framing.h) else h + with(density) { reserve.toPx() }
 
-        val withRider = followRider && !camera.manual && recenterOn != null
-        LaunchedEffect(worldPoints, framing, focusKey, padFraction, fitMaxZoom, follow == null, keepZoom, withRider) {
+        val withRider = followRider && cameraFollow == null && !camera.manual && recenterOn != null
+        LaunchedEffect(worldPoints, framing, focusKey, padFraction, fitMaxZoom, cameraFollow == null, keepZoom, withRider) {
             val ref = if (settle != null) framing.h else 0f
             if (ref != camera.ref) camera.rebase(if (camera.ref > 0f) camera.ref else h, if (ref > 0f) ref else h, ref, scope)
-            if (follow == null && !withRider) camera.update(worldPoints, framing, focusKey, padFraction, fitMaxZoom, keepZoom, scope)
+            if (cameraFollow == null) camera.update(worldPoints, framing, focusKey, padFraction, fitMaxZoom, keepZoom, withRider, scope)
         }
         LaunchedEffect(withRider, recenterOn) {
             val me = recenterOn?.takeIf { withRider && it.first.isFinite() && it.second.isFinite() } ?: return@LaunchedEffect
             camera.centre(WorldPoint(Geo.x(me.second), Geo.y(me.first)), scope)
         }
-        LaunchedEffect(focusKey) { camera.resume() }
-        LaunchedEffect(follow, viewport, camera.manual) {
-            if (follow != null && !camera.manual) camera.follow(follow, viewport, scope)
+        LaunchedEffect(focusKey) { if (headingFollow == null) camera.resume() }
+        LaunchedEffect(cameraFollow, viewport, camera.manual) {
+            if (cameraFollow != null && !camera.manual) camera.follow(cameraFollow, viewport, scope)
         }
         val anchor = viewport.anchor
         val look by rememberUpdatedState(onLook)
@@ -1912,9 +1923,10 @@ fun TileMap(
                 if (c == null) return@collectLatest
                 kotlinx.coroutines.delay(600)
                 val (sw, sh) = mapSize
-                val proj = MapProjection(c.worldX, c.worldY, c.pxPerWorld, sw, sh)
-                val mid = proj.latLon(Offset(sw / 2, sh / 2))
-                val corner = proj.latLon(Offset(0f, 0f))
+                val proj = MapProjection(c.worldX, c.worldY, c.pxPerWorld, sw, if (camera.ref > 0f) camera.ref else sh)
+                val pivot = liveViewport.anchor
+                val mid = proj.latLon(unrotate(Offset(sw / 2, sh / 2), pivot, c.rotation))
+                val corner = proj.latLon(unrotate(Offset.Zero, pivot, c.rotation))
                 look?.invoke(mid, metres(mid.first, mid.second, corner.first, corner.second) / 1000.0)
             }
         }
@@ -2045,9 +2057,27 @@ fun TileMap(
         ) {
             Box(Modifier.weight(1f)) { status?.invoke() }
             controls?.invoke()
+            if (canFollowHeading && follow == null && mapReady) {
+                val turning = headingUp && !camera.manual
+                CompositionLocalProvider(LocalLiquidBackdrop provides null) {
+                    KavIconButton(
+                        Icons.Rounded.Navigation,
+                        if (turning) T("Show north up", "הציגו את הצפון למעלה")
+                        else T("Follow my direction", "סובבו את המפה לפי הכיוון שלי"),
+                        {
+                            headingUp = !turning
+                            if (!turning) {
+                                look?.invoke(null, 0.0)
+                                camera.resume()
+                            }
+                        },
+                        floating = true, tint = if (turning) K.accent else K.text, size = 44.dp,
+                    )
+                }
+            }
             // Moved away: one round button brings the map back, following again or centred as it was.
             androidx.compose.animation.AnimatedVisibility(
-                camera.manual || moved,
+                (headingFollow == null || follow != null) && (camera.manual || moved),
                 enter = androidx.compose.animation.fadeIn(tween(160)) + androidx.compose.animation.scaleIn(initialScale = .8f),
                 exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.scaleOut(targetScale = .8f),
             ) {
