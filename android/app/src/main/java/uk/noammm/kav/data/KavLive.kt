@@ -70,6 +70,7 @@ object KavLive {
     // The server asks the ministry directly for at most this many routes, or stops, at once.
     const val FOLLOW_MAX = 4
     const val STOPS_MAX = 20
+    const val LATE_MAX = 16  // routes a server tells how late they run at once (live.py LATE_MOST)
 
     // Live locations always come from a server, and whether it's answering with live buses. While it isn't, the screens
     // keep asking it and say so.
@@ -80,6 +81,9 @@ object KavLive {
     // fail, and then the screens that need them keep asking until it answers again.
     var stopsUp by mutableStateOf(true)
     val stopsEnabled get() = enabled && stopsUp
+    // The server answers, but has no fresh data from the ministry (its feed is down or stale): said as that, not as a
+    // connection problem.
+    var feedDown by mutableStateOf(false)
 
     // A request that failed asks for the server to be checked now rather than at the next turn.
     val recheck = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
@@ -119,6 +123,18 @@ object KavLive {
             7 -> "${n.take(2)}-${n.substring(2, 5)}-${n.takeLast(2)}"
             8 -> "${n.take(3)}-${n.substring(3, 5)}-${n.takeLast(3)}"
             else -> n
+        }
+    }
+
+    // What kind of bus this plate is (the server's bus/, from the ministry's file of the operators' buses; KavFleet), the
+    // answer as it came, or null: none when it isn't in the file. Only from the server live times come from, Kav's or the
+    // rider's own.
+    fun bus(plate: String): String? {
+        if (source.liveProvider != Server) return null
+        return try {
+            get("bus/$plate", quick = true)
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -331,6 +347,57 @@ object KavLive {
 
     // Every bus on the routes with this number, and all those routes, so a page can pick its own.
     fun line(number: String, codes: List<Int> = emptyList()): Area = fromSource { it.liveProvider.line(number, codes) }
+
+    // How late routes' buses usually run against the ministry's timetable (the server's late/, figured each morning from
+    // the passings it recorded): by route, each band of the week's figures; made: the day they were figured, from and to
+    // the first and last day they come from, days how many of those days.
+    class Lateness(val made: String, val from: String, val to: String, val days: Int, val routes: Map<Int, Map<String, LateFigure>>)
+
+    // late: the median lateness at its stops in seconds, early below 0; onTime: per thousand passings from a minute early
+    // to five late.
+    class LateFigure(val late: Int, val onTime: Int, val runs: Int, val days: Int)
+
+    private val lateness = HashMap<Pair<String, List<Int>>, Pair<Long, Lateness>>()
+
+    // Only Kav's server or the rider's own has them, and not every copy yet: no answer is no figures, never a server down
+    // (asked quick, so it isn't checked again for it). Kept LATE_KEEP_MS, as they change once a day.
+    fun lateness(routes: Collection<Int>): Lateness? {
+        if (source.liveProvider != Server || routes.isEmpty()) return null
+        val asked = routes.distinct().sorted().take(LATE_MAX)
+        val key = server to asked
+        val now = System.currentTimeMillis()
+        synchronized(lateness) { lateness[key] }?.takeIf { now - it.first < LATE_KEEP_MS }?.let { return it.second }
+        val got = try {
+            parseLateness(get("late/" + asked.joinToString(","), quick = true))
+        } catch (e: Exception) {
+            return null
+        }
+        synchronized(lateness) { lateness[key] = now to got }
+        return got
+    }
+
+    private const val LATE_KEEP_MS = 6 * 3600_000L
+
+    // How busy routes usually are by hour (the server's busy/, from the ministry's Rav-Kav taps; KavCrowd), the answer as it
+    // came, or null. From the server live times come from when it's Kav's or the rider's own, else from Kav's.
+    fun busy(routes: List<Int>): String? = try {
+        get("busy/" + routes.joinToString(","), quick = true, at = if (source.liveProvider == Server) server else KAV_SERVER)
+    } catch (e: Exception) {
+        null
+    }
+
+    internal fun parseLateness(body: String): Lateness {
+        val o = JSONObject(body)
+        val routes = o.optJSONObject("routes") ?: JSONObject()
+        val out = HashMap<Int, Map<String, LateFigure>>()
+        for (r in routes.keys()) {
+            val bands = routes.optJSONObject(r) ?: continue
+            out[r.toIntOrNull() ?: continue] = bands.keys().asSequence().mapNotNull { b ->
+                bands.optJSONObject(b)?.let { f -> b to LateFigure(f.optInt("late"), f.optInt("on"), f.optInt("runs"), f.optInt("days")) }
+            }.toMap()
+        }
+        return Lateness(o.optString("made"), o.optString("from"), o.optString("to"), o.optInt("days"), out)
+    }
 
     // Every bus due at these stops in the next hour and a half, straight from the ministry.
     fun stops(codes: Collection<Int>): Board = try {
@@ -877,7 +944,7 @@ object KavLive {
     }
 
     private fun stopCodeOf(stops: Map<Int, Transit.StopInfo>, stop: Int) =
-        stops[stop]?.code?.toIntOrNull() ?: 0
+        stops[stop]?.ministryCode() ?: 0
 
     // The same from what the ministry has due at the rides' stops: rides each with the timetable's time for it, if known;
     // others(ride), the line's departures its card lists.
@@ -890,7 +957,7 @@ object KavLive {
         // A train on a ride follows the track the plan draws for it.
         val tracks = rides.associate { (ride, _) -> ride.shortName.ifBlank { lines[ride.lineId]?.number.orEmpty() }.trim() to ride.shape }
         val due = withTrainsPlaced(net, board, withoutLostTrains(board, now) { code ->
-            net?.let { stationAt(it, code) } ?: stops.values.firstOrNull { it.code.toIntOrNull() == code }?.point
+            net?.let { stationAt(it, code) } ?: stops.values.firstOrNull { it.ministryCode() == code }?.point
         }, now) { tracks[it.number].orEmpty() }
         val out = LinkedHashMap<Transit.ArrivalKey, Transit.Arrival>()
         val patterns = HashMap<Int, List<Int>>()

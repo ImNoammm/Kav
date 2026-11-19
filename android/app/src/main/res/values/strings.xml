@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kav</string>
+    <!-- Android's own accessibility settings show these for Kav's ticket reader (TicketReader.kt). -->
+    <string name="ticket_reader_label">Kav: tickets from Rav-Pass</string>
+    <string name="ticket_reader_description">Reads only Rav-Pass\'s ticket screens (the one that says your ride is paid, and the ticket for inspection when you open it), whenever one is open: the line, the stations, the time, the ticket number, the passengers and the ticket\'s code, so Kav can show your ticket. To read the code it takes a picture of the screen while a ticket screen is open, and lets it go at once. It stays on this phone and is deleted when the ticket ends or when you turn off Pay with Rav-Pass in Kav. Right after a purchase it opens your ticket in Rav-Pass to read its code, and touches nothing else. On Rav-Pass\'s other screens it reads only the few lines Kav\'s own explanation names, and nothing in any other app. It can tell which app is in front, and reads only Rav-Pass\'s screen.</string>
 </resources>

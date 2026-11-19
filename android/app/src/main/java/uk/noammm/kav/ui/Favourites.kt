@@ -321,13 +321,13 @@ fun FavouriteStrip(
                 shown.forEachIndexed { i, f -> key("favourite", f.id) { Tile(f, i, cols) } }
                 if (!manage) key("add") {
                     StripTile(
-                        Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favourite", "הוספת מועדף"),
+                        Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
                         on = false, onClick = onAdd, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
                     )
                 } else {
                     if (inEdit || travel > 0f) key("add") {
                         StripTile(
-                            Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favourite", "הוספת מועדף"),
+                            Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
                             on = false, onClick = onAdd, enabled = inEdit,
                             modifier = Modifier.layoutId(rememberSpot(shown.size, cols)).graphicsLayer {
                                 val grown = .3f + .7f * travel.coerceAtLeast(0f)
@@ -342,8 +342,8 @@ fun FavouriteStrip(
                         StripTile(
                             if (flipped) Icons.Rounded.Check else Icons.Rounded.Edit,
                             if (flipped) T("Done", "סיום") else T("Edit", "עריכה"),
-                            if (inEdit) T("Finish editing favourites", "סיום עריכת המועדפים")
-                            else T("Sort and remove favourites", "סידור והסרה של מועדפים"),
+                            if (inEdit) T("Finish editing favorites", "סיום עריכת המועדפים")
+                            else T("Sort and remove favorites", "סידור והסרה של מועדפים"),
                             on = inEdit,
                             onClick = { editMode = !editMode; order = null; held = null; drag = Offset.Zero },
                             modifier = Modifier.layoutId(rememberSpot(shown.size + if (inEdit) 1 else 0, cols)),
@@ -447,7 +447,7 @@ fun FavouriteEditor(
             verticalArrangement = Arrangement.spacedBy(K.gap3),
         ) {
             Text(
-                if (existing == null) T("New favourite", "מועדף חדש") else existing.label,
+                if (existing == null) T("New favorite", "מועדף חדש") else existing.label,
                 style = K.type.title,
             )
             if (existing?.id != Favourite.HOME) KavField(name, { name = it }, T("Name", "שם"), autoFocus = existing == null)

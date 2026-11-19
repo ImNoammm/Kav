@@ -12,18 +12,22 @@ kept (TRANSLATIONS), and a line whose numbers would change (line numbers, stop c
 only, like live.py."""
 
 import collections
+import concurrent.futures
 import gzip
 import hashlib
 import html
+import http.client
 import io
 import itertools
 import json
 import os
 import re
+import socket
 import sqlite3
 import ssl
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 SOURCE = os.environ.get("ALERTS_SOURCE", "off").lower()
@@ -34,6 +38,13 @@ TRANSLATE_URL = os.environ.get("TRANSLATE_URL", "").rstrip("/")
 TRANSLATE_KEY = os.environ.get("TRANSLATE_KEY", "")
 TRANSLATIONS = os.environ.get("TRANSLATIONS", os.path.join(os.environ.get("HISTORY") or ".", "translations.sqlite3"))
 LINES_AT_ONCE = 32  # lines in one request to the translator (translate.py takes 64)
+ANSWER_BY = 120  # seconds the translator's whole answer may take in the background; a phone's request has its own
+# A phone's request for English (Translations.now): the seconds it may wait for the translator, busy with other texts, and
+# how many may wait at once; past either it's answered busy at once, holding nothing.
+WAIT_FOR_TRANSLATOR, MOST_WAITING = 5, 4
+# Texts phones asked for that weren't kept yet, kept for later: at most this many, and this many characters of their
+# English, the oldest going first. The alerts' own translations, and all kept before this bound, never go.
+KEPT_ASKED = (5_000, 16_000_000)
 
 # The ministry's server leaves an intermediate certificate out of its chain; MOT_CA holds it, as for live.py.
 TLS = ssl.create_default_context()
@@ -313,6 +324,10 @@ def with_names(line, names):
     return re.sub(r"(^|(?<=\s))מכיוון(?=\s+[A-Za-z])", lambda m: "From" if m.start() == 0 else "from", line)
 
 
+class Busy(Exception):
+    """The translator is taken: a phone's request for English is answered busy (503) rather than kept waiting."""
+
+
 class Translations:
     """Hebrew to English through the translator, each text once, kept in SQLite. A line whose numbers come back
     changed keeps its Hebrew: line numbers, stop codes and times are never the translator's guess."""
@@ -320,34 +335,99 @@ class Translations:
     def __init__(self, path, url, key="", ask=None, names=None):
         self.url, self.key, self.ask = url, key, ask or self.post
         self.names = names or {}
+        if path != ":memory:" and not os.path.exists(path):
+            # Readable by this server alone from its first byte, as accounts.Store keeps its own.
+            os.close(os.open(path, os.O_WRONLY | os.O_CREAT, 0o600))
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS t (hash TEXT PRIMARY KEY, en TEXT NOT NULL)")
         self.lock = threading.Lock()
         self.asking = threading.Lock()  # one request to the translator at a time
         self.wanted = collections.OrderedDict()
+        self.waiting = threading.BoundedSemaphore(MOST_WAITING)
+        self.until = None  # while a phone's texts are translated, when they must be done by (time.monotonic())
+        self.lookups = concurrent.futures.ThreadPoolExecutor(1)  # the translator's name, looked up off the caller's thread
+        self.lookup = None  # the one lookup outstanding: while it hangs, the next request waits on it rather than queue more
+        # Which kept translations a phone asked for (now()), oldest first: only these go past KEPT_ASKED. With the characters
+        # of each one's English, counted as Python counts them: SQLite's length() stops at a NUL.
+        self.db.execute("CREATE TABLE IF NOT EXISTS asked (hash TEXT PRIMARY KEY, chars INTEGER NOT NULL)")
 
     @staticmethod
     def key_of(text):
         # "6:": line letters kept even when attached to Hebrew words.
         return hashlib.sha256(("6:" + text).encode("utf-8")).hexdigest()
 
-    def english(self, text):
-        """The kept English, or None, after which it's translated in the background (work())."""
+    def english(self, text, wanted=True):
+        """The kept English, or None, after which it's translated in the background (work()) when wanted: the alerts' own
+        texts, which then are theirs, never sent out for phones' (trim())."""
         if not text or not re.search("[֐-׿]", text):
             return text
         h = self.key_of(text)
         with self.lock:
-            row = self.db.execute("SELECT en FROM t WHERE hash = ?", (h,)).fetchone()
+            row = self.db.execute("SELECT en, EXISTS (SELECT 1 FROM asked WHERE asked.hash = t.hash) FROM t WHERE hash = ?",
+                                  (h,)).fetchone()
             if row:
+                if wanted and row[1]:
+                    self.db.execute("DELETE FROM asked WHERE hash = ?", (h,))
+                    self.db.commit()
                 return row[0]
-            self.wanted[h] = text
+            if wanted:
+                self.wanted[h] = text
         return None
 
     def post(self, texts):
         body = json.dumps({"q": texts, "source": "he", "target": "en", "format": "text", "api_key": self.key}).encode()
-        request = urllib.request.Request(self.url + "/translate", body, {"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=120) as r:
-            return json.load(r)["translatedText"]
+        # All of it by the deadline (a phone's, else ANSWER_BY on): the name is looked up on a thread of its own and waited
+        # for no longer, and the connection is cut then, however slowly it connects or answers.
+        until = self.until if self.until is not None else time.monotonic() + ANSWER_BY
+        part = urllib.parse.urlsplit(self.url + "/translate")
+        port = part.port or (443 if part.scheme == "https" else 80)
+        held = []  # the sockets themselves, the plain one and its TLS one, for cut()
+
+        def cut():
+            try:
+                held[-1].shutdown(socket.SHUT_RDWR)
+            except (IndexError, OSError):
+                pass
+        timer = threading.Timer(max(0, until - time.monotonic()), cut)
+        timer.daemon = True
+        timer.start()
+        try:
+            if self.lookup is None or self.lookup.done():
+                self.lookup = self.lookups.submit(socket.getaddrinfo, part.hostname, port, 0, socket.SOCK_STREAM)
+            found = self.lookup.result(timeout=max(0, until - time.monotonic()))
+            for n, (family, kind, proto, _, address) in enumerate(found):  # each address in turn, as urlopen did
+                sock = socket.socket(family, kind, proto)
+                held.append(sock)
+                sock.settimeout(max(0.01, until - time.monotonic()))
+                try:
+                    sock.connect(address)
+                    break
+                except OSError:
+                    if n == len(found) - 1:
+                        raise
+            if part.scheme == "https":
+                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=part.hostname, do_handshake_on_connect=False)
+                held.append(sock)
+                sock.do_handshake()
+            conn = http.client.HTTPConnection(part.hostname, port)
+            conn.sock = sock
+            conn.request("POST", part.path + ("?" + part.query if part.query else ""), body,
+                         {"Content-Type": "application/json", "Host": part.netloc})
+            r = conn.getresponse()
+            raw = r.read()
+            if time.monotonic() >= until:
+                raise TimeoutError()
+            if r.status != 200:
+                raise OSError("the translator answered %d" % r.status)
+            return json.loads(raw)["translatedText"]
+        except (OSError, http.client.HTTPException, ValueError, KeyError) as e:
+            if time.monotonic() >= until:
+                raise TimeoutError("the translator's answer didn't come by its deadline") from e
+            raise e if isinstance(e, OSError) else OSError("the translator's answer: %r" % e) from e
+        finally:
+            timer.cancel()
+            for sock in held:
+                sock.close()
 
     def translate(self, text):
         lines = text.split("\n")
@@ -386,21 +466,67 @@ class Translations:
             return out
         return "\n".join(kept(line) for line in lines)
 
-    def now(self, texts):
+    def now(self, texts, by=None):
         """Each text in English at once, for a phone reading a notice from another source (/live/v1/translate):
-        kept ones from the store, the rest translated and kept. Raises when the translator fails."""
-        out = []
-        for text in texts:
-            en = self.english(text)
-            if en is None:
-                with self.asking:
-                    en = self.translate(text)
-                with self.lock:
-                    self.db.execute("INSERT OR REPLACE INTO t VALUES (?, ?)", (self.key_of(text), en))
-                    self.db.commit()
-                    self.wanted.pop(self.key_of(text), None)
-            out.append(en)
+        kept ones from the store without waiting, the rest translated and kept. Raises Busy when the translator stays
+        taken past WAIT_FOR_TRANSLATOR, or MOST_WAITING requests wait for it already, or `by` (time.monotonic()) comes
+        before the last text is in (those done are kept); raises when the translator fails."""
+        out = [self.english(text, False) for text in texts]
+        if None not in out:
+            return out
+        wait = WAIT_FOR_TRANSLATOR if by is None else max(0, min(WAIT_FOR_TRANSLATOR, by - time.monotonic()))
+        if not self.waiting.acquire(blocking=False):
+            raise Busy()
+        try:
+            taken = self.asking.acquire(timeout=wait)
+        finally:
+            self.waiting.release()
+        if not taken:
+            raise Busy()
+        try:
+            self.until = by
+            for i, text in enumerate(texts):
+                if out[i] is None:
+                    out[i] = self.english(text, False)  # kept meanwhile, or earlier in this request
+                if out[i] is None:
+                    try:
+                        if by is not None and time.monotonic() >= by:
+                            raise TimeoutError()
+                        out[i] = self.translate(text)
+                    except OSError:
+                        if by is not None and time.monotonic() >= by:
+                            raise Busy()
+                        raise
+                    h = self.key_of(text)
+                    with self.lock:
+                        # Kept meanwhile (the alerts' own, or another phone's): that one stays, and stays whose it was.
+                        kept = self.db.execute("SELECT en FROM t WHERE hash = ?", (h,)).fetchone()
+                        if kept:
+                            out[i] = kept[0]
+                        elif len(out[i]) <= KEPT_ASKED[1]:  # longer than all phones' English may be: answered, not kept
+                            self.db.execute("INSERT INTO t VALUES (?, ?)", (h, out[i]))
+                            self.db.execute("INSERT OR IGNORE INTO asked VALUES (?, ?)", (h, len(out[i])))
+                            self.trim()
+                            self.db.commit()
+                        self.wanted.pop(h, None)
+        finally:
+            self.until = None
+            self.asking.release()
         return out
+
+    def trim(self):
+        """The oldest of the phones' own translations out until at most KEPT_ASKED of them are kept, and of their English
+        (rows, characters): only those, so the alerts' own and all kept before this bound stay. Under self.lock, as every
+        write to the store is."""
+        rows, size = self.db.execute("SELECT COUNT(*), COALESCE(SUM(chars), 0) FROM asked").fetchone()
+        gone = []
+        for h, length in self.db.execute("SELECT hash, chars FROM asked ORDER BY rowid"):
+            if rows <= KEPT_ASKED[0] and size <= KEPT_ASKED[1]:
+                break
+            gone.append((h,))
+            rows, size = rows - 1, size - length
+        self.db.executemany("DELETE FROM t WHERE hash = ?", gone)
+        self.db.executemany("DELETE FROM asked WHERE hash = ?", gone)
 
     def work(self, most=20):
         """Translates up to `most` waiting texts; how many of them have their English now."""
@@ -412,6 +538,8 @@ class Translations:
             # in English before it was kept is made again with it.
             with self.lock:
                 if self.db.execute("SELECT 1 FROM t WHERE hash = ?", (h,)).fetchone():
+                    self.db.execute("DELETE FROM asked WHERE hash = ?", (h,))  # the alerts' now, as below
+                    self.db.commit()
                     self.wanted.pop(h, None)
                     done += 1
                     continue
@@ -425,7 +553,9 @@ class Translations:
                     self.wanted.pop(h, None)
                 continue
             with self.lock:
+                # The alerts' own, whatever a phone did meanwhile: written by them, never a phone's to send out.
                 self.db.execute("INSERT OR REPLACE INTO t VALUES (?, ?)", (h, en))
+                self.db.execute("DELETE FROM asked WHERE hash = ?", (h,))
                 self.db.commit()
                 self.wanted.pop(h, None)
             done += 1

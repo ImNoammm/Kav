@@ -26,6 +26,11 @@ object T {
 
     fun ltr(s: String): String = if (rtl) "\u2066" + s + "\u2069" else s
 
+    // Someone else's text (an extension's, a publisher's name) kept to itself inside Kav's words, so it can't reorder
+    // them and they can't reorder it: right to left when it has Hebrew in it, so "Wi-Fi זמין" keeps Wi-Fi first for a
+    // Hebrew reader; otherwise in the direction of its first letter, so "2 rides" and "°C" keep their order.
+    fun iso(s: String): String = (if (s.any { it in '\u0590'..'\u05FF' }) "\u2067" else "\u2068") + s + "\u2069"
+
     // A count and what it counts, singular for one: count(3, "1 stop", "תחנה אחת", "stops", "תחנות") is "3 stops".
     fun count(n: Long, one: String, oneHe: String, many: String, manyHe: String): String =
         if (n == 1L) invoke(one, oneHe) else invoke("$n $many", "$n $manyHe")

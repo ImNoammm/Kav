@@ -47,6 +47,9 @@ internal val liquidTint: Color get() {
     return Color(over(K.surface.red, K.bg.red), over(K.surface.green, K.bg.green), over(K.surface.blue, K.bg.blue), a)
 }
 
+// How much of the cards' shade covers a live map under a pane: text on it stays easy to read.
+internal const val LIVE_SHADE = .84f
+
 class LiquidBackdrop internal constructor(internal val layer: GraphicsLayer) {
     internal var origin by mutableStateOf(Offset.Zero)
 }
@@ -154,10 +157,20 @@ internal fun Modifier.liquidPane(backdrop: LiquidBackdrop, radius: Dp, glass: ((
             onDrawBehind {
                 val a = glass?.invoke()?.coerceIn(0f, 1f) ?: 1f
                 if (a <= 0f) { drawRect(K.surface); return@onDrawBehind }
+                // Over a map on its own surface the pane shows the live map itself through the cards' shade, left that
+                // see-through: any copy of a moving map is behind it, and through a blur it looked stepped and late.
+                if (MAP_ON_SURFACE && MapStills.over(at, size)) { drawRect(K.surface, alpha = 1f - (1f - LIVE_SHADE) * a); return@onDrawBehind }
                 val away = at - backdrop.origin
                 pane.record(size = padded) {
-                    drawRect(K.bg)
-                    scale(s, s, pivot = Offset.Zero) { translate(pad - away.x, pad - away.y) { drawLayer(backdrop.layer) } }
+                    scale(s, s, pivot = Offset.Zero) {
+                        translate(pad - away.x, pad - away.y) {
+                            drawLayer(backdrop.layer)
+                            // A map on its own surface is a hole in the layer: its still goes in it.
+                            with(MapStills) { drawUnder(backdrop.origin) }
+                        }
+                    }
+                    // The page's ground under all of it, wherever nothing was drawn.
+                    drawRect(K.bg, blendMode = androidx.compose.ui.graphics.BlendMode.DstOver)
                 }
                 translate(-pad, -pad) { scale(1 / s, 1 / s, pivot = Offset.Zero) { drawLayer(pane) } }
                 drawRect(liquidTint)

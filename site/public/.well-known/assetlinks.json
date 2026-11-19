@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "uk.noammm.kav",
+      "sha256_cert_fingerprints": [
+        "9D:18:3D:43:86:58:40:59:F5:33:76:98:7C:E0:A5:DE:49:60:CD:7A:9B:F4:49:5E:2C:F0:E1:20:F0:58:0F:44"
+      ]
+    }
+  }
+]

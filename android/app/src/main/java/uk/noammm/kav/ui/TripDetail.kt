@@ -115,6 +115,8 @@ fun TripDetailScreen(
     onEnd: () -> Unit = {},
     onNavigating: (Boolean) -> Unit = {},
     onHome: () -> Unit = onBack,
+    // The time a search leaving at a time was for, when opened from its list: no boarding time before its minute.
+    asked: Long = 0,
 ) {
     val r = rememberFresher(trip, resolved)
     PlannedPlatforms(trip, r)
@@ -141,12 +143,12 @@ fun TripDetailScreen(
         kotlinx.coroutines.delay(1_000)
         val rides = trip.legs.filter { it.kind == Transit.LegKind.RIDE }
         val stops = rides.flatMap { listOf(it.fromStop, it.toStop) } + rides.flatMap { it.stops }
-        BoardsAhead.stops(ctx, stops.mapNotNull { r.stop(it)?.code?.toIntOrNull() }, 16)
+        BoardsAhead.stops(ctx, stops.mapNotNull { r.stop(it)?.ministryCode() }, 16)
     }
     // The timetable route with this ride's number that leaves its boarding stop, matched by the stop's public code.
     val openLine: (Transit.Leg, Transit.Resolved) -> Unit = { ride, res ->
         scope.launch {
-            val code = res.stop(ride.fromStop)?.code?.toIntOrNull() ?: return@launch
+            val code = res.stop(ride.fromStop)?.ministryCode() ?: return@launch
             val number = ride.shortName.ifBlank { res.line(ride.lineId)?.number.orEmpty() }
             val net = model.net ?: withContext(Dispatchers.Default) { uk.noammm.kav.loadNet(ctx) }.also { model.net = it }
             val found = withContext(Dispatchers.Default) {
@@ -166,12 +168,14 @@ fun TripDetailScreen(
     Box(Modifier.fillMaxSize()) {
     val plan: @Composable () -> Unit = {
         TripDetailBody(trip, r, fromLabel, toLabel, onBack = ::leavePlan,
+            // Extensions' parts at the end of the page (ExtSlots.kt), only those the rider switched on.
+            extra = { TripSlots(model, trip, r) },
             me = model.here?.takeIf { model.hereFresh }, heading = model.heading,
             onMapShown = { model.tripMapShown = it },
             onTrack = { leg, stopId -> tracking = leg to stopId },
             onStart = { navigating = true; planFromNavigation = false; onStart() },
             onReport = { model.report = it },
-            onShare = { sharingOpen = true })
+            onShare = { sharingOpen = true }, asked = asked)
     }
     androidx.compose.animation.AnimatedContent(
         targetState = Triple(tracking != null, navigating || planFromNavigation, tracking),
@@ -182,6 +186,7 @@ fun TripDetailScreen(
         },
         label = "trip",
     ) { (isTracking, underWay, target) ->
+        VeilMaps()
         when {
             isTracking && target != null ->
                 LiveLocationScreen(target.first, target.second, r) { tracking = null }
@@ -228,6 +233,8 @@ private fun TripDetailBody(
     onStart: () -> Unit,
     onReport: (ReportFor) -> Unit,
     onShare: () -> Unit,
+    asked: Long = 0,
+    extra: @Composable () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -253,9 +260,13 @@ private fun TripDetailBody(
             RouteMap(trip, r, modifier = Modifier.padding(horizontal = K.gap3, vertical = K.gap2),
                 me = me, heading = heading, onShown = onMapShown)
             Summary(trip, r)
+            // A route an extension's planner gave says so (PLAN.md 7.1), in Kav's own colours.
+            remember(trip.provider) { plannerName(trip.provider) }?.let { ByLabel(it, Modifier.padding(horizontal = K.gap4, vertical = K.gap2)) }
             Spacer(Modifier.height(K.gap3))
-            Timeline(trip, r, fromLabel, toLabel, onTrack, onReport)
-            Spacer(Modifier.height(K.gap8))
+            Timeline(trip, r, fromLabel, toLabel, onTrack, onReport, asked)
+            Spacer(Modifier.height(K.gap4))
+            extra()
+            Spacer(Modifier.height(K.gap4))
         }
     }
 }
@@ -266,10 +277,11 @@ private fun Summary(trip: Transit.Itinerary, r: Transit.Resolved) {
         Modifier.fillMaxWidth().padding(horizontal = K.gap4)
             .glassSurface(K.rCard).padding(K.gap4),
     ) {
-        Text(dur((trip.arr - trip.dep).toInt()), style = K.type.largeTitle.tabular)
+        val (length, arrives) = summaryTimes(trip, r)
+        Text(length, style = K.type.largeTitle.tabular)
         // When it arrives, what it costs and the rest of what's true of it, in one line: facts, not buttons.
         val facts = ArrayList<String>()
-        facts.add(T("Arrives ${hm.format(Date(trip.arr * 1000))}", "הגעה ב-${hm.format(Date(trip.arr * 1000))}"))
+        facts.add(arrives)
         val amount = Shown.fareProfile.price(trip)
         if (amount >= 0) facts.add("%s%.2f".format(Locale.US, trip.currency, amount / 100.0))
         if (Shown.accessibility && trip.accessible) facts.add(T("Wheelchair accessible", "נגיש לכיסא גלגלים"))
@@ -281,10 +293,10 @@ private fun Summary(trip: Transit.Itinerary, r: Transit.Resolved) {
     }
 }
 
-// What a route is best at, as small ovals on its card and its page: a late train's in red.
+// What a route is best at, as small ovals on its card and its page: a late train's in red, and a route likely missed.
 @Composable
 internal fun RouteTags(trip: Transit.Itinerary, modifier: Modifier = Modifier) {
-    val tags = trip.tags.mapNotNull { tag -> KavPlan.tagWord(tag)?.let { it to KavPlan.isLate(tag) } }
+    val tags = trip.tags.mapNotNull { tag -> KavPlan.tagWord(tag)?.let { it to (KavPlan.isLate(tag) || tag == KavPlan.LIKELY_MISSED) } }
     // Tags that come with a later answer open in place, and go the same way.
     var tagged by remember { mutableStateOf(tags) }
     if (tags.isNotEmpty()) tagged = tags
@@ -341,6 +353,7 @@ private fun Timeline(
     toLabel: String,
     onTrack: (Transit.Leg, Int) -> Unit,
     onReport: (ReportFor) -> Unit,
+    asked: Long = 0,
 ) {
     val shaped = trip.legs.filter { it.shape.size >= 2 && it.kind != Transit.LegKind.WALK }
     val fares = remember(trip) { rideFares(trip) }
@@ -369,7 +382,8 @@ private fun Timeline(
     ) {
         val start = rememberTripEnd(fromLabel, trip.legs.firstOrNull()?.shape?.firstOrNull())
         Rail(Mark.START, null, walk, node = endNode(start)) {
-            Endpoint(fromLabel, hm.format(Date(trip.dep * 1000)), T("Leave at", "יציאה בשעה"), start)
+            val (time, label) = leaveEndpoint(trip, System.currentTimeMillis() / 1000)
+            Endpoint(fromLabel, time, label, start)
         }
         var boarded = -1
         trip.legs.forEachIndexed { i, l ->
@@ -422,7 +436,7 @@ private fun Timeline(
                                 streetView = (board?.point ?: l.shape.firstOrNull())?.let { lookAt(it, l, r) },
                             )
                             Spacer(Modifier.height(K.gap2))
-                            BoardCard(l, wait, r, onTrack, onReport) { RideSummary(l, r, fares[i]) }
+                            BoardCard(l, wait, r, onTrack, onReport, asked) { RideSummary(l, r, fares[i]) }
                         }
                     }
                     val alight = r.stop(l.toStop)
@@ -448,7 +462,7 @@ private fun Timeline(
                                 ChangeBlock(it)
                             }
                             Spacer(Modifier.height(K.gap2))
-                            BoardCard(next, nextWait, r, onTrack, onReport) { RideSummary(next, r, fares[n]) }
+                            BoardCard(next, nextWait, r, onTrack, onReport, asked) { RideSummary(next, r, fares[n]) }
                         }
                         boarded = n
                     } else {
@@ -471,14 +485,12 @@ private fun Timeline(
         }
         val end = rememberTripEnd(toLabel, trip.legs.lastOrNull()?.shape?.lastOrNull())
         Rail(Mark.END, walk, null, node = endNode(end)) {
-            // A trip ending on a train arrives when the train does, as the railway expects it in.
-            val arrives = trip.legs.lastOrNull()?.takeIf { it.kind == Transit.LegKind.RIDE && r.isTrain(it) }?.let(r::alightAt) ?: trip.arr
-            Endpoint(toLabel, hm.format(Date(arrives * 1000)), T("Arrive", "הגעה"), end)
+            Endpoint(toLabel, hm.format(Date(tripEndAt(trip, r) * 1000)), T("Arrive", "הגעה"), end)
         }
     }
 }
 
-// Under a ride's line: how many stops and minutes it rides, its own fare (rideFares), and where paying for it was.
+// Under a ride's line: how many stops and minutes it rides, its own fare (rideFares), and paying for it with Rav-Pass.
 @Composable
 private fun RideSummary(
     l: Transit.Leg, r: Transit.Resolved, fare: Int?,
@@ -489,7 +501,7 @@ private fun RideSummary(
         if (l.options.size == 1) RideStops(l, r) { Step(rideLabel(l), price) }
         else if (price != null) Step(T("Fare", "מחיר"), price)
     }
-    Text(payRemovedNote(), style = K.type.caption, color = K.dim, modifier = Modifier.padding(bottom = K.gap2))
+    if (Shown.payments) Box(Modifier.padding(bottom = K.gap2)) { RidePay(l, r) }
 }
 
 // Each ride's own fare, by leg index. A plan gives every ride of a stretch one ticket covers the whole ticket's price
@@ -615,8 +627,30 @@ private fun Rail(
     }
 }
 
+// A trip ending on a train, or on the walk from one, arrives when the train does, as the railway expects it in, and
+// the walk after it as long as planned: else a late train's trip arrived before its train. Past a stop on the way,
+// the plan.
+internal fun tripEndAt(trip: Transit.Itinerary, r: Transit.Resolved): Long {
+    val i = trip.legs.indexOfLast { it.kind == Transit.LegKind.RIDE }
+    val ride = trip.legs.getOrNull(i)?.takeIf(r::isTrain) ?: return trip.arr
+    if (trip.legs.drop(i + 1).any { it.kind != Transit.LegKind.WALK || it.visit != null }) return trip.arr
+    return trip.arr + (r.alightAt(ride) - ride.arr)
+}
+
+// The summary's length of the trip and when it arrives, by the same end as the trip's last row (tripEndAt).
+internal fun summaryTimes(trip: Transit.Itinerary, r: Transit.Resolved): Pair<String, String> {
+    val end = tripEndAt(trip, r)
+    return dur((end - trip.dep).toInt()) to T("Arrives ${hm.format(Date(end * 1000))}", "הגעה ב-${hm.format(Date(end * 1000))}")
+}
+
 // end: the place's tile, as a stop has its photo: a favourite's icon, a place's photo from Google Maps; none for where
 // you are or a pinned spot.
+// The trip's leave time and what it is, as its card says it: "Now" while leaving now still makes the first ride
+// (leavesNow()), else the time to leave at.
+internal fun leaveEndpoint(trip: Transit.Itinerary, now: Long): Pair<String, String> =
+    if (leavesNow(trip, now)) T("Now", "עכשיו") to T("Leave", "יציאה")
+    else hm.format(Date(trip.dep * 1000)) to T("Leave at", "יציאה בשעה")
+
 @Composable
 private fun Endpoint(label: String, time: String, when_: String, end: TripEnd? = null) {
     // The name, with nothing under it, centred on the tile (two lines of it as one block), and the time's first line
@@ -706,13 +740,14 @@ private fun BoardCard(
     r: Transit.Resolved,
     onTrack: (Transit.Leg, Int) -> Unit,
     onReport: (ReportFor) -> Unit,
+    asked: Long = 0,
     summary: @Composable ColumnScope.() -> Unit = {},
 ) {
     val now = System.currentTimeMillis() / 1000
     val all = Transit.boardingOptions(ride, wait)
     // Each line's next departures, which its row shows, and by which the lines are ordered (boardingOrder).
     val depsOf = all.map { (option, boarding) ->
-        androidx.compose.runtime.key(option.lineId) { rememberLineDepartures(option, boarding, r, now).filter { it.timeUtc >= now - 60 } }
+        androidx.compose.runtime.key(option.lineId) { boardingShown(rememberLineDepartures(option, boarding, r, now), ride, now, asked) }
     }
     val options = boardingOrder(depsOf, null, ARRIVALS_SHOWN).map { all[it] to depsOf[it] }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.fill).padding(horizontal = K.gap3, vertical = K.gap1)) {
@@ -725,6 +760,11 @@ private fun BoardCard(
         summary()
     }
 }
+
+// A line's departures as its row shows them: none gone over a minute ago, and leaving at a time (asked), none before its
+// minute but the ride's own bus, as the route's card lists them (Transit.cardDepartures()).
+internal fun boardingShown(deps: List<Transit.Departure>, ride: Transit.Leg, now: Long, asked: Long): List<Transit.Departure> =
+    deps.filter { it.timeUtc >= now - 60 && (it.tripId == ride.tripId || it.timeUtc >= asked - 60) }
 
 // A leg's lines in the order they're shown: each by its next departure, live where known, again as the times come, the
 // soonest first and one with none left last. most: how many a display shows; the picked one always shows. The line
@@ -867,7 +907,8 @@ private fun BoardOption(
                     ride.copy(tripId = a.tripId, shortName = number ?: ride.shortName)
                 } ?: ride, ride.fromStop)
             }
-            LocalLineOpener.current?.takeIf { !uk.noammm.kav.data.RailTrip.owns(ride.lineId) }?.let { open ->
+            // The ministry timetable's line: not for an extension's ride, whose line isn't in it.
+            LocalLineOpener.current?.takeIf { !uk.noammm.kav.data.RailTrip.owns(ride.lineId) && !uk.noammm.kav.ext.RefTable.isHandle(ride.lineId) }?.let { open ->
                 CardButton(T("All departures", "כל היציאות")) { open(ride, r) }
             }
         }

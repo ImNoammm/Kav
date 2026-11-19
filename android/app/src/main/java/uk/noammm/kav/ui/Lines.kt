@@ -3,6 +3,7 @@ package uk.noammm.kav.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +100,7 @@ private fun LinesBody(model: KavModel, net: Net) {
         transitionSpec = { if (targetState.first >= 0 || targetState.second != null) forward() else backward() },
         label = "line",
     ) { (route, open, source) ->
+        VeilMaps()
         when {
             open != null -> ScheduleLineDetail(model, net, open) { model.backFromLine() }
             route >= 0 -> TimetableLineDetail(model, net, route) { model.backFromLine() }
@@ -490,7 +493,8 @@ private fun threeDigitPlate(
 
 @Composable
 private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, onBoard: () -> Unit) {
-    val now = nowSec()
+    // Counted by the clock now, every second, as the stop's board and the trip page are.
+    val now = rememberClockSec()
     val times = remember(routes, stop) {
         if (last) emptyList()
         else {
@@ -500,20 +504,22 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, onB
     }
     val train = routes.any { net.rType[it] == 2 }
     var all by remember(routes, stop) { mutableStateOf(false) }
+    // The stop board's own rows of the line, live where they are, so both give a bus the same time.
+    val (live, shownAt) = rememberStopLive(net, if (last) -1 else stop)
+    val next = remember(routes, stop, live, shownAt, last) {
+        if (last) emptyList()
+        else lineNext(net, stop, routes, shownAt, live, java.util.Calendar.getInstance(ISRAEL).get(java.util.Calendar.DAY_OF_WEEK) - 1)
+    }
     Column(
         Modifier.fillMaxWidth().padding(start = K.gap3 + 18.dp + K.gap3, end = K.gap3, bottom = K.gap3),
         verticalArrangement = Arrangement.spacedBy(K.gap2),
     ) {
-        val next = times.filter { it >= now }.take(3)
-        LiveText(
-            when {
-                last -> T("This line ends here.", "הקו מסתיים כאן.")
-                next.isEmpty() && train -> T("No more trains on this line today.", "אין עוד רכבות בקו הזה היום.")
-                next.isEmpty() -> T("No more buses on this line today.", "אין עוד יציאות בקו הזה היום.")
-                else -> T("Next: ", "הבאים: ") + next.joinToString(" · ") { relative(it, now) ?: hhmm(it) }
-            },
-            style = K.type.body.tabular,
-        )
+        when {
+            last -> LiveText(T("This line ends here.", "הקו מסתיים כאן."), style = K.type.body.tabular)
+            next.isEmpty() && train -> LiveText(T("No more trains on this line today.", "אין עוד רכבות בקו הזה היום."), style = K.type.body.tabular)
+            next.isEmpty() -> LiveText(T("No more buses on this line today.", "אין עוד יציאות בקו הזה היום."), style = K.type.body.tabular)
+            else -> NextTimes(next, shownAt, now)
+        }
         androidx.compose.animation.AnimatedVisibility(
             all,
             enter = androidx.compose.animation.expandVertically(spring(dampingRatio = 1f, stiffness = 500f), expandFrom = Alignment.Top) +
@@ -533,12 +539,65 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, onB
     }
 }
 
-// shape: the line's road from Kav's server.
+// A stop's live times (stopLive) and the clock they were asked at, every 30 s while shown, as its board asks for them.
+// stop -1 asks nothing.
+@Composable
+private fun rememberStopLive(net: Net, stop: Int): Pair<List<LiveAt>, Int> {
+    var t0 by remember(stop) { mutableIntStateOf(nowSec()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(stop, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                t0 = nowSec()
+                delay(30_000)
+            }
+        }
+    }
+    var live by remember(stop, KavLive.origin) { mutableStateOf<List<LiveAt>>(emptyList()) }
+    var shownAt by remember(stop) { mutableIntStateOf(t0) }
+    LaunchedEffect(stop, t0, KavLive.origin) {
+        if (stop >= 0) stopLive(net, stop)?.let { live = it.first }
+        shownAt = t0
+    }
+    return live to shownAt
+}
+
+// "Next:" and a line's next times at a stop, each with its mark as the stop's board has it: the live mark coloured as
+// sure as the time is, else the signal struck through, the time grey.
+@Composable
+private fun NextTimes(next: List<LineNext>, shownAt: Int, clock: Int) {
+    LiveText(
+        androidx.compose.ui.text.buildAnnotatedString {
+            append(T("Next: ", "הבאים: "))
+            next.forEachIndexed { i, n ->
+                if (i > 0) append(" · ")
+                appendInlineContent("mark$i", "·")
+                withStyle(androidx.compose.ui.text.SpanStyle(color = n.live?.let(::depColour) ?: K.scheduled)) {
+                    append(countdown(n.at, shownAt, clock) ?: hhmm(n.at))
+                }
+            }
+        },
+        inlineContent = next.indices.associate { i ->
+            "mark$i" to androidx.compose.foundation.text.InlineTextContent(
+                androidx.compose.ui.text.Placeholder(16.sp, 13.sp, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+            ) {
+                val size = with(LocalDensity.current) { 12.sp.toDp() }
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                    next[i].live?.let { DepMarkGlyph(it, size) } ?: LiveOffGlyph(K.scheduled, size)
+                }
+            }
+        },
+        style = K.type.body.tabular,
+    )
+}
+
+// shape: the line's road from Kav's server; routes: the server's routes that are this line, when it was asked.
 private class LineLive(
     val checked: Boolean,
     val failed: Boolean = false,
     val vehicles: List<Transit.Arrival> = emptyList(),
     val shape: List<Pair<Double, Double>> = emptyList(),
+    val routes: Set<Int> = emptySet(),
 )
 
 // The line's buses, every 20 s while the page is on screen. route: the week's route, asked by its number and name, and
@@ -633,7 +692,7 @@ private fun serverLineLive(number: String, name: String, last: String?, codes: L
     val exact = area.lines.filterValues { name.isNotBlank() && it.name == name }.keys
     val routes = exact.ifEmpty { area.lines.filterValues { last != null && it.to == last }.keys }
     val shape = exact.minOrNull()?.let { runCatching { KavLive.shape(it) }.getOrNull() }.orEmpty()
-    return LineLive(checked = true, vehicles = area.buses.filter { it.route in routes }.map { KavLive.busArrival(it) }, shape = shape)
+    return LineLive(checked = true, vehicles = area.buses.filter { it.route in routes }.map { KavLive.busArrival(it) }, shape = shape, routes = routes)
 }
 
 @Composable
@@ -737,7 +796,7 @@ private fun resampled(path: List<Pair<Double, Double>>, n: Int): List<Pair<Doubl
 // status: the line's live location alone, under its map; else its next departures and how busy it is, above it.
 private fun LineLiveNote(
     fresh: LineLive, next: NextStart?, busy: Pair<String, Pair<uk.noammm.kav.data.GoogleCrowd.Crowd, Long?>>? = null,
-    status: Boolean = false,
+    status: Boolean = false, late: String? = null,
 ) {
     // Never a "Checking...": until the first answer the note keeps the last it had (the week's line handing over to the
     // provider's), else holds its place unseen.
@@ -784,8 +843,18 @@ private fun LineLiveNote(
                 }
             }
         }
+        // How late it usually runs at this time of the week (lateLine()), once the server has said.
+        var shownLate by remember { mutableStateOf(late) }
+        if (late != null) shownLate = late
+        if (!status) AnimatedVisibility(
+            late != null,
+            enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+            exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+        ) {
+            shownLate?.let { Text(it, style = K.type.subhead, color = K.textSecondary) }
+        }
         // At the rider's stop: when the line's next bus leaves it, and how busy it usually is then (Google's level). Not
-        // "From", which the line's next departures already start with.
+        // "From", which the line's next departures already start with. Kav's own level is the line's at this hour: no stop.
         var shownBusy by remember { mutableStateOf(busy) }
         if (busy != null) shownBusy = busy
         if (!status) AnimatedVisibility(
@@ -796,13 +865,78 @@ private fun LineLiveNote(
             shownBusy?.let { (stop, crowd) ->
                 Column(Modifier.padding(top = 2.dp)) {
                     val at = crowd.second?.let { clockFormat().format(java.util.Date(it * 1000)) }
-                    Text(if (at != null) T("How busy at $stop at $at", "עומס ב-$stop ב-$at") else T("How busy at $stop", "עומס ב-$stop"), style = K.type.subhead)
+                    Text(when {
+                        stop.isEmpty() -> T("How busy now", "עומס עכשיו")
+                        at != null -> T("How busy at $stop at $at", "עומס ב-$stop ב-$at")
+                        else -> T("How busy at $stop", "עומס ב-$stop")
+                    }, style = K.type.subhead)
                     CrowdLevel(crowd.first)
                 }
             }
         }
     }
 }
+
+// The band of the week a line's lateness is told for now, as the server bands its trips by when they set out (live.py
+// lateness_band()): Sunday to Thursday, morning 6 to 9, midday 9 to 14, evening 14 to 19, else night; Friday; Saturday.
+// Before 4 in the morning, the day before's late trips.
+internal fun lateBand(at: java.util.Calendar): String {
+    val c = at.clone() as java.util.Calendar
+    val hour = c.get(java.util.Calendar.HOUR_OF_DAY)
+    if (hour < 4) c.add(java.util.Calendar.DAY_OF_MONTH, -1)
+    return when (c.get(java.util.Calendar.DAY_OF_WEEK)) {
+        java.util.Calendar.FRIDAY -> "friday"
+        java.util.Calendar.SATURDAY -> "saturday"
+        else -> when (hour) { in 6..8 -> "morning"; in 9..13 -> "midday"; in 14..18 -> "evening"; else -> "night" }
+    }
+}
+
+// How late the line usually runs in the band, as one plain line: its median lateness at its stops, how many of ten
+// passings were on time, and the days it's from. Its route with the most runs in the band, else over the whole week;
+// null when the server has no figures for it (too few runs), or they were made more than LATE_STALE_DAYS days
+// before today (the server gives none older either: live.py LATENESS_STALE).
+internal fun lateLine(late: KavLive.Lateness, routes: Set<Int>, band: String, today: java.time.LocalDate): String? {
+    val made = runCatching { java.time.LocalDate.parse(late.made) }.getOrNull() ?: return null
+    val first = runCatching { java.time.LocalDate.parse(late.from) }.getOrNull() ?: return null
+    val last = runCatching { java.time.LocalDate.parse(late.to) }.getOrNull() ?: return null
+    if (made.isBefore(today.minusDays(LATE_STALE_DAYS))) return null
+    fun most(b: String) = routes.mapNotNull { late.routes[it]?.get(b) }.maxByOrNull { it.runs }
+    val inBand = most(band)
+    val f = inBand ?: most("all") ?: return null
+    val phrase = if (inBand == null) "" else when (band) {
+        "morning" -> T(" in the morning rush", " בשעת העומס בבוקר")
+        "midday" -> T(" at midday", " בצהריים")
+        "evening" -> T(" in the evening rush", " בשעת העומס אחר הצהריים")
+        "night" -> T(" in the evening and at night", " בערב ובלילה")
+        "friday" -> T(" on Fridays", " בימי שישי")
+        "saturday" -> T(" on Saturdays", " בשבת")
+        else -> ""
+    }
+    val m = Math.round(f.late / 60.0).toInt()
+    val lead = when {
+        m > 0 -> T("Usually $m min late", "בדרך כלל מאחר ב-$m דק׳")
+        m < 0 -> T("Usually ${-m} min early", "בדרך כלל מקדים ב-${-m} דק׳")
+        else -> T("Usually on time", "בדרך כלל בזמן")
+    }
+    val on = Math.round(f.onTime / 100.0).toInt()
+    // The days it's from: all of them from the first to the last, or how many of them when some are missing.
+    val span = java.time.temporal.ChronoUnit.DAYS.between(first, last).toInt() + 1
+    val weeks = Math.round(span / 7.0).toInt()
+    val all = late.days >= span
+    val n = late.days
+    val period = when {
+        span < 7 && all -> T("from the last $span days", "מ-$span הימים האחרונים")
+        span < 7 -> T("from $n days of the last $span days", "מ-$n ימים ב-$span הימים האחרונים")
+        weeks == 1 && all -> T("from the last week", "מהשבוע האחרון")
+        weeks == 1 -> T("from $n days of the last week", "מ-$n ימים בשבוע האחרון")
+        all -> T("from the last $weeks weeks", "מ-$weeks השבועות האחרונים")
+        else -> T("from $n days of the last $weeks weeks", "מ-$n ימים ב-$weeks השבועות האחרונים")
+    }
+    return listOf(lead + phrase, T("on time $on of 10", "בזמן $on מתוך 10"), period).joinToString(" · ")
+}
+
+// Figures made more than this many days before today aren't shown (live.py LATENESS_STALE).
+private const val LATE_STALE_DAYS = 3L
 
 // A line's next departures from its first stop: the stop, and up to three times, in epoch seconds.
 internal class NextStart(val from: String, val times: List<Long>)
@@ -1254,6 +1388,13 @@ private fun LinePage(
     val liveStops = remember(rows) { rows.orEmpty().map { it.week } }
     val byRoute = liveRoute >= 0 && liveStops.isNotEmpty() && liveStops.all { it >= 0 }
     val live = rememberLive(net, if (byRoute) liveRoute else -1, if (byRoute) liveStops else emptyList(), line, way)
+    // How late the way shown usually runs now, once Kav's server has named its routes; asked once a way.
+    var late by remember(route, way) { mutableStateOf<String?>(null) }
+    LaunchedEffect(way, live.routes) {
+        if (live.routes.isEmpty()) return@LaunchedEffect
+        late = withContext(Dispatchers.IO) { KavLive.lateness(live.routes) }
+            ?.let { lateLine(it, live.routes, lateBand(java.util.Calendar.getInstance(ISRAEL)), java.time.LocalDate.now(ISRAEL.toZoneId())) }
+    }
     // The line's other ways' live locations too, as often while the page shows, so a switch to one shows its own at once.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(all, way, lifecycle) {
@@ -1317,7 +1458,10 @@ private fun LinePage(
             }
         }
     }
-    val busy = myStop?.let { s -> uk.noammm.kav.data.GoogleCrowd.nextOf("${s.code}", number, System.currentTimeMillis() / 1000)
+    // Or, from Kav's server, how this hour compares with the way's own hours (KavCrowd), by the routes the server named.
+    if (uk.noammm.kav.data.KavCrowd.enabled) LaunchedEffect(live.routes) { uk.noammm.kav.data.KavCrowd.refresh(live.routes) }
+    val busy = live.routes.firstNotNullOfOrNull { uk.noammm.kav.data.KavCrowd.at(it, System.currentTimeMillis() / 1000) }?.let { "" to (it to null) }
+        ?: myStop?.let { s -> uk.noammm.kav.data.GoogleCrowd.nextOf("${s.code}", number, System.currentTimeMillis() / 1000)
         ?.takeIf { uk.noammm.kav.data.GoogleCrowd.displayed(it.first, (if (route >= 0) net.rType[route] else line?.type) == 2) != null }
         ?.let { s.name to it } }
 
@@ -1436,7 +1580,7 @@ private fun LinePage(
                     if (shown.isNotEmpty()) {
                         // The line's next departures and how busy it is lead, under its name; whether it's live goes under
                         // the map that shows it.
-                        LineLiveNote(live, next, busy)
+                        LineLiveNote(live, next, busy, late = late)
                         // A bus, train or light rail of the line reported, on the form's questions for its kind
                         // (ReportFor.train): its stops in order, the rider picking where they got on, and a train's number
                         // on the form where the rider knows it.
@@ -1644,7 +1788,7 @@ private fun PageStops(
                         label = "stopTimes",
                     ) { provided ->
                         if (provided && way != null && line != null) {
-                            ScheduleAtStop(line, way, i, last = i == rows.lastIndex, alight = i in way.alight, board = s.week.takeIf { it >= 0 }?.let { at ->
+                            ScheduleAtStop(net, s.week, line, way, i, last = i == rows.lastIndex, alight = i in way.alight, board = s.week.takeIf { it >= 0 }?.let { at ->
                                 { model.openStation(at) }
                             })
                         } else if (s.week >= 0) {
@@ -1704,8 +1848,10 @@ private fun scheduleNextStart(net: Net, line: Schedules.Line, way: Schedules.Way
 // A provider's line at one of its way's stops: its next times there and today's all, as the week's line page has them.
 // alight: riders only get off it there, so it has no times to give.
 @Composable
-private fun ScheduleAtStop(line: Schedules.Line, way: Schedules.Way, at: Int, last: Boolean, alight: Boolean, board: (() -> Unit)?) {
-    val now = nowSec()
+private fun ScheduleAtStop(
+    net: Net, stop: Int, line: Schedules.Line, way: Schedules.Way, at: Int, last: Boolean, alight: Boolean, board: (() -> Unit)?,
+) {
+    val now = rememberClockSec()
     var times by remember(way.id, at) { mutableStateOf(if (last || alight) emptyList() else StopTimes.get(way, at)) }
     var failed by remember(way.id, at) { mutableStateOf(false) }
     LaunchedEffect(way.id, at) {
@@ -1721,21 +1867,23 @@ private fun ScheduleAtStop(line: Schedules.Line, way: Schedules.Way, at: Int, la
     val train = line.type == 2
     var all by remember(way.id, at) { mutableStateOf(false) }
     val list = times.orEmpty()
+    // As the stop's board has the provider's departures (scheduleRows): each with the live time of its bus.
+    val (live, shownAt) = rememberStopLive(net, if (last || alight) -1 else stop)
+    val next = remember(list, live, shownAt) { providerNext(list, line.number, shownAt, live) }
     Column(
         Modifier.fillMaxWidth().padding(start = K.gap3 + 18.dp + K.gap3, end = K.gap3, bottom = K.gap3),
         verticalArrangement = Arrangement.spacedBy(K.gap2),
     ) {
-        val next = list.filter { it >= now }.take(3)
-        LiveText(
+        if (next.isNotEmpty()) NextTimes(next, shownAt, now)
+        else LiveText(
             when {
                 last -> T("This line ends here.", "הקו מסתיים כאן.")
                 alight -> T("Drop-off only. This line doesn't pick up riders here.", "הורדה בלבד. הקו לא אוסף כאן נוסעים.")
                 // Held blank, never "Checking...": the times fade in as they come.
                 times == null -> ""
                 failed -> unreachable(Schedules.source, T("Its times here didn't load.", "הזמנים כאן לא נטענו."))
-                next.isEmpty() && train -> T("No more trains on this line today.", "אין עוד רכבות בקו הזה היום.")
-                next.isEmpty() -> T("No more buses on this line today.", "אין עוד יציאות בקו הזה היום.")
-                else -> T("Next: ", "הבאים: ") + next.joinToString(" · ") { relative(it, now) ?: hhmm(it) }
+                train -> T("No more trains on this line today.", "אין עוד רכבות בקו הזה היום.")
+                else -> T("No more buses on this line today.", "אין עוד יציאות בקו הזה היום.")
             },
             style = K.type.body.tabular,
         )

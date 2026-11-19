@@ -1,0 +1,5 @@
+# Sources never listed on kavapp.link/community, however they arrive (the topic, submissions.txt or an issue), one per
+# line, in any form Kav accepts, with the reason after a #:
+#   github.com/owner/repo  # asked by its author to be unlisted, 2027-01-05
+# Unlisting doesn't stop anyone adding the source to Kav, by link or by hand (PLAN.md 9.6). For a source that is
+# dangerous, the security block list is the place (block-list.md).

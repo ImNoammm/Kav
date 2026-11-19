@@ -85,6 +85,8 @@ class Checks : JobService() {
             Prefs.loadSources(ctx)
             runCatching { GoogleRecipe.refresh(ctx) }.onFailure { Log.w("KavChecks", "vela", it) }
             runCatching { uk.noammm.kav.data.Timetable.refresh(ctx) }.onFailure { Log.w("KavChecks", "timetable", it) }
+            // Extension sources, their updates and the security block list, only once the rider added any (ExtApp.check).
+            if (java.io.File(ctx.filesDir, "ext").isDirectory) runCatching { uk.noammm.kav.ext.ExtApp.check(ctx) }.onFailure { Log.w("KavChecks", "extensions", it) }
             val auto = Prefs.autoUpdate(ctx)
             if (!auto && !Prefs.updatePrompts(ctx)) return
             runCatching {

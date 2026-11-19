@@ -4,6 +4,7 @@ package uk.noammm.kav.data
 class PlanRequest(
     val from: Pair<Double, Double>, val to: Pair<Double, Double>, val whenMs: Long, val timeType: Int,
     val routeTypes: List<Int>, val taxi: Boolean, val stopovers: List<Transit.Place> = emptyList(),
+    val settings: PlanSettings = PlanSettings.USUAL,
 )
 
 // Who plans trips. KavPlan.plan asks the one picked (plannerFor) and does the rest itself: the timetable check, the
@@ -14,17 +15,23 @@ interface TripPlanner {
 
 // Kav's server or the rider's own, at `at`: stops on the way go in its path, at most three, with how long to stay at each.
 // A server from before stops could be stayed at doesn't know a path with minutes in it (404): the parts are then planned
-// one by one and joined here, as for a planner that takes no stops.
+// one by one and joined here, as for a planner that takes no stops. One from before planner settings doesn't know a path
+// with them (404) either: it's asked again with the usual.
 class ServerPlanner(private val at: String) : TripPlanner {
     override fun plan(r: PlanRequest): KavPlan.Planned = try {
         KavPlan.parse(
             KavPlan.asked(KavPlan.path(r.from, r.to, r.whenMs, r.timeType, r.routeTypes, r.taxi, r.stopovers.map { it.lat to it.lon },
-                r.stopovers.map { it.stayMin }), at),
+                r.stopovers.map { it.stayMin }) + r.settings.path(), at),
             r.stopovers.map { it.name },
         )
     } catch (e: java.io.IOException) {
-        if (e.message != "Kav live HTTP 404" || r.stopovers.none { it.stayMin > 0 }) throw e
-        LegByLeg(this).plan(r)
+        if (e.message != "Kav live HTTP 404") throw e
+        if (r.settings != PlanSettings.USUAL) {
+            plan(PlanRequest(r.from, r.to, r.whenMs, r.timeType, r.routeTypes, r.taxi, r.stopovers))
+        } else {
+            if (r.stopovers.none { it.stayMin > 0 }) throw e
+            LegByLeg(this).plan(r)
+        }
     }
 }
 
@@ -54,7 +61,7 @@ class LegByLeg(private val inner: TripPlanner) : TripPlanner {
                 else -> (chains.minOf { it.last().arr } + stay) * 1000
             }
             val type = if (k == 0) r.timeType else if (backwards) Transit.TIME_ARRIVAL else Transit.TIME_DEPARTURE
-            val got = inner.plan(PlanRequest(a, b, whenMs, type, r.routeTypes, taxi = false))
+            val got = inner.plan(PlanRequest(a, b, whenMs, type, r.routeTypes, taxi = false, settings = r.settings))
             answers += got
             // Not a part cycled: it leaves at once, so it would take every part, and the rider's filter every route.
             val routes = got.plan.itineraries.filter {
@@ -86,6 +93,7 @@ class LegByLeg(private val inner: TripPlanner) : TripPlanner {
             dep = parts.first().dep, arr = parts.last().arr,
             fare = if (fares.all { it >= 0 }) fares.sum() else -1, currency = parts.first().currency,
             co2g = parts.map { it.co2g }.let { c -> if (c.all { it >= 0 }) c.sum() else -1 },
+            provider = parts.first().provider, policy = parts.first().policy,
         )
     }
 
@@ -107,8 +115,8 @@ class LegByLeg(private val inner: TripPlanner) : TripPlanner {
     }
 }
 
-// The planner at a server address (KavPlan.planner, plannerOf).
-fun plannerFor(at: String): TripPlanner = ServerPlanner(at)
+// The planner at a server address (KavPlan.planner, plannerOf), or an extension's at its address (Extensions.address).
+fun plannerFor(at: String): TripPlanner = uk.noammm.kav.ext.Extensions.plannerAt(at) ?: ServerPlanner(at)
 
 // The labels Kav's server gives its routes (server/live.py tag()), worked out on the phone for routes that come with
 // none: routes joined part by part. Warnings first, then what a route is best at; two at most.
@@ -118,7 +126,7 @@ internal object RouteTags {
     private const val LONG_WALK = 1200 // metres walked in all
     private const val LONG_WAIT = 1300L // seconds waiting at one change
     private const val FREQUENT = 300L // seconds between the first line's departures, on average, at most
-    private val ORDER = listOf("risky_transfer", "long_walk", "long_wait_time", "last_departure", "early_arrival", "direct",
+    internal val ORDER = listOf("risky_transfer", "long_walk", "long_wait_time", "last_departure", "early_arrival", "direct",
         "least_walking", "low_transfer", "high_frequency", "flexible_route")
 
     private class Facts(val t: Transit.Itinerary) {
@@ -155,14 +163,15 @@ internal object RouteTags {
         fun one(name: String, of: List<Int>, by: Comparator<Int>) { of.minWithOrNull(by)?.let { found[it] += name } }
         val every = routes.indices.toList()
         one("early_arrival", every, compareBy<Int>({ f[it].t.arr }, { f[it].rides }, { f[it].walk }, { -f[it].t.dep }))
-        one("direct", every.filter { f[it].rides == 1 }, compareBy({ f[it].t.arr }, { f[it].walk }))
+        // A fact about a route, as Kav's server has it (live.py tag()): every route without a change, beside one with one.
+        if (f.any { it.rides > 1 }) every.filter { f[it].rides == 1 }.forEach { found[it] += "direct" }
         one("least_walking", every, compareBy({ f[it].walkM }, { f[it].t.arr }))
         val fewest = f.minOf { it.rides }
         if (fewest > 1) one("low_transfer", every.filter { f[it].rides == fewest }, compareBy({ f[it].t.arr }, { f[it].walk }))
         return routes.mapIndexed { i, t ->
             val tags = found[i].distinct().sortedBy(ORDER::indexOf).take(2)
             Transit.Itinerary(t.guid, t.group, t.legs, t.dep, t.arr, t.fare, t.currency, t.co2g, t.accessible, tags,
-                t.section, t.sectionId)
+                t.section, t.sectionId, provider = t.provider, policy = t.policy)
         }
     }
 }

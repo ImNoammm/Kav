@@ -14,3 +14,9 @@ he/docs/live-sources.md
 he/docs/planner.md
 he/docs/predictor.md
 he/docs/training.md
+# Copied from server/selfhost/setup/static/ by scripts/sync-docs.mjs.
+public/js/qrcode.js
+# Written by scripts/community.mjs.
+extensions/listing.json
+extensions/community.log
+public/community/

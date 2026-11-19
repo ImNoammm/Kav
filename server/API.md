@@ -70,18 +70,23 @@ All under `/live/v1/`, all `GET` unless said, all JSON.
 | Path | What it answers |
 |---|---|
 | `status` | What the server is set up for and whether each part works |
+| `bus/<plate>` | What kind of bus that is, by the plate at the end of its vehicle id |
 | `area/<south>,<west>,<north>,<east>` | Every vehicle in that box, for the Live map |
 | `stops/<code>,<code>,...` | Arrivals at those stops, for stop boards |
 | `follow/<route>,<route>,...` | The vehicles on those routes, for a trip under way |
 | `line/<number>` | The vehicles on every route with that line number |
 | `shape/<route>` | A route's road |
+| `late/<route>,<route>,...` | How late those routes usually run against the timetable, up to 16 at once |
 | `plan/...` | Trip routes: see [Plan](#plan) |
+| `busy/<route>,<route>,...` | How busy those routes usually are at each hour of the week, from Rav-Kav taps, up to 16 at once |
 | `bundle/manifest.json`, `bundle/manifest.json.sig`, `bundle/il.kav.gz` | The week's timetable the app downloads |
 | `alerts/he`, `alerts/en` | Israel's line alerts with every notice, in Hebrew or English: see [alerts](#alerts) |
 | `translate` (`POST`) | Notices the phone got from Google, in English: see [translate](#translate) |
 | `auth/login`, `auth/logout` (`POST`) | Signing a phone in and out, on a server with accounts |
 
 Route ids and stop codes are the Ministry of Transport's own: GTFS `route_id` and `stop_code`, both numbers.
+
+A request whose headers and body have not all arrived within 30 seconds of its first byte is cut off.
 
 ### status
 
@@ -132,6 +137,52 @@ Each arrival in `a` starts with these, in this order:
 Times are unix seconds, 0 when unknown. The position is null when the vehicle isn't reporting one. The platform is a
 train's, once the operator has given it. More fields can follow these; a client reads the ones it knows.
 
+### bus
+
+`{"made": "2026-11-14", "bus": {"size": "articulated", "seats": 49, "year": 2020, "power": "diesel"}}`
+
+From the Ministry of Transport's daily file of the operators' buses (data.gov.il, dataset `bus_fleet`), checked each
+morning. `size`: `bus`, `articulated`, `midibus` or `minibus`; `power`: `diesel`, `electric` or `gas`; a field the file
+doesn't give isn't there. The plate is the last part of a vehicle id, digits only; it isn't said back. 404 when the bus
+isn't in the file (`{"error": "not in the fleet file"}`), 503 before the first file and when it was last checked more
+than 14 days ago (`{"error": "fleet out of date", "made": ...}`). The file says nothing of a bus's accessibility.
+
+### late
+
+```json
+{"made": "2026-11-13", "from": "2026-10-23", "to": "2026-11-11", "days": 20, "early": 60, "late": 300,
+ "routes": {"7020": {"morning": {"late": 465, "on": 329, "runs": 90, "days": 15}, "all": {...}}}}
+```
+
+Figured each morning from the server's own recorded passings against the ministry's timetable of each day. `made`: the
+day they were figured; `from` and `to`: the first and last day they come from, `days` how many of those (a day is
+judged once its passings and the next day's are complete, so `to` is two days back). By band of the week, by when a trip
+sets out: Sunday to Thursday `morning` (6 to 9), `midday` (9 to 14), `evening` (14 to 19), `night` (19 to 6); `friday`;
+`saturday`; and `all` of them. In each: `late`, the median lateness at its stops in seconds (early below 0); `on`, per
+thousand passings from `early` seconds early to `late` seconds late; `runs` and `days` behind it. A band is there only
+with 60 runs on 3 days or more; a route without any isn't there. 503 before the first figures, and when the last were
+made more than 3 days ago (`{"error": "lateness out of date", "made": ...}`).
+
+### busy
+
+```json
+{"made": "2026-11-14", "from": "2026-10-01", "to": "2026-10-31",
+ "routes": {"2532": {"weekday": "000003222222122222221111", "friday": "100003222222221200000000", "saturday": "000000000000000000221111"}}}
+```
+
+From the Ministry of Transport's count of Rav-Kav taps by line, direction and hour of each day of a month (data.gov.il,
+dataset `tikufim-2021`), asked each morning and fetched when the file changes. `from` and `to`: the month counted;
+`made`: the day the levels were last told from it. By kind of day (`weekday` Sunday to Thursday, `friday`, `saturday`), an
+hour a character from 00 to 23, by the taps per trip on the road in that hour against that kind of day's three highest: `3`
+one of its busiest hours (8 in 10 of them or more, and among that day's 4 highest hours, never more than a third of the
+hours told), `1` one of its quieter (under half), `2` about average, `q` a day whose three highest are under 15 taps a trip,
+`0` too little to say (under 20 taps a day or a trip on the road, or a kind of day with under 4 such hours). Fridays and
+Saturdays count only the days on the clock (summer or winter time) of the server's saved timetables of that kind of day,
+Shabbat coming an hour earlier on winter time; with under 3 such days in the month, that kind of day isn't there. Taps are
+boardings, not riders on board: never how full a bus is. All ways of a line and direction share its levels; trains and the
+light rail have none. A route without levels isn't there. 503 before the first levels, and when the month ended more than
+75 days ago (`{"error": "crowding figures out of date", "to": ...}`).
+
 ### shape
 
 `{"route": 10966, "shape": "<polyline>"}`. 404 when the route has no shape, 503 before the timetable is loaded.
@@ -174,19 +225,39 @@ only while a screen with rides is open.
 `POST /live/v1/translate`, signed, with `{"texts": ["...", ...]}` (up to 20 texts of up to 4000 characters each) answers
 `{"texts": [...]}` in English, in the same order. The app sends it the notices it fetched itself, from Google,
 when Kav is in English; they're public alerts, and nothing of the trip comes with them. It uses the same translator and
-store as the English alert list. 400 for texts out of bounds, 503 while another request is being translated, 502 when
-the translator doesn't answer, 404 on a server without a translator.
+store as the English alert list. Texts it has already translated answer at once. 400 for texts out of bounds; 503
+`{"error": "busy"}` when a text needs the translator and it stays busy with other texts for more than 5 seconds, or the
+English isn't all in within 12 seconds of the request, the translator's name lookup and connection included (what was
+done is kept, so asking again is quicker); 502 when the translator doesn't answer; 404 on a server without a translator.
+What phones ask for is kept for later requests: at most 5,000 texts and 16 million characters of their English, the
+oldest going first, and a text longer than that is answered but not kept. The alerts' own translations are kept.
 
 ## Plan
 
 ```
-GET /live/v1/plan/<from lat>,<from lon>,<to lat>,<to lon>/<unix seconds><way>[/<modes>][/via/<lat>,<lon>[,<minutes>][;<lat>,<lon>[,<minutes>]...]]
+GET /live/v1/plan/<from lat>,<from lon>,<to lat>,<to lon>/<unix seconds><way>[/<modes>][/via/<lat>,<lon>[,<minutes>][;<lat>,<lon>[,<minutes>]...]][/as/<settings>]
 ```
 
 - `<way>`: `d` leave at the time, `a` arrive by it, `n` leave now, `l` the last way there that night.
 - `<modes>`: the GTFS route types allowed, comma-separated (`0` light rail, `2` train, `3` bus, ...). All when left out.
 - `via`: up to three places to pass on the way. `<minutes>` (optional, up to 999): how long to stay at the place; the
   route on leaves it that much after getting there, at the soonest. Left out, the place is only passed.
+- `as`: the rider's planner settings, one letter each, in this order (up to 8 letters, letters or digits):
+  1. walking pace: `s` slow (1 m/s), `f` fast (1.6 m/s);
+  2. walking: `l` less (a minute on foot counts twice), `m` "I don't mind walking" (counts half);
+  3. changes: `f` fewer (each change counts twice);
+  4. time at the stop: `t` tight (no spare time before the bus, half a minute at a change), `r` relaxed (a minute and a
+     half before the bus, three at a change).
+
+  Pace and time at the stop go to the planner. Walking and changes are weighed in Kav's list only (the planner is asked
+  as for the usual): the usual's list in the rider's order, and at most one more route, the one the rider's weights find
+  cheapest in the same answers. The first route is the usual's first route unless another walks at most 15 minutes more
+  in all (with `l`, at most a minute more) and either gets there no later, or at most 8 minutes later saving a change
+  (`f`, `m`) or over a minute on foot (`l`). Arriving by a time, later is setting out earlier.
+
+  `n`, any other letter, or a letter left out is the usual for that setting, and `/as/nnnn` or no `as` at all plans as
+  before. With `t`, a route the server's chance tables give less than an even chance of making every bus is tagged
+  `likely_missed`. A server from before settings answers 404 to a path with them: ask again without.
 
 The answer, which a [planner of your own](PLANNER.md) gives in the same shape:
 
@@ -216,10 +287,15 @@ The answer, which a [planner of your own](PLANNER.md) gives in the same shape:
 
 - **`it`**: the routes, in the order to show them.
   - `dep` and `arr`: unix seconds.
-  - `tags`: why a route stands out (`least_walking`, `low_transfer`, `after_shabbat`, and the like). May be empty.
+  - `tags`: why a route stands out (`least_walking`, `low_transfer`, `after_shabbat`, `likely_missed`, and the like). May be
+    empty.
   - `sec` (optional): the section a route belongs to, by the app's ids: 3 the timetable card, 521 walking or cycling all
     the way, 522 transit with a bike, 1461 East Jerusalem's operators, 1561 the taxi card, 1581 a taxi to transit. Left
     out for the main list.
+  - `fare` (optional): the route's regular fare in agorot paying in an app, the ministry's fares added up as the price
+    control order has it (changes within 90 minutes on the fare up to 15 km included, and a day pass where that is
+    less). Left out where any of it is unsure. `singles` beside it: the single fares added up, where a day pass made
+    `fare` less.
 - **A leg's `k`**:
   - `w` walk: `m` is metres. `turns` (optional) are `[direction, street, metres, lat, lon]`, from OpenTripPlanner's
     walking steps.
@@ -254,3 +330,10 @@ Not under `/live/v1/`: these are the addresses links are made on.
 
 The trip's `data` is the app's own, `from` and `to` are `"<lat>,<lon>"`. A code is 7 letters and digits. The app opens a
 copy's links as `kav://trip?host=<server>&id=<code>`.
+
+Each share makes a link of its own, the same trip shared again too, and never changes another link. A card is a JPEG of
+up to 200 KiB; a bigger one is refused with 400 (the app then shares the trip without it). New links can be refused
+while links already made keep opening: 503 `{"error": "too many new trip links just now; try again in a few minutes"}`
+when the allowance for all riders together is spent (60 links and 8 MB an hour, up to 20 links or 4 MB at once, refilled
+as the hour goes; a restart of the server fills it again), and 507 `{"error": "no room for new trip links"}` when the
+server keeps 50,000 links, or its file would pass 6 GiB, or its disk is down to its last 5%.

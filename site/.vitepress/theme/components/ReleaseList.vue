@@ -22,7 +22,7 @@ onUpdated(reveal)
           Kav {{ release.version }}
           <span v-if="i === 0" class="kav-badge">{{ he ? 'אחרונה' : 'Latest' }}</span>
         </h3>
-        <time :datetime="release.date">{{ day(release.date, he ? 'he-IL' : 'en-GB') }}</time>
+        <time :datetime="release.date">{{ day(release.date, he ? 'he-IL' : 'en-US') }}</time>
       </header>
       <div class="kav-release__notes" v-html="release.notes" />
       <p class="kav-release__links">

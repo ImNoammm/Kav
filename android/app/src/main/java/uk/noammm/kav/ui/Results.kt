@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -384,12 +385,19 @@ fun DepartRow(label: String, onWhen: () -> Unit, order: String, onOrder: () -> U
     }
 }
 
-private class DepLabel(val text: String, val dep: Transit.Departure, val isNow: Boolean = false, val isClock: Boolean = false)
+internal class DepLabel(
+    val text: String, val dep: Transit.Departure, val isNow: Boolean = false, val isClock: Boolean = false,
+    val own: Boolean = false, val minutes: Int = -1,
+)
 
 // Minutes for the next hour, a clock time after that, with the day when it isn't today
-// (on Shabbat the first bus can be the next evening).
-private fun departLabels(deps: List<Transit.Departure>, now: Long): Pair<List<DepLabel>, Boolean> {
-    val next = deps.sortedBy { it.timeUtc }.filter { it.timeUtc >= now - 60 }.take(3)
+// (on Shabbat the first bus can be the next evening). own: the trip the route is built on (a route card's first ride's),
+// always among those listed, in the third place when it comes later; marked when one listed leaves before it (issue 74:
+// "Leaves in 5, 11, 22" on a card built on another bus).
+internal fun departLabels(deps: List<Transit.Departure>, now: Long, own: Long = 0L): Pair<List<DepLabel>, Boolean> {
+    val coming = deps.sortedBy { it.timeUtc }.filter { it.timeUtc >= now - 60 }
+    val mine = if (own == 0L) null else coming.firstOrNull { it.tripId == own }
+    val next = coming.take(3).let { first -> if (mine == null || mine in first) first else first.take(2) + mine }
     val mins = next.map { d -> ((d.timeUtc - now) / 60).toInt().takeIf { it in 0..60 && !d.rtDropped } }
     val allMinutes = mins.all { it != null } && mins.any { it != null && it > 0 }
     var dayShown = 0L
@@ -401,11 +409,21 @@ private fun departLabels(deps: List<Transit.Departure>, now: Long): Pair<List<De
                 DepLabel(clockLabel(d.timeUtc, if (days == dayShown) 0L else days), d, isClock = true).also { dayShown = days }
             }
             m <= 0 -> DepLabel(T("now", "עכשיו"), d, isNow = true)
-            allMinutes -> DepLabel("$m", d)
-            else -> DepLabel(T("$m min", "$m דק׳"), d)
-        }
+            allMinutes -> DepLabel("$m", d, minutes = m)
+            else -> DepLabel(T("$m min", "$m דק׳"), d, minutes = m)
+        }.let { l -> if (i > 0 && d == mine) DepLabel(l.text, d, l.isNow, l.isClock, own = true, minutes = l.minutes) else l }
     }
     return out to allMinutes
+}
+
+// The route's own departure, said where it's marked (underlined) among a card's. Spoken, so the minutes in full.
+internal fun ownSaid(l: DepLabel): String = when {
+    l.isNow -> T("This route takes the one leaving now.", "המסלול הזה בנוי על היציאה של עכשיו.")
+    l.isClock -> T("This route takes the one at ${l.text}.", "המסלול הזה בנוי על היציאה של ${l.text}.")
+    else -> T(
+        "This route takes the one in ${l.minutes} min.",
+        if (l.minutes == 1) "המסלול הזה בנוי על היציאה שבעוד דקה." else "המסלול הזה בנוי על היציאה שבעוד ${l.minutes} דקות.",
+    )
 }
 
 // How many days on a time is, for saying "tomorrow": by the day that runs to the night's break at 01:00, so a train at
@@ -521,9 +539,10 @@ fun depMark(d: Transit.Departure): DepMark = when {
     }
 }
 
-// footer: something of the card's own under it, as the taxi card's Gett button.
+// footer: something of the card's own under it, as the taxi card's Gett button. asked: the time a search leaving at a time
+// was for, which its departures start from (cardDepartures()).
 @Composable
-fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, footer: (@Composable () -> Unit)? = null, onClick: (() -> Unit)? = null) {
+fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, asked: Long = 0, footer: (@Composable () -> Unit)? = null, onClick: (() -> Unit)? = null) {
     val now = System.currentTimeMillis() / 1000
     // What comes in after the card (live departures, alerts, tags) grows it in place instead of in one jump.
     Column(
@@ -542,11 +561,16 @@ fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, footer: (@Composab
                     Text(" $unit", style = K.type.subhead, maxLines = 1, modifier = Modifier.alignByBaseline())
                 }
             }
-            // Said in words, as the arrow between the times isn't.
-            val dep = hm.format(Date(it.dep * 1000))
+            // Said in words, as the arrow between the times isn't. A route whose time to leave has come leaves now: its own
+            // time, often the very time asked (the margin at the stop goes back to it), would read as gone.
+            val leaving = leavesNow(it, now)
+            val dep = if (leaving) T("Now", "עכשיו") else hm.format(Date(it.dep * 1000))
             val arr = hm.format(Date(it.arr * 1000))
             Row(
-                Modifier.clearAndSetSemantics { contentDescription = T("Leaves $dep, arrives $arr", "יציאה ב-$dep, הגעה ב-$arr") },
+                Modifier.clearAndSetSemantics {
+                    contentDescription = if (leaving) T("Leaves now, arrives $arr", "יציאה עכשיו, הגעה ב-$arr")
+                    else T("Leaves $dep, arrives $arr", "יציאה ב-$dep, הגעה ב-$arr")
+                },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // A route's times as live ones move them: they roll.
@@ -559,7 +583,7 @@ fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, footer: (@Composab
             }
         }
         RouteStrip(it, r)
-        DepartureLine(it, r, now)
+        DepartureLine(it, r, now, asked)
         val notes = cardNotes(it, r)
         var noted by remember { mutableStateOf(notes) }
         if (notes.isNotEmpty()) noted = notes
@@ -584,6 +608,15 @@ fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, footer: (@Composab
         RouteTags(it)
         footer?.invoke()
     }
+}
+
+// A route whose time to leave has come, while leaving now still gets to its first ride by the plan's time: the minutes
+// gone come off its time at the stop. Past that, and for a route with no ride, its own time stands.
+internal fun leavesNow(it: Transit.Itinerary, now: Long): Boolean {
+    val i = it.legs.indexOfFirst { l -> l.kind == Transit.LegKind.RIDE }
+    if (i < 0 || it.dep > now) return false
+    val atStop = it.legs.getOrNull(i - 1)?.takeIf { l -> l.kind == Transit.LegKind.WAIT }?.dep ?: it.legs[i].dep
+    return now - it.dep <= it.legs[i].dep - atStop
 }
 
 private class StripItem(
@@ -765,10 +798,10 @@ internal fun BikeGlyph(tint: Color = K.muted, size: androidx.compose.ui.unit.Dp 
 }
 
 @Composable
-private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long) {
+private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long, asked: Long) {
     val taxi = it.legs.take(2).firstOrNull { l -> l.kind == Transit.LegKind.TAXI }
     if (taxi != null) {
-        val mins = (((taxi.dep - now) + 59) / 60).coerceAtLeast(0)
+        val mins = minsLeft(taxi.dep - now)
         LiveText(
             T(
                 "Pickup in $mins min",
@@ -788,8 +821,10 @@ private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long)
     val ride = it.legs.getOrNull(rideIndex)
     val wait = it.legs.getOrNull(rideIndex - 1)?.takeIf { leg -> leg.kind == Transit.LegKind.WAIT }
     val stop = (wait?.fromStop ?: ride?.fromStop)?.takeIf { id -> id > 0 }?.let { id -> r.stopName(id) }
-    val deps = ride?.let { leg -> r.cardDepartures(leg, wait) }.orEmpty()
-    val (labels, allMinutes) = departLabels(deps, now)
+    // When the rider gets to the stop: the end of the walk to it (the ride as the trip's first leg starts at the stop).
+    val reach = it.legs.getOrNull(rideIndex - (if (wait != null) 2 else 1))?.takeIf { leg -> leg.kind == Transit.LegKind.WALK }?.arr ?: 0L
+    val deps = ride?.let { leg -> r.cardDepartures(leg, wait, asked = asked, reach = reach) }.orEmpty()
+    val (labels, allMinutes) = departLabels(deps, now, own = ride?.tripId ?: 0L)
     val amount = Shown.fareProfile.price(it)
     val fare = if (amount >= 0) "%s%.2f".format(Locale.US, it.currency.ifBlank { "" }, amount / 100.0) else null
 
@@ -813,7 +848,9 @@ private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long)
             }
             labels.forEachIndexed { i, l ->
                 if (i > 0) withStyle(SpanStyle(color = K.dim)) { append(", ") }
-                withStyle(SpanStyle(color = depColour(l.dep), fontWeight = FontWeight.Medium)) {
+                // The route's own bus underlined, when another listed leaves before it.
+                withStyle(SpanStyle(color = depColour(l.dep), fontWeight = FontWeight.Medium,
+                    textDecoration = if (l.own) androidx.compose.ui.text.style.TextDecoration.Underline else null)) {
                     append(l.text)
                 }
             }
@@ -840,6 +877,7 @@ private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long)
                 }
             },
         ),
+        modifier = labels.firstOrNull { l -> l.own }?.let { o -> Modifier.semantics { stateDescription = ownSaid(o) } } ?: Modifier,
         style = K.type.subhead,
         maxLines = 2, overflow = TextOverflow.Ellipsis,
     )

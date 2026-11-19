@@ -10,7 +10,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
@@ -20,6 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -115,6 +127,8 @@ data class MapDot(
     val strokeWidth: Float = 0f,
     val id: String? = null,
     val fade: Int = 0,
+    // Seen through, 0 to 1; one at 0 isn't sent at all (TileMap's live layer).
+    val alpha: Float = 1f,
 )
 
 // What comes in as a map's focus does (TileMap's focus: a picked vehicle's road and stops), and what goes as it does
@@ -272,6 +286,7 @@ private fun Style.ensureKavLayers() {
     fun haloLayer(id: String, source: String, out: Boolean) = CircleLayer(id, source).withProperties(
         PropertyFactory.circleColor(colour),
         PropertyFactory.circleRadius(Expression.toNumber(Expression.get("r"))),
+        PropertyFactory.circleOpacity(featureAlpha()),
     ).withFilter(Expression.all(Expression.not(rider), if (out) fading(FOCUS_OUT) else Expression.not(fading(FOCUS_OUT))))
         .apply { circleRadiusTransition = snap; circleOpacityTransition = snap }
     addLayer(haloLayer(HALO_OUT, SRC_LIVE_HALOS, out = true))
@@ -289,10 +304,11 @@ private fun Style.ensureKavLayers() {
         PropertyFactory.circleStrokeWidth(Expression.toNumber(Expression.get("strokeWidth"))),
         PropertyFactory.circleSortKey(sort),
     ))
-    // The vehicles that go with a focus, each at full alpha: their layers' opacity is a plain number.
+    // The vehicles that go with a focus: their layers' opacity is a plain number times each one's own alpha (a vehicle
+    // merging into a group fades out, featureAlpha).
     for ((id, source, turns) in listOf(Triple(MARK_OUT, SRC_LIVE_MARKS, false), Triple(TURN_OUT, SRC_LIVE_MARKS, true),
         Triple(GLIDE_MARK_OUT, SRC_GLIDE_MARKS, false), Triple(GLIDE_TURN_OUT, SRC_GLIDE_MARKS, true))) addLayer(markLayer(id, source, turns)
-        .withProperties(PropertyFactory.iconOpacity(1f))
+        .withProperties(PropertyFactory.iconOpacity(featureAlpha()))
         .withFilter(Expression.all(Expression.eq(Expression.get("turns"), Expression.literal(turns)), fading(FOCUS_OUT)))
         .apply { iconOpacityTransition = snap })
     for ((id, source, turns) in listOf(Triple("kav-live-mark", SRC_LIVE_MARKS, false), Triple("kav-live-turn", SRC_LIVE_MARKS, true),
@@ -302,6 +318,9 @@ private fun Style.ensureKavLayers() {
 }
 
 // A layer's opacity times a; a mark keeps its own alpha under it.
+// A feature's own alpha (1 when it has none), times a layer's: what a live mark or halo fading in or out is seen at.
+private fun featureAlpha(layer: Float = 1f): Expression =
+    Expression.product(Expression.toNumber(Expression.coalesce(Expression.get("alpha"), Expression.literal(1f))), Expression.literal(layer))
 // When a map last had something to move besides its halos' pulse: the camera, a source's features (a vehicle's glide,
 // the rider, new lines or marks), a fade, a finger. Touched on the main thread only.
 private var stirredAt = 0L
@@ -428,9 +447,11 @@ internal class Glide private constructor(private val way: List<Pair<Double, Doub
     }
 
     companion object {
-        fun of(from: Pair<Double, Double>, to: Pair<Double, Double>, track: List<Pair<Double, Double>>?): Glide? {
+        // far: glided however far it goes (a vehicle going into or out of a group, LiveGroups: zoomed out, the few
+        // pixels to a group's middle are kilometres).
+        fun of(from: Pair<Double, Double>, to: Pair<Double, Double>, track: List<Pair<Double, Double>>?, far: Boolean = false): Glide? {
             val gap = metres(from.first, from.second, to.first, to.second)
-            if (gap < 0.5 || gap > GLIDE_MAX_M) return null
+            if (gap < 0.5 || !far && gap > GLIDE_MAX_M) return null
             return Glide(track?.let { roadBetween(from, to, it) } ?: listOf(from, to))
         }
     }
@@ -438,11 +459,16 @@ internal class Glide private constructor(private val way: List<Pair<Double, Doub
 
 // The live layer as features, each one's look made once an update: as vehicles glide only their places change. A mark's
 // id is its vehicle's, with the halo and heading after a colon.
-internal class LiveFeatures(g: MapGeometry) {
-    private val halos = dotFeatures(g.halos)
-    private val marks = markFeatures(g.markers)
-    private val haloIds = g.halos.map { it.id?.substringBefore(':') }
-    private val markIds = g.markers.map { it.id?.substringBefore(':') }
+internal class LiveFeatures(g: MapGeometry, private val fades: Map<String, Pair<Float, Float>> = emptyMap()) {
+    // At alpha 0 and not fading, a halo or mark is seen nowhere: it isn't sent (a bus merged into a group, LiveGroups).
+    private val haloList = g.halos.filter { it.alpha > 0f || it.id in fades }
+    private val markList = g.markers.filter { it.alpha > 0f || it.id in fades }
+    private val halos = dotFeatures(haloList)
+    private val marks = markFeatures(markList)
+    private val haloIds = haloList.map { it.id?.substringBefore(':') }
+    private val markIds = markList.map { it.id?.substringBefore(':') }
+    private val haloKeys = haloList.map { it.id }
+    private val markKeys = markList.map { it.id }
     val dots: FeatureCollection = FeatureCollection.fromFeatures(dotFeatures(g.dots))
     val count = halos.size + marks.size
 
@@ -454,18 +480,22 @@ internal class LiveFeatures(g: MapGeometry) {
     }
 
     // The halos and marks of the vehicles gliding, t of the way, and of others staying where they are: their halos
-    // (stayHalos) and marks (stayMarks) leave this source at different times.
+    // (stayHalos) and marks (stayMarks) leave this source at different times. One fading is seen t of the way too.
     fun moving(t: Float, glides: Map<String, Glide>, stayHalos: Set<String> = emptySet(), stayMarks: Set<String> = stayHalos): Pair<FeatureCollection, FeatureCollection> {
-        fun placed(features: List<Feature>, ids: List<String?>, stay: Set<String>) = FeatureCollection.fromFeatures(features.indices.mapNotNull { i ->
+        fun placed(features: List<Feature>, ids: List<String?>, keys: List<String?>, stay: Set<String>) = FeatureCollection.fromFeatures(features.indices.mapNotNull { i ->
             val id = ids[i] ?: return@mapNotNull null
             val glide = glides[id]
-            when {
+            val fade = fades[keys[i]]
+            val f = when {
                 glide != null -> glide.place(t).let { (lat, lon) -> Feature.fromGeometry(Point.fromLngLat(lon, lat), features[i].properties()) }
                 id in stay -> features[i]
-                else -> null
+                else -> return@mapNotNull null
+            }
+            if (fade == null) f else Feature.fromGeometry(f.geometry(), f.properties()?.deepCopy()).apply {
+                addNumberProperty("alpha", fade.first + (fade.second - fade.first) * t)
             }
         })
-        return placed(halos, haloIds, stayHalos) to placed(marks, markIds, stayMarks)
+        return placed(halos, haloIds, haloKeys, stayHalos) to placed(marks, markIds, markKeys, stayMarks)
     }
 
     fun together(t: Float, glides: Map<String, Glide>): Pair<FeatureCollection, FeatureCollection> =
@@ -518,6 +548,7 @@ private fun dotFeatures(dots: List<MapDot>): List<Feature> = dots.mapIndexed { i
         addNumberProperty("strokeWidth", d.strokeWidth)
         addNumberProperty("sort", i)
         addNumberProperty("fade", d.fade)
+        addNumberProperty("alpha", d.alpha)
         if (d.id == "me:halo") addBooleanProperty("rider", true)
     }
 }
@@ -590,12 +621,34 @@ data class Follow(val lat: Double, val lon: Double, val bearing: Float, val zoom
 // meanwhile the map frames what it shows for where the change ends, in one move, rather than following each step.
 data class MapSettle(val id: Int, val grow: androidx.compose.ui.unit.Dp)
 
+// The map moved by the app as by a hand: centred on a place at a zoom (Kav's camera zoom), once per request.
+class MapZoomTo(val lat: Double, val lon: Double, val zoom: Float)
+
 private const val ANCHOR_X = 0.5f
 private const val ANCHOR_Y = 0.72f
 private const val TILT_DEG = 40f
 private const val MAX_TILT_DEG = 60f
 // Degrees of tilt for each pixel the two fingers slide.
 private const val TILT_PER_PX = 0.25f
+// A pinch let go carries the zoom on at most this fast (levels a second) and this far (levels).
+private const val FLING_MAX_ZOOM_SPEED = 15f
+private const val FLING_MAX_ZOOM = 4f
+// The speed at which the first of two fingers left counts if the other leaves within this time (ms); later, the one
+// left behind gives the speed, as a drag of its own.
+private const val FLING_LIFT_MS = 100L
+// A frame at 120 Hz.
+private const val FLING_FIRST_FRAME_NS = 8_333_333L
+// Google Maps' pinch easing (its camera's per-frame step at its 60 frames a second): of what's still to show, a frame
+// shows sign x min(|a|, k x a^2), k 10 for zoom levels and 0.1 for degrees of turn; once that step is under 0.0001 level
+// and 0.001 degree, the rest is dropped. Kav steps by the time that passed, in Google's frames, so it eases alike at 120 Hz.
+private const val GOOGLE_FRAME_NS = 16_666_667L
+internal const val PINCH_EASE_ZOOM = 10f
+internal const val PINCH_EASE_TURN = 0.1f
+internal const val PINCH_EASE_ZOOM_REST = 1e-4f
+internal const val PINCH_EASE_TURN_REST = 1e-3f
+
+// One frame's share of a pinch still to show (pending): k times its square, never more than all of it.
+internal fun pinchEase(pending: Float, k: Float): Float = kotlin.math.sign(pending) * minOf(abs(pending), k * pending * pending)
 
 private fun unrotate(at: Offset, anchor: Offset, rotation: Float): Offset {
     if (rotation == 0f) return at
@@ -666,6 +719,88 @@ private fun fitCamera(points: List<WorldPoint>, viewport: Viewport, padFraction:
 // How quickly the camera catches up with the rider it follows, as a spring's angular frequency (rad/s): settled in
 // about 0.7 s, as the move it replaces took.
 private const val FOLLOW_W = 7.0
+
+// Where a fling goes once the fingers leave (MapCamera.fling): how far it pans (px, along wayX/wayY), zooms (levels) and
+// turns (degrees), and how far along it is at a time (fraction, 0 to 1 over `lasts` ns). As Google Maps does it: a zoom
+// faster than 15 levels a second is slowed to that and the rest in step; a zoom level counts as an eighth of the screen's
+// height and a degree as 2 px a density step on Android's fling curve (FlingCurve); the zoom goes 4 levels at most; all
+// follow the curve of the fastest, so they end together.
+internal class PinchFling private constructor(
+    val panGoes: Float, val wayX: Float, val wayY: Float, val zoomGoes: Float, val turnGoes: Float, val lasts: Long,
+) {
+    // How far along: Android's fling curve at nanos, the same for all.
+    fun fraction(nanos: Long): Float = FlingCurve.along(nanos.coerceIn(0L, lasts).toFloat() / lasts.coerceAtLeast(1L))
+
+    companion object {
+        // vx, vy px/s; zoomVelocity levels/s; turnVelocity degrees/s. Null when nothing was moving.
+        fun of(vx: Float, vy: Float, zoomVelocity: Float, turnVelocity: Float, screenH: Float, density: Float): PinchFling? {
+            val cut = if (abs(zoomVelocity) > FLING_MAX_ZOOM_SPEED) FLING_MAX_ZOOM_SPEED / abs(zoomVelocity) else 1f
+            val level = screenH * 0.125f
+            val degree = 2 * density
+            val pan = kotlin.math.hypot(vx, vy)
+            val speeds = floatArrayOf(pan * cut, abs(zoomVelocity) * cut * level, abs(turnVelocity) * cut * degree)
+            val lead = speeds.max()
+            if (!lead.isFinite() || lead < 1f) return null
+            return PinchFling(
+                panGoes = FlingCurve.distance(speeds[0], density),
+                wayX = if (pan > 0f) vx / pan else 0f, wayY = if (pan > 0f) vy / pan else 0f,
+                zoomGoes = (FlingCurve.distance(speeds[1], density) / level).coerceAtMost(FLING_MAX_ZOOM) * kotlin.math.sign(zoomVelocity),
+                turnGoes = FlingCurve.distance(speeds[2], density) / degree * kotlin.math.sign(turnVelocity),
+                lasts = FlingCurve.nanos(lead, density),
+            )
+        }
+    }
+}
+
+// Android's own fling curve (its Scroller and OverScroller, and Compose's fling): how long a fling at a speed lasts,
+// how far it goes, and how far along it is at each moment, slowing smoothly to a stop. Friction as Android's default.
+internal object FlingCurve {
+    private const val FRICTION = 0.015f
+    private const val INFLEXION = 0.35f
+    private const val START_TENSION = 0.5f
+    private const val END_TENSION = 1f
+    private val DECELERATION = (ln(0.78) / ln(0.9)).toFloat()
+    private const val SAMPLES = 100
+    // Where along it is at SAMPLES + 1 even steps of time.
+    private val positions = FloatArray(SAMPLES + 1).also { pos ->
+        val p1 = START_TENSION * INFLEXION
+        val p2 = 1f - END_TENSION * (1f - INFLEXION)
+        var xMin = 0f
+        for (i in 0 until SAMPLES) {
+            val alpha = i.toFloat() / SAMPLES
+            var xMax = 1f
+            var x: Float
+            var coef: Float
+            while (true) {
+                x = xMin + (xMax - xMin) / 2f
+                coef = 3f * x * (1f - x)
+                val tx = coef * ((1f - x) * p1 + x * p2) + x * x * x
+                if (abs(tx - alpha) < 1e-5f) break
+                if (tx > alpha) xMax = x else xMin = x
+            }
+            pos[i] = coef * ((1f - x) * START_TENSION + x) + x * x * x
+        }
+        pos[0] = 0f
+        pos[SAMPLES] = 1f
+    }
+
+    private fun physical(density: Float) = 9.80665f * 39.37f * 160f * density * 0.84f
+
+    private fun spread(speed: Float, density: Float) = ln(INFLEXION * abs(speed) / (FRICTION * physical(density)))
+
+    fun nanos(speed: Float, density: Float): Long =
+        if (speed == 0f) 0L else (1_000_000_000.0 * kotlin.math.exp(spread(speed, density) / (DECELERATION - 1.0))).toLong()
+
+    fun distance(speed: Float, density: Float): Float =
+        if (speed == 0f) 0f else (FRICTION * physical(density) * kotlin.math.exp(DECELERATION / (DECELERATION - 1.0) * spread(speed, density))).toFloat()
+
+    // t from 0 to 1 of the fling's time.
+    fun along(t: Float): Float {
+        val at = t.coerceIn(0f, 1f) * SAMPLES
+        val i = at.toInt().coerceAtMost(SAMPLES - 1)
+        return positions[i] + (positions[i + 1] - positions[i]) * (at - i)
+    }
+}
 
 private class MapCamera {
     var value by mutableStateOf<Camera?>(null)
@@ -772,6 +907,7 @@ private class MapCamera {
         )
         manual = false
         followed = true
+        takePending()
         followGoal = goal
         if (value == null || jump()) {
             stopFollowing()
@@ -832,8 +968,16 @@ private class MapCamera {
 
     fun resume() { manual = false }
 
+    // Moved there as a hand would have (a merged mark tapped, LiveGroups): the map then stays where it's put.
+    fun zoomAt(lat: Double, lon: Double, zoom: Float, scope: CoroutineScope) {
+        val current = destination ?: value ?: return
+        manual = true
+        moveTo(current.copy(worldX = Geo.x(lon), worldY = Geo.y(lat), zoom = zoom.coerceIn(Geo.MIN_Z.toFloat(), Geo.MAX_Z + Geo.OVER)), scope)
+    }
+
     private fun moveTo(target: Camera, scope: CoroutineScope, duration: Int = this.duration) {
         stopFollowing()
+        takePending()
         (destination ?: value)?.let { d ->
             var spin = target.rotation - d.rotation
             if (spin > 180f) spin -= 360f
@@ -878,12 +1022,106 @@ private class MapCamera {
         }
     }
 
-    fun gesture(centroid: Offset, pan: Offset, zoomChange: Float, twist: Float, viewport: Viewport) {
-        val current = value ?: return
+    // As Google Maps does it, a pinch's zoom and turn reach the map through what's still to show of them (pending):
+    // at each frame a big step shows whole and a small one only in part (pinchEase), so the map follows the fingers a
+    // touch behind and smoothly. The move goes at once.
+    private var pendingZoom = 0f
+    private var pendingTurn = 0f
+    private var pendingAt = Offset.Zero
+    private var pendingViewport: Viewport? = null
+    private var easing: Job? = null
+
+    fun gesture(centroid: Offset, pan: Offset, zoomChange: Float, twist: Float, viewport: Viewport, scope: CoroutineScope) {
+        if (value == null) return
         stopFollowing()
         animation?.cancel()
         destination = null
         manual = true
+        if (pan != Offset.Zero) turn(centroid, pan, 1f, 0f, viewport)
+        pendingZoom += ln(zoomChange.coerceAtLeast(0.01f)) / ln(2f)
+        pendingTurn += twist
+        // Where the zoom and turn go about: as in Google Maps, only a step that zooms or turns moves it, to between the
+        // fingers then. A move alone (a finger dragging after the pinch) moves the map under it, not it.
+        if (zoomChange != 1f || twist != 0f) pendingAt = centroid + pan
+        pendingViewport = viewport
+        if (easing?.isActive == true || (pendingZoom == 0f && pendingTurn == 0f)) return
+        easing = scope.launch {
+            var last = 0L
+            while (pendingZoom != 0f || pendingTurn != 0f) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                val frames = if (last == 0L) 1f else ((now - last) / GOOGLE_FRAME_NS.toFloat()).coerceIn(0f, 3f)
+                last = now
+                val z = pinchEase(pendingZoom, PINCH_EASE_ZOOM * frames)
+                val r = pinchEase(pendingTurn, PINCH_EASE_TURN * frames)
+                // A step too small to see ends it, the rest dropped with it.
+                if (abs(z) < PINCH_EASE_ZOOM_REST && abs(r) < PINCH_EASE_TURN_REST) { pendingZoom = 0f; pendingTurn = 0f; break }
+                pendingZoom -= z
+                pendingTurn -= r
+                pendingViewport?.let { turn(pendingAt, Offset.Zero, 2f.pow(z), r, it) }
+            }
+        }
+    }
+
+    // What's still to show of a pinch, shown at once (a fling's first frame) or dropped (a move of the app's own).
+    private fun takePending(): Pair<Float, Float> {
+        easing?.cancel()
+        return (pendingZoom to pendingTurn).also { pendingZoom = 0f; pendingTurn = 0f }
+    }
+
+    // A finger down on the map: whatever it was still doing stops where it is.
+    fun hold() {
+        if (destination == null) animation?.cancel()
+    }
+
+    // Let go while still moving, the map carries on and comes to rest, as Google Maps' does (PinchFling), about the
+    // place under the fingers. velocity is px/s, zoomVelocity levels/s, turnVelocity degrees/s.
+    fun fling(
+        centroid: Offset, velocity: Offset, zoomVelocity: Float, turnVelocity: Float, screenH: Float, density: Float,
+        viewport: () -> Viewport, scope: CoroutineScope,
+    ) {
+        if (value == null) return
+        val plan = PinchFling.of(velocity.x, velocity.y, zoomVelocity, turnVelocity, screenH, density)
+        val (zoomLeft, turnLeft) = takePending()
+        val at = pendingAt
+        if (plan == null) {
+            // Let go still: what the pinch had yet to show goes at once, as Google's map does at a release.
+            if (zoomLeft != 0f || turnLeft != 0f) turn(at, Offset.Zero, 2f.pow(zoomLeft), turnLeft, viewport())
+            return
+        }
+        val panWay = Offset(plan.wayX, plan.wayY)
+        animation?.cancel()
+        destination = null
+        animation = scope.launch {
+            val scale = currentCoroutineContext()[MotionDurationScale]?.scaleFactor ?: 1f
+            if (scale <= 0f) return@launch
+            var start = -1L
+            var was = 0f
+            while (true) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                // The first frame after the fingers left already moves on, or the map would stand still for a frame.
+                if (start < 0) start = now - FLING_FIRST_FRAME_NS
+                val t = ((now - start) / scale).toLong().coerceAtMost(plan.lasts)
+                val f = plan.fraction(t)
+                val step = f - was
+                // The first frame also shows what the pinch had yet to show.
+                val left = if (was == 0f) zoomLeft else 0f
+                val leftTurn = if (was == 0f) turnLeft else 0f
+                // About one place on the screen all the way, the move first: the middle of the pinch, where the fingers
+                // last turned or zoomed the map, as Google Maps keeps it.
+                val pan = panWay * (plan.panGoes * step)
+                turn(centroid - pan, pan, 2f.pow(plan.zoomGoes * step + left), plan.turnGoes * step + leftTurn, viewport())
+                was = f
+                if (t >= plan.lasts) break
+            }
+        }
+    }
+
+    // The map turned about a point on screen: the place under centroid goes to centroid + pan as it zooms by zoomChange
+    // and turns by twist degrees.
+    private fun turn(centroid: Offset, pan: Offset, zoomChange: Float, twist: Float, viewport: Viewport) {
+        val current = value ?: return
+        // Never a place the map can't show: one NaN here and MapLibre refuses the camera.
+        if (!(centroid.x.isFinite() && centroid.y.isFinite() && pan.x.isFinite() && pan.y.isFinite() && zoomChange.isFinite() && twist.isFinite())) return
         val zoom = (current.zoom + ln(zoomChange.coerceAtLeast(0.01f)) / ln(2f))
             .coerceIn(Geo.MIN_Z.toFloat(), Geo.MAX_Z + Geo.OVER)
         val rotation = (((current.rotation - twist) % 360f) + 360f) % 360f
@@ -907,6 +1145,128 @@ private class MapCamera {
             rotation,
         )
     }
+}
+
+// Two fingers move, zoom and turn the map, one moves it, as Compose's detectTransformGestures(panZoomLock = true) does,
+// and onRelease has the speeds the fingers left at (releaseSpeeds, each finger's own velocity as Google Maps takes it).
+// As in Google Maps, those of a pinch are the ones of the moment its first finger leaves, when the other follows within
+// FLING_LIFT_MS; a finger left on longer gives only its own move. A turn counts only once a turn was what began.
+private suspend fun PointerInputScope.detectMapGestures(
+    onDown: () -> Unit,
+    onGesture: (centroid: Offset, pan: Offset, zoom: Float, twist: Float) -> Unit,
+    onRelease: (centroid: Offset, velocity: Offset, zoomVelocity: Float, turnVelocity: Float) -> Unit,
+) {
+    awaitEachGesture {
+        var rotation = 0f
+        var zoom = 1f
+        var pan = Offset.Zero
+        var pastTouchSlop = false
+        val touchSlop = viewConfiguration.touchSlop
+        var lockedToPanZoom = false
+        awaitFirstDown(requireUnconsumed = false)
+        onDown()
+        val trackers = HashMap<androidx.compose.ui.input.pointer.PointerId, VelocityTracker>()
+        // The speeds of the fingers down until this event (the one lifting among them), in their order.
+        fun speeds(event: androidx.compose.ui.input.pointer.PointerEvent): FloatArray {
+            val down = event.changes.filter { it.previousPressed || it.pressed }
+            val v = down.map { c -> trackers[c.id]?.calculateVelocity()?.let { Offset(it.x, it.y) } ?: Offset.Zero }
+            // A speed the trackers can't work out (too few points in time) counts as none.
+            return releaseSpeeds(down.map { it.position }, v, turning = !lockedToPanZoom).map { if (it.isFinite()) it else 0f }.toFloatArray()
+        }
+        var fingers = 1
+        var left: FloatArray? = null
+        var leftAt = 0L
+        var centroid = Offset.Zero
+        // Where the map zooms and turns about (pinchFocus), as it stands after this event's move.
+        var focus = Offset.Zero
+        var pinched = false
+        var canceled: Boolean
+        var event: androidx.compose.ui.input.pointer.PointerEvent
+        do {
+            event = awaitPointerEvent()
+            canceled = event.changes.any { it.isConsumed }
+            if (canceled) break
+            val zoomChange = event.calculateZoom()
+            val rotationChange = event.calculateRotation()
+            val panChange = event.calculatePan()
+            if (!pastTouchSlop) {
+                zoom *= zoomChange
+                rotation += rotationChange
+                pan += panChange
+                val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                val zoomMotion = abs(1 - zoom) * centroidSize
+                val rotationMotion = abs(rotation * PI.toFloat() * centroidSize / 180f)
+                val panMotion = pan.getDistance()
+                if (zoomMotion > touchSlop || rotationMotion > touchSlop || panMotion > touchSlop) {
+                    pastTouchSlop = true
+                    lockedToPanZoom = rotationMotion < touchSlop
+                }
+            }
+            val twist = if (lockedToPanZoom) 0f else rotationChange
+            val at = event.changes.first().uptimeMillis
+            // As Google Maps does: from the moment a pinch's first finger leaves, and for FLING_LIFT_MS after it, the
+            // finger still down moves nothing. Fingers never leave together, and that finger's last stretch would
+            // drag the map aside just as it is let go.
+            val quiet = pinchQuiet(event.changes.count { it.pressed }, fingers, left != null, at - leftAt)
+            if (pastTouchSlop) {
+                // Unspecified (NaN) for an event no finger was down before: the fling then turns about the last one.
+                event.calculateCentroid(useCurrent = false).takeIf { it.x.isFinite() && it.y.isFinite() }?.let { centroid = it }
+                val both = event.changes.count { it.pressed && it.previousPressed } >= 2
+                if (both) pinched = true
+                val about = pinchFocus(centroid, focus, both, pinched)
+                if (!quiet) {
+                    if (twist != 0f || zoomChange != 1f || panChange != Offset.Zero) onGesture(about, panChange, zoomChange, twist)
+                    focus = about + panChange
+                }
+                event.changes.forEach { if (it.positionChanged()) it.consume() }
+            }
+            for (c in event.changes) if (c.pressed || c.previousPressed) trackers.getOrPut(c.id) { VelocityTracker() }.addPointerInputChange(c)
+            val now = event.changes.count { it.pressed }
+            if (now < fingers && fingers >= 2 && left == null) { left = speeds(event); leftAt = at }
+            if (now > fingers) left = null
+            fingers = now
+        } while (event.changes.any { it.pressed })
+        if (canceled || !pastTouchSlop) return@awaitEachGesture
+        val upAt = event.changes.first().uptimeMillis
+        val v = left?.takeIf { upAt - leftAt <= FLING_LIFT_MS } ?: speeds(event).also { it[2] = 0f; it[3] = 0f }
+        onRelease(focus, Offset(v[0], v[1]), v[2], v[3])
+    }
+}
+
+// Where an event of a gesture zooms and turns the map about: between the fingers while two are down (both), and once
+// there were two (pinched) that same place from then on, carried along as the finger left on moves the map. Never the
+// one finger still down: fingers leave a moment apart, and a pinch let go would carry on about the last one to leave,
+// half the fingers' spread away from its middle, instead of about the middle as Google Maps does.
+internal fun pinchFocus(centroid: Offset, focus: Offset, both: Boolean, pinched: Boolean): Offset =
+    if (both || !pinched) centroid else focus
+
+// Whether an event of a gesture moves nothing: the one on which a finger of a pinch leaves (down fingers now, before),
+// and every one within FLING_LIFT_MS of that leaving (lifted, sinceMs).
+internal fun pinchQuiet(down: Int, before: Int, lifted: Boolean, sinceMs: Long): Boolean =
+    (down < before && before >= 2) || (lifted && sinceMs <= FLING_LIFT_MS)
+
+// The speeds a pinch leaves at, as Google Maps works them out from each finger's own position and velocity (px/s): the
+// move is their mean; the zoom compares the first and last fingers' spread a millisecond on with the spread now
+// (log2 of that, per ms, x 1000: levels/s); the turn compares their angle likewise (degrees/s), and only for a turn.
+internal fun releaseSpeeds(at: List<Offset>, velocity: List<Offset>, turning: Boolean): FloatArray {
+    val n = at.size
+    if (n == 0) return FloatArray(4)
+    val vx = velocity.sumOf { it.x.toDouble() }.toFloat() / n
+    val vy = velocity.sumOf { it.y.toDouble() }.toFloat() / n
+    if (n < 2) return floatArrayOf(vx, vy, 0f, 0f)
+    val a = at.first(); val b = at.last()
+    val a1 = a + velocity.first() / 1000f; val b1 = b + velocity.last() / 1000f
+    val spread = (b - a).getDistance()
+    val zoom = if (spread == 0f) 0f else (ln((b1 - a1).getDistance() / spread) / ln(2f)) * 1000f
+    var turn = 0f
+    if (turning) {
+        var d = Math.toDegrees(kotlin.math.atan2((b1 - a1).y.toDouble(), (b1 - a1).x.toDouble()) -
+            kotlin.math.atan2((b - a).y.toDouble(), (b - a).x.toDouble())).toFloat()
+        if (d > 180f) d -= 360f
+        if (d < -180f) d += 360f
+        turn = d * 1000f
+    }
+    return floatArrayOf(vx, vy, zoom, turn)
 }
 
 internal fun focalPadding(anchor: Offset, w: Float, h: Float): DoubleArray = doubleArrayOf(
@@ -1096,6 +1456,10 @@ fun TileMap(
     onLiveTaken: ((MapGeometry) -> Unit)? = null,
     onTap: ((Offset, MapProjection) -> Unit)? = null,
     onLook: ((centre: Pair<Double, Double>?, reachKm: Double) -> Unit)? = null,
+    // The camera's zoom (Kav's own, MapCamera's) in quarter levels, told once it has rested a moment: what the Live map
+    // merges its crowded vehicles by (LiveGroups).
+    onZoom: ((Float) -> Unit)? = null,
+    zoomTo: MapZoomTo? = null,
     moved: Boolean = false,
     keepZoom: Boolean = false,
     status: (@Composable () -> Unit)? = null,
@@ -1109,6 +1473,10 @@ fun TileMap(
     warming: Boolean = false,
     // The map goes with the rider (recenterOn) as they move, centred on them, until a hand moves it.
     followRider: Boolean = false,
+    // Which of Kav's maps this is for native extensions' shapes ("live", "trip"; ext/NativeMap.kt), null for none.
+    extOn: String? = null,
+    // What the map is, in its log lines ("trip view", "trip page", "Live").
+    name: String? = null,
 ) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
@@ -1134,8 +1502,8 @@ fun TileMap(
     // The map of a screen just closed, its style loaded, takes this one's place, so it draws in a moment (MapPool).
     val pooled = remember { MapPool.take(ctx, refill = !warming) }
     val mapView = remember {
-        pooled?.view?.apply { alpha = 0f; (parent as? android.view.ViewGroup)?.removeView(this) } ?: MapView(ctx, MapLibreMapOptions.createFromAttributes(ctx.also { uk.noammm.kav.data.GovMapTiles.mapLibre(it) })
-            .textureMode(true)
+        pooled?.view?.apply { alpha = if (MAP_ON_SURFACE) 1f else 0f; (parent as? android.view.ViewGroup)?.removeView(this) } ?: MapView(ctx, MapLibreMapOptions.createFromAttributes(ctx.also { uk.noammm.kav.data.GovMapTiles.mapLibre(it) })
+            .textureMode(!MAP_ON_SURFACE)
             .compassEnabled(false).logoEnabled(false).attributionEnabled(false)
             .foregroundLoadColor(K.surface1.toArgb()))
             // At most one redraw a frame: drawing again at each change to the map (the halos' pulse, a glide's step,
@@ -1143,8 +1511,13 @@ fun TileMap(
             // whole screen's frames.
             .apply { setMaximumFps(60) }
             // Hidden until its first whole picture (drawn, below).
-            .apply { alpha = 0f }
+            .apply { if (!MAP_ON_SURFACE) alpha = 0f }
     }
+    // How much of the map shows: on a TextureView its own alpha; on its own surface, which takes no alpha from Kav's
+    // window, a cover of the box's ground drawn over it in Kav's own layer, less of it as more of the map shows.
+    val shown = remember { mutableFloatStateOf(0f) }
+    fun showing() = if (MAP_ON_SURFACE) shown.floatValue else mapView.alpha
+    fun show(v: Float) { if (MAP_ON_SURFACE) shown.floatValue = v else mapView.alpha = v }
     var map by remember { mutableStateOf(pooled?.map) }
     // Touch and heading motion hold the screen's rate; camera submissions renew it while they keep moving.
     val touching = remember { mutableStateOf(false) }
@@ -1163,6 +1536,8 @@ fun TileMap(
     // at a time. Once: a new look's style comes in under the theme's own fade. One whose tiles never all come (a slow
     // preview) shows anyway after a moment.
     var drawn by remember { mutableStateOf(false) }
+    // A warm-up map moved on to its next place draws that one whole before it counts again (MapWarmUp).
+    if (warming) LaunchedEffect(worldPoints) { if (drawn) { held[1] = false; held[2] = false; drawn = false } }
     // A screen that frames its map again a frame after it opens (a line's page, once it knows its open stop) shows it
     // framed so at once, not moving there with its tiles coming in as it goes.
     var shownAt by remember { mutableLongStateOf(0L) }
@@ -1191,23 +1566,37 @@ fun TileMap(
         mapView.addOnDidFinishRenderingFrameListener(whole)
         onDispose { mapView.removeOnDidFinishRenderingFrameListener(whole); mapView.removeOnSourceChangedListener(taken) }
     }
-    LaunchedEffect(style) { if (style != null && !drawn) { kotlinx.coroutines.delay(1500); drawn = true } }
+    // Four seconds: at one and a half a trip's map showed its line on empty ground and then its streets in parts.
+    LaunchedEffect(style, drawn) { if (style != null && !drawn) { kotlinx.coroutines.delay(4000); drawn = true } }
     LaunchedEffect(drawn) {
         if (!drawn) return@LaunchedEffect
         shownAt = android.os.SystemClock.uptimeMillis()
         onDrawn?.invoke()
-        animate(mapView.alpha, 1f, animationSpec = tween(250)) { v, _ -> mapView.alpha = v }
+        animate(showing(), 1f, animationSpec = tween(250)) { v, _ -> show(v) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(mapView, lifecycle) {
         if (pooled == null) mapView.onCreate(null)
+        // MapLibre starting or stopping holds the main thread a while (265 and 131 ms on the emulator), and run in the
+        // frame a tab switch draws, the tab bar's pill and the page waited for it (Noam: stuck for a second on the Live
+        // tab). It's told just after that frame; closing, at once. started/resumed: what it's been told.
+        var want = Lifecycle.State.CREATED
+        var started = false
+        var resumed = false
+        var queued = false
+        var gone = false
+        fun sync() {
+            if (gone) return
+            if (want.isAtLeast(Lifecycle.State.STARTED) && !started) { mapView.onStart(); started = true }
+            if (want.isAtLeast(Lifecycle.State.RESUMED) && !resumed) { mapView.onResume(); resumed = true }
+            if (!want.isAtLeast(Lifecycle.State.RESUMED) && resumed) { mapView.onPause(); resumed = false }
+            if (!want.isAtLeast(Lifecycle.State.STARTED) && started) { mapView.onStop(); started = false }
+        }
         val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> {}
+            want = event.targetState
+            if (!queued) {
+                queued = true
+                android.view.Choreographer.getInstance().postFrameCallback { mapView.post { queued = false; sync() } }
             }
         }
         lifecycle.addObserver(observer)
@@ -1230,13 +1619,88 @@ fun TileMap(
             val json = held[0] as String?
             map = null
             style = null
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            want = Lifecycle.State.CREATED
+            sync()
+            gone = true
             // Kept, without this screen's lines and marks, for the next map; else let go.
             if (m != null && st != null && st.isFullyLoaded && json != null) {
                 st.removeKavLayers()
+                st.removeExtLayers()
                 MapPool.give(KeptMap(mapView, m, st, json))
             } else mapView.onDestroy()
+        }
+    }
+    // On its own surface, its still for what draws Kav's own layer where its hole is (MapStills) while it's in front: taken
+    // once it has rested a moment, and again at most once a second while it draws anything new at rest (the vehicles);
+    // dropped for its plain ground as it moves.
+    val still = remember { MapStill() }
+    if (MAP_ON_SURFACE && !warming) {
+        // While Kav is seen at all, not only while it's in front: as it comes back from another app (Rav-Pass after Pay
+        // for this ride) it's seen before it's in front, and the panels over the map went solid.
+        val resumed = lifecycle.currentStateFlow.collectAsState().value.isAtLeast(Lifecycle.State.STARTED)
+        DisposableEffect(resumed) {
+            if (resumed) MapStills.shown += still
+            onDispose { MapStills.shown -= still }
+        }
+        SideEffect { still.tint = MapInk.bg }
+        LaunchedEffect(drawn, resumed) {
+            if (!drawn || !resumed) return@LaunchedEffect
+            val surface = mapView.findSurface() ?: return@LaunchedEffect
+            val changed = booleanArrayOf(true)
+            val frame = MapView.OnDidFinishRenderingFrameListener { _, _, _ -> changed[0] = true }
+            mapView.addOnDidFinishRenderingFrameListener(frame)
+            try {
+                // A whole still once the map rests, for what stands in for it while its page comes or goes (MapVeil) or its
+                // surface is away; none while it moves, as a copy over a moving map is always behind it (the glass over a
+                // map shows the live map through its tint instead, liquidPane).
+                var seen = cameraMoves.intValue
+                var movedAt = 0L
+                var wholeAt = -1L
+                while (true) {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (cameraMoves.intValue != seen) { seen = cameraMoves.intValue; movedAt = now; wholeAt = -1L }
+                    val resting = now - movedAt >= STILL_REST_MS && !touching.value && !turning.value
+                    if (resting && (wholeAt < 0 || changed[0] && now - wholeAt >= STILL_EVERY_MS)) {
+                        changed[0] = false
+                        still.take(surface, still.size.width, still.size.height)?.let { still.image = it }
+                        wholeAt = now
+                    }
+                    kotlinx.coroutines.delay(STILL_REST_MS / 2)
+                }
+            } finally { mapView.removeOnDidFinishRenderingFrameListener(frame) }
+        }
+    }
+    // The map's own surface is kept for as long as the map is on its page (Android 14 and later): by default Android
+    // lets it go when it counts the map as out of sight, and on Noam's phone a trip page's map scrolled away and back came
+    // back black and was drawn again from nothing, dropping frames. Whenever it does go, the map is covered by its last
+    // still or its ground until it has drawn again (surfaceAway), so it's never black.
+    val surfaceAway = remember { mutableStateOf(false) }
+    if (MAP_ON_SURFACE) LaunchedEffect(map) {
+        if (map == null) return@LaunchedEffect
+        val surface = mapView.findSurface() ?: return@LaunchedEffect
+        if (android.os.Build.VERSION.SDK_INT >= 34) surface.setSurfaceLifecycle(android.view.SurfaceView.SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT)
+        var created = false
+        val label = (if (warming) "warm-up" else name ?: extOn ?: "map") + " #" + Integer.toHexString(System.identityHashCode(mapView))
+        val callback = object : android.view.SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                created = true
+                android.util.Log.i("KavMap", "surface created: $label")
+                // A map whose tiles never all come shows anyway after a moment, as when it first opens.
+                mapView.postDelayed({ surfaceAway.value = false }, 1500)
+            }
+            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {}
+            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                created = false
+                surfaceAway.value = true
+                android.util.Log.i("KavMap", "surface destroyed: $label")
+            }
+        }
+        val drew = MapView.OnDidFinishRenderingFrameListener { fully, _, _ -> if (created && fully) surfaceAway.value = false }
+        surface.holder.addCallback(callback)
+        mapView.addOnDidFinishRenderingFrameListener(drew)
+        try { kotlinx.coroutines.awaitCancellation() } finally {
+            surface.holder.removeCallback(callback)
+            mapView.removeOnDidFinishRenderingFrameListener(drew)
         }
     }
     val type = MapFile.type
@@ -1250,12 +1714,14 @@ fun TileMap(
     LaunchedEffect(map, mapReady, onPhone, K.look, type, labels, MapFile.buildings3d) {
         if (type to labels != drawnAs) {
             drawnAs = type to labels
-            if (drawn) animate(mapView.alpha, 0f, animationSpec = tween(150)) { v, _ -> mapView.alpha = v }
+            if (drawn) animate(showing(), 0f, animationSpec = tween(150)) { v, _ -> show(v) }
             drawn = false
         }
         if (!mapReady) return@LaunchedEffect
-        // Local tiles need no coarse network preview, which would also decode and upload another zoom level.
-        map?.setPrefetchZoomDelta(if (provider.online() || remote && !onPhone) 4 else 0)
+        // A coarse tile four zooms up is drawn first wherever the map moves to, from the phone's own tiles too: with
+        // none (0), a trip view's camera moving to its next step showed the style's ground in black chunks until the
+        // new tiles were in.
+        map?.setPrefetchZoomDelta(4)
         val json = MapFile.styleJson(ctx, type, K.look, labels, preview = remote) ?: return@LaunchedEffect
         val kept = pooled?.style
         if (style == null && json == held[0] && kept != null && kept.isFullyLoaded) style = kept
@@ -1331,13 +1797,24 @@ fun TileMap(
             }
             val out = (1f - f) * stopsA
             s.getLayer(DOT_OUT)?.setProperties(PropertyFactory.circleOpacity(out), PropertyFactory.circleStrokeOpacity(out))
-            for (id in listOf(HALO_OUT, GLIDE_HALO_OUT)) s.getLayer(id)?.setProperties(PropertyFactory.circleOpacity((1f - f) * vehiclesA * liveA))
+            for (id in listOf(HALO_OUT, GLIDE_HALO_OUT)) s.getLayer(id)?.setProperties(PropertyFactory.circleOpacity(featureAlpha((1f - f) * vehiclesA * liveA)))
             // Never quite 0: a symbol layer at 0 isn't drawn, and coming back its marks would be placed anew and fade in
             // on the map's own 300 ms, after their halos.
             for (id in listOf(MARK_OUT, TURN_OUT, GLIDE_MARK_OUT, GLIDE_TURN_OUT))
-                s.getLayer(id)?.setProperties(PropertyFactory.iconOpacity(((1f - f) * liveA * vehiclesA).coerceAtLeast(0.002f)))
+                s.getLayer(id)?.setProperties(PropertyFactory.iconOpacity(featureAlpha(((1f - f) * liveA * vehiclesA).coerceAtLeast(0.002f))))
             sent = now
         }
+    }
+    // Native extensions' shapes, over Kav's own, sent again at each change.
+    val extVersion = if (extOn != null) uk.noammm.kav.ext.NativeMap.version.collectAsState().value else 0
+    LaunchedEffect(style, extVersion) {
+        val s = style?.takeIf { it.isFullyLoaded } ?: return@LaunchedEffect
+        val on = extOn ?: return@LaunchedEffect
+        val shapes = uk.noammm.kav.ext.NativeMap.shapes(on)
+        if (shapes.isEmpty() && s.getSource("kav-ext") == null) return@LaunchedEffect
+        s.ensureKavLayers()
+        s.ensureExtLayers()
+        s.setExtShapes(shapes)
     }
     // Lines and marks made off the main thread, and sent only when they change: on the Live tab a pan changes the stops,
     // seldom the lines.
@@ -1570,6 +2047,12 @@ fun TileMap(
     LaunchedEffect(style) {
         val s = style?.takeIf { it.isFullyLoaded } ?: return@LaunchedEffect
         val drawn = HashMap<String, Pair<Double, Double>>()
+        // Each live mark's and halo's alpha as last sent, step by step, so an update that comes during a fade takes it on
+        // from there; and the groups' marks shown (LiveGroups), which fade out where they are when their group splits.
+        val shownAlpha = HashMap<String, Float>()
+        var groupsShown = emptyList<MapMarker>() to emptyList<MapDot>()
+        // The together update stepping now (Flight).
+        var flight: Flight? = null
         val images = HashMap<String, ImageBitmap>()
         var namedLast = emptySet<String>()
         var togetherLayers = false
@@ -1601,6 +2084,48 @@ fun TileMap(
             val until = android.os.SystemClock.uptimeMillis() + 100
             while (rendered < from + 2 && android.os.SystemClock.uptimeMillis() < until) withFrameMillis { }
         }
+        // Steps a together update all the way: a step each time the map has drawn a frame and taken the last step in, so
+        // it goes at the map's own rate (60 a second) where a fixed 33 ms between steps held it near 30. tell: once its
+        // first step is in both sources.
+        suspend fun fly(f: Flight, scale: Float, tell: () -> Unit) {
+            var last = withFrameMillis { it }
+            if (f.start < 0L) f.start = last
+            val began = last; val frames = rendered; var steps = 0
+            var sent = 0L
+            var sentFrame = -1
+            var asked = stillTaken
+            var haloAsked = stillHalosTaken
+            var told = false
+            while (true) {
+                val at = withFrameMillis { it }
+                if (!told && sent != 0L && stillTaken >= asked && stillHalosTaken >= haloAsked) { told = true; tell() }
+                if (touching.value || settling) f.start += at - last
+                last = at
+                val t = if (f.glides.isEmpty() && f.fades.isEmpty()) 1f else ((at - f.start) / (GLIDE_MS * scale)).coerceIn(0f, 1f)
+                if (sent != 0L && t < 1f && (rendered == sentFrame || stillTaken < asked || stillHalosTaken < haloAsked || touching.value || settling)) continue
+                val eased = FastOutSlowInEasing.transform(t)
+                val (halos, marks) = withContext(Dispatchers.Default) {
+                    for ((id, glide) in f.glides) drawn[id] = glide.place(eased)
+                    f.features.together(eased, f.glides)
+                }
+                asked = stillTaken + 1
+                haloAsked = stillHalosTaken + 1
+                times.send { s.setKavLiveHalos(halos, f.features.dots); s.setKavLiveMarks(marks); s.placeRider(drawn["me"]) }
+                for ((id, a) in f.fades) shownAlpha[id] = a.first + (a.second - a.first) * eased
+                f.t = t
+                sent = at
+                sentFrame = rendered
+                steps++
+                if (t >= 1f) break
+            }
+            // Measuring it on a phone (LiveTimes): how many steps it got and how many frames the map drew meanwhile.
+            if (times.on && (f.fades.isNotEmpty() || f.glides.isNotEmpty())) android.util.Log.d("KavMap", String.format(java.util.Locale.US,
+                "flight: %d fading, %d gliding; %d steps and %d map frames in %d ms", f.fades.size, f.glides.size, steps, rendered - frames, last - began))
+            if (!told) kotlinx.coroutines.withTimeoutOrNull(500) {
+                while (stillTaken < asked || stillHalosTaken < haloAsked) withFrameMillis { }
+                tell()
+            }
+        }
         var wasActive = false
         try {
             snapshotFlow { liveNow.takeIf { liveActive } }.collectLatest { g ->
@@ -1610,7 +2135,9 @@ fun TileMap(
                     snapshotFlow { touching.value || settling }.first { !it }
                     kotlinx.coroutines.delay(150)
                 }
-                val glide = wasActive
+                // Back on screen (a tab come back to), the vehicles glide on from where the map still shows them, as on
+                // any round: put in their new places at once, the whole map changed in one frame as its fade ended.
+                val glide = wasActive || drawn.isNotEmpty()
                 wasActive = true
                 s.ensureKavLayers()
                 s.ensureKavIcons()
@@ -1621,25 +2148,53 @@ fun TileMap(
                     }
                     // Named by neither this update nor the last, an image is off the map: let it go, as a vehicle's image
                     // is named for its look (LiveScreen) and a new one comes with each change of it.
-                    for (name in images.keys.filter { it !in g.images && it !in namedLast }) { s.removeImage(name); images.remove(name) }
+                    // A group's mark still fading out keeps its image too.
+                    val fadingOut = groupsShown.first.filter { (shownAlpha[it.id] ?: 0f) > 0f }.mapTo(HashSet()) { it.icon }
+                    for (name in images.keys.filter { it !in g.images && it !in namedLast && it !in fadingOut }) { s.removeImage(name); images.remove(name) }
                     namedLast = g.images.keys.toSet()
                 } else s.addKavImages(g.images)
                 times.begin()
                 val scale = currentCoroutineContext()[MotionDurationScale]?.scaleFactor ?: 1f
+                // Only the rider moved (a fix, about every second on Live): the update stepping goes on to its end first,
+                // as it was going, instead of starting over from where it had got, and the rider glides on after it.
+                flight?.takeIf { it.t < 1f && g.together && it.g.together && g.sameButRider(it.g) }?.let { fly(it, scale) {} }
+                // A group's mark gone from this update (it split, or its count changed: LiveGroups) fades out where it's
+                // drawn, from the alpha it's drawn at; with the rest each goes from its alpha now to its new one.
+                val leaving = if (!g.together) null else {
+                    val marks = g.markers.mapNotNullTo(HashSet()) { it.id }
+                    val halos = g.halos.mapNotNullTo(HashSet()) { it.id }
+                    fun seen(id: String?) = (shownAlpha[id] ?: 0f) > 0f
+                    fun at(id: String) = drawn[id.substringBefore(':')]
+                    groupsShown.first.filter { it.id !in marks && seen(it.id) }.map { m -> (at(m.id!!)?.let { m.copy(lat = it.first, lon = it.second) } ?: m).copy(alpha = 0f) } to
+                        groupsShown.second.filter { it.id !in halos && seen(it.id) }.map { d -> (at(d.id!!)?.let { d.copy(lat = it.first, lon = it.second) } ?: d).copy(alpha = 0f) }
+                }
+                val update = if (leaving == null) g else g.copy(markers = g.markers + leaving.first, halos = g.halos + leaving.second)
+                val fading = glide && scale > 0f && update.halos.count { it.alpha > 0f } <= CROWD
+                val fades = HashMap<String, Pair<Float, Float>>()
+                if (g.together && fading) {
+                    for (m in update.markers) m.id?.let { id -> val was = shownAlpha[id] ?: 0f; if (was != m.alpha) fades[id] = was to m.alpha }
+                    for (d in update.halos) d.id?.let { id -> val was = shownAlpha[id] ?: 0f; if (was != d.alpha) fades[id] = was to d.alpha }
+                }
+                shownAlpha.clear()
+                for (m in update.markers) m.id?.let { shownAlpha[it] = fades[it]?.first ?: m.alpha }
+                for (d in update.halos) d.id?.let { shownAlpha[it] = fades[it]?.first ?: d.alpha }
+                groupsShown = update.markers.filter { it.id?.startsWith(GROUP_ID) == true } to update.halos.filter { it.id?.startsWith(GROUP_ID) == true }
                 val (features, glides) = withContext(Dispatchers.Default) {
                     val made = System.nanoTime()
                     val places = HashMap<String, Pair<Double, Double>>()
                     for (m in g.markers) m.id?.let { places[it.substringBefore(':')] = m.lat to m.lon }
                     for (d in g.halos) d.id?.let { places[it.substringBefore(':')] = d.lat to d.lon }
+                    leaving?.let { (marks, halos) -> for (o in marks.map { it.id } + halos.map { it.id }) o?.substringBefore(':')?.let { id -> drawn[id]?.let { places.putIfAbsent(id, it) } } }
                     val glides = HashMap<String, Glide>()
+                    val far = fades.keys.mapTo(HashSet()) { it.substringBefore(':') }
                     // A crowd (CROWD) moves to where it is now at once: hundreds of vehicles sent again at each step
                     // of a glide had every pan or zoom meanwhile drop frames, where each moves a few pixels.
-                    if (glide && scale > 0f && g.halos.size <= CROWD) for ((id, to) in places) {
-                        drawn[id]?.let { was -> Glide.of(was, to, g.tracks[id]) }?.let { glides[id] = it }
+                    if (fading) for ((id, to) in places) {
+                        drawn[id]?.let { was -> Glide.of(was, to, g.tracks[id], far = id in far || id.startsWith(GROUP_ID)) }?.let { glides[id] = it }
                     }
                     drawn.keys.retainAll(places.keys)
                     for ((id, to) in places) if (id !in glides) drawn[id] = to
-                    val features = LiveFeatures(g)
+                    val features = LiveFeatures(update, fades)
                     times.madeNs = System.nanoTime() - made
                     features to glides
                 }
@@ -1660,37 +2215,9 @@ fun TileMap(
                         )
                         togetherLayers = true
                     }
-                    var start = withFrameMillis { it }
-                    var last = start
-                    var sent = 0L
-                    var asked = stillTaken
-                    var haloAsked = stillHalosTaken
-                    var told = false
-                    while (true) {
-                        val at = withFrameMillis { it }
-                        if (!told && sent != 0L && stillTaken >= asked && stillHalosTaken >= haloAsked) {
-                            told = true
-                            liveTaken?.invoke(g)
-                        }
-                        if (touching.value || settling) start += at - last
-                        last = at
-                        val t = if (glides.isEmpty()) 1f else ((at - start) / (GLIDE_MS * scale)).coerceIn(0f, 1f)
-                        if (sent != 0L && t < 1f && (at - sent < 33 || stillTaken < asked || stillHalosTaken < haloAsked || touching.value || settling)) continue
-                        val eased = FastOutSlowInEasing.transform(t)
-                        val (halos, marks) = withContext(Dispatchers.Default) {
-                            for ((id, glide) in glides) drawn[id] = glide.place(eased)
-                            features.together(eased, glides)
-                        }
-                        asked = stillTaken + 1
-                        haloAsked = stillHalosTaken + 1
-                        times.send { s.setKavLiveHalos(halos, features.dots); s.setKavLiveMarks(marks); s.placeRider(drawn["me"]) }
-                        sent = at
-                        if (t >= 1f) break
-                    }
-                    if (!told) kotlinx.coroutines.withTimeoutOrNull(500) {
-                        while (stillTaken < asked || stillHalosTaken < haloAsked) withFrameMillis { }
-                        liveTaken?.invoke(g)
-                    }
+                    val f = Flight(g, features, glides, fades)
+                    flight = f
+                    fly(f, scale) { liveTaken?.invoke(g) }
                     times.end(features.count, glides.size)
                     return@collectLatest
                 }
@@ -1798,7 +2325,8 @@ fun TileMap(
     LaunchedEffect(liveShown) { if (liveShown) { liveFade.snapTo(0f); liveFade.animateTo(1f, tween(360)) } }
     LaunchedEffect(style) {
         val s = style?.takeIf { it.isFullyLoaded } ?: return@LaunchedEffect
-        snapshotFlow { marksFade.value to liveFade.value }.collect { (marksA, liveA) ->
+        // Marks drawn as a screen's stops (an extension's stop look on Live) go with the stops too (outStops).
+        snapshotFlow { marksFade.value * (outStopsNow?.invoke() ?: 1f) to liveFade.value }.collect { (marksA, liveA) ->
             if (!s.isFullyLoaded) return@collect
             s.fadeLayers(marksA, "kav-mark")
             s.fadeLayers(liveA, "kav-live-dot", "kav-live-mark", "kav-live-turn", GLIDE_MARK, GLIDE_TURN)
@@ -1865,10 +2393,12 @@ fun TileMap(
 
     // Seen while a new map fades in: a light map's ground under a light map, a dark one's under a dark map, so a
     // change between two of them doesn't blink through the app's own.
+    val ground = if (MapInk.light != K.light) MapInk.bg else K.surface1
     BoxWithConstraints(modifier.onGloballyPositioned {
         val bounds = it.boundsInWindow()
         inViewport = warming || bounds.width > 0f && bounds.height > 0f
-    }.clipToBounds().background(if (MapInk.light != K.light) MapInk.bg else K.surface1)) {
+        if (MAP_ON_SURFACE) { still.at = it.positionInRoot(); still.size = it.size }
+    }.clipToBounds().background(ground)) {
         val w = with(density) { maxWidth.toPx() }
         val h = with(density) { maxHeight.toPx() }
         val padL = with(density) { contentPadding.calculateLeftPadding(layoutDirection).toPx() }.coerceIn(0f, (w - 1).coerceAtLeast(0f))
@@ -1905,6 +2435,12 @@ fun TileMap(
         }
         val anchor = viewport.anchor
         val look by rememberUpdatedState(onLook)
+        val zoomTold by rememberUpdatedState(onZoom)
+        LaunchedEffect(zoomTo) { zoomTo?.let { camera.zoomAt(it.lat, it.lon, it.zoom, scope) } }
+        if (onZoom != null) LaunchedEffect(Unit) {
+            snapshotFlow { camera.value?.zoom?.let { (it * 4).roundToInt() / 4f } }.filterNotNull()
+                .collectLatest { z -> kotlinx.coroutines.delay(ZOOM_TOLD_AFTER_MS); zoomTold?.invoke(z) }
+        }
         val mapSize by rememberUpdatedState(w to h)
         // Only a hand on the map changes where it looks: the map growing or shrinking isn't a new place.
         if (onLook != null) LaunchedEffect(Unit) {
@@ -1967,13 +2503,23 @@ fun TileMap(
                 val p = measurable.measure(constraints.copy(minHeight = tall, maxHeight = tall))
                 layout(constraints.maxWidth, constraints.maxHeight) { p.place(0, 0) }
             }
+            // Not drawn while its page comes or goes: no hole, so its surface is hidden and the still drawn next shows instead.
+            .then(if (MAP_ON_SURFACE) Modifier.drawWithContent { if (!MapVeil.on) drawContent() } else Modifier)
             .ownDamage())
+        if (MAP_ON_SURFACE) Box(Modifier.fillMaxSize().drawBehind {
+            if (MapVeil.on || surfaceAway.value) still.image?.let { drawImage(it, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt())) }
+                ?: drawRect(still.tint)
+            val cover = 1f - shown.floatValue
+            if (cover > 0f) drawRect(ground, alpha = cover)
+        })
 
         val tap by rememberUpdatedState(onTap)
         Box(
             Modifier.fillMaxSize()
-                .then(if (onTap == null) Modifier else Modifier.pointerInput(anchor) {
+                .then(if (onTap == null && extOn == null) Modifier else Modifier.pointerInput(anchor) {
                     detectTapGestures { at ->
+                        // A native extension's shape under the finger is its tap, not the map's.
+                        if (extOn != null) map?.extShapeAt(at.x, at.y)?.let { uk.noammm.kav.ext.NativeMap.tapped(it, ctx); return@detectTapGestures }
                         val current = camera.value ?: return@detectTapGestures
                         val flat = MapProjection(current.worldX, current.worldY, current.pxPerWorld,
                             size.width.toFloat(), if (camera.ref > 0f) camera.ref else size.height.toFloat())
@@ -1993,9 +2539,38 @@ fun TileMap(
                     }
                 }
                 .pointerInput(camera) {
-                    detectTransformGestures(panZoomLock = true) { centroid, panChange, zoomChange, twist ->
-                        camera.gesture(centroid, panChange, zoomChange, twist, liveViewport)
+                    val screenH = ctx.resources.displayMetrics.heightPixels.toFloat()
+                    // Tilted, a place on screen isn't where the flat sums put it: the fingers' places go through
+                    // MapLibre's own projection to where the flat map shows that ground, so the place under the fingers
+                    // stays under them as they zoom and move. Flat, they're used as they are.
+                    fun flat(s: Offset): Offset {
+                        val m = map ?: return s
+                        if (tiltNow <= 0.5f) return s
+                        val p = m.projection
+                        val a = liveViewport.anchor
+                        val l = p.fromScreenLocation(android.graphics.PointF(s.x, s.y))
+                        val t = p.fromScreenLocation(android.graphics.PointF(a.x, a.y))
+                        val k = Geo.SIZE * 2.0.pow(m.cameraPosition.zoom + 1.0 + ln(density.density.toDouble()) / ln(2.0))
+                        val dx = (Geo.x(l.longitude) - Geo.x(t.longitude)) * k
+                        val dy = (Geo.y(l.latitude) - Geo.y(t.latitude)) * k
+                        val r = Math.toRadians(-m.cameraPosition.bearing)
+                        val f = Offset((a.x + dx * cos(r) - dy * sin(r)).toFloat(), (a.y + dx * sin(r) + dy * cos(r)).toFloat())
+                        return if (f.x.isFinite() && f.y.isFinite()) f else s
                     }
+                    detectMapGestures(
+                        onDown = camera::hold,
+                        onGesture = { screenAt, screenPan, zoom, twist ->
+                            val centroid = flat(screenAt)
+                            val pan = flat(screenAt + screenPan) - centroid
+                            camera.gesture(centroid, pan, zoom, twist, liveViewport, scope)
+                        },
+                        onRelease = { screenAt, screenVelocity, zoomVelocity, turnVelocity ->
+                            // The fingers' speed as the flat map's, over the next 50 ms from where they let go.
+                            val centroid = flat(screenAt)
+                            val velocity = (flat(screenAt + screenVelocity * 0.05f) - centroid) / 0.05f
+                            camera.fling(centroid, velocity, zoomVelocity, turnVelocity, screenH, density.density, { liveViewport }, scope)
+                        },
+                    )
                 }
                 .pointerInput(camera) {
                     val start = 18.dp.toPx()
@@ -2062,7 +2637,7 @@ fun TileMap(
                             me != null -> Icons.Rounded.MyLocation
                             else -> Icons.Rounded.CenterFocusStrong
                         },
-                        if (follow != null) T("Follow", "עקבו") else T("Recentre", "מירכוז"),
+                        if (follow != null) T("Follow", "עקבו") else T("Recenter", "מירכוז"),
                         {
                             look?.invoke(null, 0.0)
                             when {
@@ -2085,9 +2660,30 @@ fun TileMap(
     }
 }
 
+// How long a map on its own surface rests before its still is taken, and how often it's taken again at rest.
+private const val STILL_REST_MS = 250L
+private const val STILL_EVERY_MS = 1_000L
+
 // The halos' pulse, rememberLivePulse's curve (0.85 to 1.35 and back, 1.4 s each way), by the time it has run.
 // More halos than this on a map and they stop pulsing (TileMap).
 private const val CROWD = 150
+// A together update stepping (TileMap's fly): what it glides and fades, when it started (-1 until then) and how far
+// it has got.
+private class Flight(val g: MapGeometry, val features: LiveFeatures, val glides: Map<String, Glide>, val fades: Map<String, Pair<Float, Float>>) {
+    var start = -1L
+    var t = 0f
+}
+
+// The same vehicles, groups and dots, the rider alone perhaps somewhere else.
+private fun MapGeometry.sameButRider(o: MapGeometry): Boolean {
+    fun MapDot.mine() = id?.startsWith("me") == true
+    return markers == o.markers && dots == o.dots && halos.filterNot { it.mine() } == o.halos.filterNot { it.mine() }
+}
+
+// The start of a group's mark id (LiveGroups): one mark for the vehicles merged there.
+internal const val GROUP_ID = "grp."
+// How long the camera rests before its zoom is told (onZoom): a move or a glide in between changes nothing.
+private const val ZOOM_TOLD_AFTER_MS = 150L
 
 private class PulseClock {
     var ms = 0L
@@ -2106,11 +2702,10 @@ fun MapWarmUp(here: Pair<Double, Double>?) {
     // Only a map drawn from the phone: one that loads online would ask its server for where the rider is, unasked.
     val provider = MapFile.provider()
     if (MapPool.warmed || MapPool.resting || provider.online() || provider.pack.state !is MapPack.State.Ready) return
-    // 0: not yet, 1: where the rider is, 2: the latest route, in its trip page's map (RouteMap). Between the two the
-    // map goes back to the pool for a frame, so the second takes the same one.
+    // 0: not yet, 1: where the rider is, 2: the latest route, in its trip page's map (RouteMap). The same map goes on
+    // from one to the other: given back to the pool between them, its surface was let go and made again for nothing.
     var step by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(3_000); step = 1 }
-    LaunchedEffect(step) { if (step == -2) step = 2 }
     val route = remember { LatestRoute.route?.trip?.legs?.filter { it.shape.size >= 2 }?.flatMap { it.shape }?.takeIf { it.isNotEmpty() } }
     if (step <= 0) return
     val points = if (step == 2 && route != null) route else listOf(here ?: (32.0759 to 34.7745))
@@ -2121,13 +2716,15 @@ fun MapWarmUp(here: Pair<Double, Double>?) {
             .layout { measurable, constraints ->
                 val p = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(
                     constraints.maxWidth - 2 * side.roundToPx(), tall.roundToPx()))
-                layout(0, 0) { p.place(0, 0) }
+                // Left of the screen, wholly: a map on its own surface shows wherever it's placed, whatever its alpha,
+                // and placed at the top it showed through a trip view's map as a band of another map.
+                layout(0, 0) { p.place(if (MAP_ON_SURFACE) -p.width - 1 else 0, 0) }
             }
             .graphicsLayer { alpha = 0f }
             .clearAndSetSemantics {},
     ) {
         TileMap(points, Modifier.fillMaxSize(), attribution = false, warming = true, onDrawn = {
-            if (step == 1 && route != null) step = -2 else MapPool.warmed = true
+            if (step == 1 && route != null) step = 2 else MapPool.warmed = true
         })
     }
 }

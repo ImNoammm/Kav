@@ -43,6 +43,8 @@ object GoogleCrowd {
         data object Asking : Crowd
         data object Failed : Crowd
         data object Unknown : Crowd
+        // Kav's own, from the ministry's Rav-Kav taps (KavCrowd): how the hour compares with the line's own, and the month.
+        data class Usual(val level: Char, val month: String) : Crowd
     }
 
     fun displayed(crowd: Crowd?, train: Boolean): Crowd? =
@@ -91,7 +93,8 @@ object GoogleCrowd {
 
     // The ride's line's departure from its boarding stop. Null when it's off, or the stop or line isn't known.
     fun of(ride: Transit.Leg, r: Transit.Resolved, dep: Transit.Departure): Crowd? {
-        val code = r.stop(ride.fromStop)?.code ?: return null
+        // Google is asked about the ministry's stops only: an extension's stop code is its publisher's own.
+        val code = r.stop(ride.fromStop)?.takeIf { it.ministryCode() != null }?.code ?: return null
         val number = number(ride, r) ?: return null
         return crowdAt(code, number, listOf(dep.timeUtc, dep.staticUtc).filter { it > 0 }.distinct())
     }
@@ -118,7 +121,7 @@ object GoogleCrowd {
     suspend fun refresh(rides: List<Pair<Transit.Leg, Transit.Resolved>>) =
         // Every ride on the trip shown: its card shows the line's next departures whenever the plan was made.
         refreshStops(rides.mapNotNull { (ride, r) ->
-            val from = r.stop(ride.fromStop) ?: return@mapNotNull null
+            val from = r.stop(ride.fromStop)?.takeIf { it.ministryCode() != null } ?: return@mapNotNull null
             val a = from.point ?: return@mapNotNull null
             val b = r.stop(ride.toStop)?.point ?: return@mapNotNull null
             Stop(from.code, a, b)

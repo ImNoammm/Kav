@@ -38,7 +38,9 @@ import uk.noammm.kav.ui.nextTurn
 import uk.noammm.kav.ui.turnText
 import uk.noammm.kav.ui.walkTo
 import uk.noammm.kav.ui.busOn
+import uk.noammm.kav.ui.minsLeft
 import uk.noammm.kav.ui.minutesToAlight
+import uk.noammm.kav.ui.leavesNow
 import uk.noammm.kav.ui.platformChange
 import uk.noammm.kav.ui.riderTrip
 import uk.noammm.kav.ui.modeName
@@ -185,7 +187,12 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
     val togo = distanceLabel(left)
 
     val say = when (val step = steps[index]) {
-        is Step.Start -> Say(
+        // "Now" while leaving now still makes the first ride, as the card says it (leavesNow()), not a time just gone.
+        is Step.Start -> if (leavesNow(journey.trip, now)) Say(
+            T("Leave now", "יציאה עכשיו"),
+            T("Start from ${step.label}", "התחלה מ${step.label}"),
+            T("now", "עכשיו"), Glyph(null), accent,
+        ) else Say(
             T("Leave at ${time(step.time)}", "יציאה ב-${time(step.time)}"),
             T("Start from ${step.label}", "התחלה מ${step.label}"),
             time(step.time), Glyph(null), accent,
@@ -206,11 +213,11 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
                 ?: Transit.Departure(ride.tripId, ride.dep)
             val glyph = Glyph(legMode(ride, r))
             if (dep.status == 3) Say(
-                T("${lineName(ride)} is cancelled", "${lineName(ride)} מבוטל"),
-                T("Find another route before continuing.", "מצאו מסלול אחר לפני שתמשיכו."),
-                T("Cancelled", "בוטל"), glyph, colourOf(ride),
+                T("${lineName(ride)} is canceled", "${lineName(ride)} מבוטל"),
+                T("Tap for a new route from here.", "הקישו למסלול חדש מכאן."),
+                T("Canceled", "בוטל"), glyph, colourOf(ride),
             ) else {
-                val mins = ((dep.timeUtc - now) / 60).coerceAtLeast(0)
+                val mins = minsLeft(dep.timeUtc - now)
                 val leaves = whenLabel(dep.timeUtc, now)
                 Say(
                     "${lineName(ride)} · $leaves",
@@ -326,7 +333,7 @@ internal fun tripAlert(journey: ActiveJourney, current: Int, fix: Fix?, now: Lon
             val at = fix?.takeIf { it.isFresh(now) && it.speed <= 5f } ?: return null
             val (turn, metres) = nextTurn(step.leg, at) ?: return null
             if (metres > TURN_AHEAD_M) null
-            else TripAlert("$TURN_KEY${turn.lat},${turn.lon}", turnText(turn), walkTo(step, r))
+            else TripAlert("$TURN_KEY${turn.lat},${turn.lon}", turnText(turn, step.leg), walkTo(step, r))
         }
         is Step.Wait -> {
             val (ride, wait) = boardingChoice(step.ride, step.wait, journey.chosen[step.legIndex] ?: 0)

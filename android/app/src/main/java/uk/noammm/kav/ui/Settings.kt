@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
@@ -61,6 +62,7 @@ import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
 import uk.noammm.kav.data.MapPacks
+import uk.noammm.kav.data.PlanSettings
 import uk.noammm.kav.data.Schedules
 import uk.noammm.kav.data.SignedFile
 import uk.noammm.kav.data.Source
@@ -71,7 +73,6 @@ import uk.noammm.kav.data.Updates
 import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Campaign
-import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import uk.noammm.kav.data.RideAlerts
 import uk.noammm.kav.data.RiderProxy
@@ -98,10 +99,13 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     // Each part is a row saying what it's set to, and opens on its own page.
     var page by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(active) { if (!active) { page = null; choosing = false } }
+    LaunchedEffect(SettingsNav.wanted) { SettingsNav.wanted?.let { page = it; SettingsNav.wanted = null } }
     androidx.activity.compose.BackHandler(page != null) { page = null }
+    // The header's Back is the phone's: a page that has gone a step in (Extensions, to a source or an extension) steps out first.
+    val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val parts = ArrayList<SettingsPart>()
-    fun part(id: String, title: String, summary: String, content: @Composable ColumnScope.() -> Unit) {
-        parts += SettingsPart(id, title, summary, content)
+    fun part(id: String, title: String, summary: String, summaryColor: Color? = null, content: @Composable ColumnScope.() -> Unit) {
+        parts += SettingsPart(id, title, summary, summaryColor, content)
     }
     val waiting = model.update != null && Shown.updatePrompts
 
@@ -142,6 +146,20 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
     }
 
+    // Paying with Rav-Pass, on its own page (Noam, 19 Nov 2026).
+    part(
+        "paying",
+        T("Paying", "תשלום"),
+        when {
+            PayMode.lost.isNotEmpty() -> T("Action required", "נדרשת פעולה")
+            Shown.payments -> T("With Rav-Pass", "עם רב-פס")
+            else -> T("Not set up", "לא מוגדר")
+        },
+        if (PayMode.lost.isNotEmpty()) K.problem else null,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSettings() }
+    }
+
     part(
         "privacy",
         T("Privacy and sharing", "פרטיות ושיתוף"),
@@ -170,8 +188,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         "look",
         T("Look and language", "מראה ושפה"),
         listOfNotNull(
-            when (K.look) { Look.OLED -> "OLED"; Look.LIGHT -> T("Light", "בהיר"); Look.DARK -> T("Dark", "כהה") },
-            if (!liquidGlassReady) null else if (K.liquid) T("liquid glass", "זכוכית נוזלית") else T("solid", "אחיד"),
+            if (K.followsSystem) T("System", "מערכת")
+            else when (K.look) { Look.OLED -> "OLED"; Look.LIGHT -> T("Light", "בהיר"); Look.DARK -> T("Dark", "כהה") },
+            if (!liquidGlassReady) null else if (K.liquid) T("transparent", "שקוף") else T("solid", "אחיד"),
             T.lang.label,
             if (Shown.twelveHour) T("12-hour clock", "שעון 12 שעות") else T("24-hour clock", "שעון 24 שעות"),
         ).joinToString(" · "),
@@ -180,8 +199,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             AccentPreview()
             LookChoices { Sub(it) }
-            Sub(T("Colour", "צבע"))
-            Spacer(Modifier.height(K.gap4))
+            Sub(T("Color", "צבע"))
             AccentPicker { Prefs.setAccent(ctx, it.toArgb()) }
             LineBadgeChoice()
             Sub(T("Kav's language", "השפה של Kav"))
@@ -206,6 +224,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     part("map", T("Map", "מפה"), mapSummary()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices() }
     }
+
+    // Third-party extensions, their sources, and safe mode (ExtensionsScreen.kt).
+    part("extensions", T("Extensions", "תוספים"), extensionsSummary(ctx)) { ExtensionsPage() }
 
     part(
         "kav",
@@ -263,6 +284,10 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         )
         Sub(T("Credits", "קרדיטים"))
         Absent(
+            T("How busy", "עומס"),
+            T("Kav's own: the Ministry of Transport's count of Rav-Kav taps, from data.gov.il.", "של Kav: ספירת תיקופי הרב-קו של משרד התחבורה, מ-data.gov.il."),
+        )
+        Absent(
             T("Maps", "מפות"),
             T(
                 "Map data © OpenStreetMap contributors, Protomaps. Satellite imagery: Esri, Vantor, Earthstar Geographics. " +
@@ -275,6 +300,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     "מספרי הדרכים מצוירים כתמרורי מספר הדרך של משרד התחבורה.",
             ),
         )
+        Absent(
+            T("Buses", "אוטובוסים"),
+            T("What kind of bus: the Ministry of Transport's file of the operators' buses, from data.gov.il.",
+                "סוג האוטובוס: קובץ ציי האוטובוסים של המפעילים, של משרד התחבורה, מ-data.gov.il."),
+        )
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -282,6 +312,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         page, Modifier.fillMaxSize().background(K.bg),
         transitionSpec = { if (targetState != null) forward() else backward() }, label = "settingsPage",
     ) { shown ->
+        VeilMaps()
         val open = parts.firstOrNull { it.id == shown }
         Column(Modifier.fillMaxSize().background(K.bg).verticalScroll(rememberScrollState())
             .padding(bottom = LocalBottomBarInset.current + K.gap8)) {
@@ -303,7 +334,13 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     for (group in SETTINGS_GROUPS) PartGroup(group.mapNotNull { id -> parts.firstOrNull { it.id == id } }) { page = it }
                 }
             } else {
-                ScreenHeader(open.title, "", back = { page = null })
+                // Inside Extensions, the step the rider is on (a source, Sources), and on Sources its plus.
+                val headTitle = (if (open.id == "extensions") ExtUi.title else null) ?: open.title
+                val headBack = { backs?.onBackPressed() ?: run { page = null } }
+                val headAdd = if (open.id == "extensions") ExtUi.headerAdd else null
+                if (headAdd != null) ScreenHeader(headTitle, back = headBack) {
+                    KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), headAdd)
+                } else ScreenHeader(headTitle, "", back = headBack)
                 Column(Modifier.padding(horizontal = K.gap1), content = open.content)
             }
         }
@@ -334,12 +371,12 @@ internal fun SeenPlacePicker(model: KavModel, open: Boolean, onClose: () -> Unit
     }
 }
 
-private class SettingsPart(val id: String, val title: String, val summary: String, val content: @Composable ColumnScope.() -> Unit)
+private class SettingsPart(val id: String, val title: String, val summary: String, val summaryColor: Color?, val content: @Composable ColumnScope.() -> Unit)
 
 // Trips first, then how Kav looks and behaves, then Kav itself.
 private val SETTINGS_GROUPS = listOf(
-    listOf("trips", "live", "look", "map", "privacy"),
-    listOf("kav"),
+    listOf("trips", "paying", "live", "look", "map", "privacy"),
+    listOf("extensions", "kav"),
 )
 
 @Composable
@@ -355,7 +392,7 @@ private fun PartGroup(parts: List<SettingsPart>, onOpen: (String) -> Unit) {
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(p.title, fontSize = 16.sp, color = K.text)
-                    Text(p.summary, fontSize = 14.sp, color = K.dim, lineHeight = 20.sp, maxLines = 2,
+                    Text(p.summary, fontSize = 14.sp, color = p.summaryColor ?: K.dim, lineHeight = 20.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.width(K.gap2))
@@ -399,10 +436,10 @@ internal fun LookChoices(inset: Dp = 0.dp, heading: @Composable (String) -> Unit
     heading(T("Look", "מראה"))
     LookRow(inset)
     if (!liquidGlassReady) return
-    InfoHeader(T("Glass", "זכוכית"), T("Liquid glass is the one we recommend.", "זכוכית נוזלית היא האפשרות המומלצת."))
+    heading(T("Glass", "זכוכית"))
     Row(Modifier.padding(horizontal = inset).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
         KavSegmented(
-            listOf(T("Liquid glass", "זכוכית נוזלית"), T("Solid", "אחיד")), selected = if (K.liquid) 0 else 1,
+            listOf(T("Transparent", "שקוף"), T("Solid", "אחיד")), selected = if (K.liquid) 0 else 1,
             onSelect = { i -> K.restyle { K.liquid = i == 0 }; Prefs.setLiquidGlass(ctx, i == 0) },
         )
     }
@@ -471,7 +508,7 @@ internal fun LineBadgeChoice() {
     InfoHeader(
         T("Line badges", "סמלי הקווים"),
         T(
-            "How bus lines look on boards, plans and trips. Kav: the operator's colour fills the badge. Strip: a grey badge with the operator's colour as a strip under it.",
+            "How bus lines look on boards, plans and trips. Kav: the operator's color fills the badge. Strip: a gray badge with the operator's color as a strip under it.",
             "איך קווי האוטובוס נראים בלוחות, במסלולים ובנסיעות. Kav: צבע המפעיל ממלא את הסמל. פס: סמל אפור עם פס בצבע המפעיל מתחתיו.",
         ),
     )
@@ -558,7 +595,7 @@ internal fun MapChoices(setup: Boolean = false) {
         ListGroup(Modifier.padding(top = K.gap2)) {
             row {
                 ToggleRow(T("3D buildings", "בניינים בתלת-ממד"), MapFile.buildings3d, { Icon(Icons.Rounded.Apartment, contentDescription = null, tint = toggleInk(MapFile.buildings3d), modifier = Modifier.size(20.dp)) },
-                    subtitle = T("Buildings stand up when you tilt the map. Off, the map shows no buildings", "הבניינים מתרוממים כשמטים את המפה. כשזה כבוי, המפה בלי בניינים"),
+                    subtitle = T("Buildings stand up when you tilt the map", "הבניינים מתרוממים כשמטים את המפה"),
                     subtitleMaxLines = Int.MAX_VALUE) { on ->
                     MapFile.buildings3d = on; Prefs.setBuildings3d(ctx, on)
                 }
@@ -568,9 +605,9 @@ internal fun MapChoices(setup: Boolean = false) {
     Sub("OpenFreeMap")
     ListGroup {
         for ((t, look) in listOf(
-            MapFile.Type.LIBERTY to T("Light, in colour", "בהירה, צבעונית"),
+            MapFile.Type.LIBERTY to T("Light, in color", "בהירה, צבעונית"),
             MapFile.Type.BRIGHT to T("Light", "בהירה"),
-            MapFile.Type.DARK to T("Dark grey", "אפורה כהה"),
+            MapFile.Type.DARK to T("Dark gray", "אפורה כהה"),
             MapFile.Type.FIORD to T("Dark blue", "כחולה כהה"),
         )) row { MapTypeChoice(mapName(t), look, MapFile.type == t) { pick(t) } }
     }
@@ -817,6 +854,7 @@ internal fun PlanChoices(model: KavModel) {
                 }
             }
         }
+        RouteSettings()
         InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
             "The CO2e of every plan and trip, from every planner: Kav works it out from each ride's distance, by bus, train, light rail or taxi, with the UK government's figures per passenger.",
             "ה-CO2e של כל מסלול ונסיעה, מכל מתכנן: Kav מחשבת אותו לפי המרחק של כל נסיעה, באוטובוס, ברכבת, ברכבת קלה או במונית, לפי הנתונים של ממשלת בריטניה לכל נוסע.",
@@ -838,6 +876,52 @@ internal fun PlanChoices(model: KavModel) {
     }
 }
 
+// How Kav's planner, and the rider's own server, pick routes for this rider (KavPlan.settings): a choice of two or three
+// each, the usual in the middle.
+@Composable
+private fun RouteSettings() {
+    val ctx = LocalContext.current
+    val now = KavPlan.settings
+    fun save(next: PlanSettings) { KavPlan.settings = next; Prefs.setPlanSettings(ctx, next) }
+    SettingChoice(T("Walking pace", "קצב הליכה"), paceInfo(), listOf(T("Slow", "איטי"), T("Usual", "רגיל"), T("Fast", "מהיר")),
+        PlanSettings.Pace.entries.indexOf(now.pace)) { save(now.copy(pace = PlanSettings.Pace.entries[it])) }
+    SettingChoice(T("Walking", "הליכה"), walkingInfo(), listOf(T("Less", "פחות"), T("Usual", "רגיל"), T("I don't mind", "לא אכפת לי")),
+        PlanSettings.Walking.entries.indexOf(now.walking)) { save(now.copy(walking = PlanSettings.Walking.entries[it])) }
+    SettingChoice(T("Changes", "החלפות"), changesInfo(), listOf(T("Usual", "רגיל"), T("Fewer", "פחות")),
+        PlanSettings.Changes.entries.indexOf(now.changes)) { save(now.copy(changes = PlanSettings.Changes.entries[it])) }
+    SettingChoice(T("Time at the stop", "זמן בתחנה"), spareInfo(), listOf(T("Tight", "צפוף"), T("Usual", "רגיל"), T("Relaxed", "נינוח")),
+        PlanSettings.Spare.entries.indexOf(now.spare)) { save(now.copy(spare = PlanSettings.Spare.entries[it])) }
+}
+
+// What each choice does, under its own "i", in the server's own rules (live.py rider_cost(), kept()).
+internal fun paceInfo() = T(
+    "How fast Kav plans your walks: slow is 1 meter a second, the usual 1.33 (4.8 km/h), fast 1.6.",
+    "באיזה קצב Kav מתכנן את ההליכות שלכם: איטי הוא מטר בשנייה, הרגיל 1.33 (4.8 קמ״ש), מהיר 1.6.",
+)
+
+internal fun walkingInfo() = T(
+    "Less counts a minute on foot twice, and the first route walks at most a minute more than the usual first route. I don't mind counts it half. The first route still stays the usual one, unless another walks at most a quarter of an hour more in all and either gets there no later, or gets there at most 8 minutes later and saves more than a minute on foot (less) or a change (I don't mind). Arriving by a time, later means setting out earlier.",
+    "פחות מחשבת כל דקה ברגל כפול, ובמסלול הראשון הולכים לכל היותר דקה יותר מבמסלול הראשון הרגיל. לא אכפת לי מחשבת אותה כחצי. המסלול הראשון בכל זאת נשאר הרגיל, אלא אם במסלול אחר הולכים לכל היותר רבע שעה יותר בסך הכול, והוא מגיע לא מאוחר יותר, או מגיע עד 8 דקות מאוחר יותר וחוסך יותר מדקה ברגל (פחות) או החלפה (לא אכפת לי). בהגעה עד שעה מסוימת, מאוחר יותר פירושו לצאת מוקדם יותר.",
+)
+
+internal fun changesInfo() = T(
+    "Fewer counts each change twice. The first route still stays the usual one, unless another walks at most a quarter of an hour more in all and either gets there no later, or saves a change and gets there at most 8 minutes later. Arriving by a time, later means setting out earlier.",
+    "פחות מחשבת כל החלפה כפול. המסלול הראשון בכל זאת נשאר הרגיל, אלא אם במסלול אחר הולכים לכל היותר רבע שעה יותר בסך הכול, והוא מגיע לא מאוחר יותר, או חוסך החלפה ומגיע עד 8 דקות מאוחר יותר. בהגעה עד שעה מסוימת, מאוחר יותר פירושו לצאת מוקדם יותר.",
+)
+
+// Tight's cost, from Kav's routes judged on the buses that really passed (13 Nov: leaving 84 s later, a planned bus
+// lost on 27% of routes against 19%); a route the server finds likely missed says so on its card too.
+internal fun spareInfo() = T(
+    "How much spare time Kav plans at stops. Tight plans none before the bus and half a minute at a change: you leave about a minute and a half later, and miss about half as many buses again. A route you're likely to miss says so. Relaxed plans a minute and a half before the bus and three at a change.",
+    "כמה זמן מיותר Kav מתכנן בתחנות. צפוף מתכנן בלי זמן מיותר לפני האוטובוס וחצי דקה בהחלפה: יוצאים בערך דקה וחצי מאוחר יותר, ומפספסים בערך פי אחד וחצי אוטובוסים. מסלול שסביר שתפספסו מסומן. נינוח מתכנן דקה וחצי לפני האוטובוס ושלוש דקות בהחלפה.",
+)
+
+@Composable
+private fun SettingChoice(title: String, info: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    InfoHeader(title, info)
+    KavSegmented(options, selected, onSelect)
+}
+
 private fun fareProfileName(profile: uk.noammm.kav.data.FareProfile): String = when (profile) {
     uk.noammm.kav.data.FareProfile.REGULAR -> T("Regular", "רגיל")
     uk.noammm.kav.data.FareProfile.YOUTH -> T("Youth", "נוער")
@@ -856,7 +940,7 @@ private fun fareProfileName(profile: uk.noammm.kav.data.FareProfile): String = w
 private fun FareProfileChoice() {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
-    ListRow(T("Fare profile", "פרופיל הנחה"), subtitle = fareProfileName(Shown.fareProfile),
+    ListRow(T("Fare profile", "פרופיל הנחה"), subtitle = FareFromRavPass.subtitle(fareProfileName(Shown.fareProfile)),
         subtitleMaxLines = 2, onClick = { open = true })
     if (open) androidx.compose.ui.window.Dialog(
         onDismissRequest = { open = false },
@@ -868,6 +952,7 @@ private fun FareProfileChoice() {
             "Changes single-ride estimates only. Monthly caps and passes are not included.",
             "משנה רק את הערכת המחיר של נסיעות בודדות. תקרות חודשיות ומנויים אינם נכללים.",
         ))
+        FareFromRavPassRow()
         for (profile in uk.noammm.kav.data.FareProfile.entries) ListRow(
             fareProfileName(profile),
             subtitle = when (profile) {
@@ -880,7 +965,7 @@ private fun FareProfileChoice() {
             subtitleMaxLines = Int.MAX_VALUE,
             trailing = { RadioButton(profile == Shown.fareProfile, onClick = null) },
             onClick = {
-                Shown.fareProfile = profile; Prefs.setFareProfile(ctx, profile)
+                Shown.fareProfile = profile; Prefs.setFareProfile(ctx, profile); FareFromRavPass.clear(ctx)
                 close { open = false }
             }, chevron = false,
         )
@@ -933,22 +1018,37 @@ internal fun AlertsChoice() {
     }
 }
 
-// How busy each ride usually is, from Google Maps' page for its boarding stop (GoogleCrowd).
+// How busy each ride usually is: from Kav's server, by the Ministry of Transport's count of Rav-Kav taps (KavCrowd); from
+// Google Maps' page for its boarding stop (GoogleCrowd); or not shown. Each choice says what goes where.
 @Composable
 internal fun CrowdChoice() {
     val ctx = LocalContext.current
-    InfoHeader(T("How busy", "עומס"), T(
-        "How busy the next bus or train usually is at that hour, as Google Maps predicts it, shown on trips, in navigation and on a line's page. Kav asks Google from your phone about the stop you board at while one of these is open, at most every ten minutes: Google sees the stop and your IP address.",
-        "כמה עמוס בדרך כלל האוטובוס או הרכבת הבאים בשעה הזו, לפי התחזית של Google Maps, בנסיעות, בניווט ובדף של קו. Kav שואלת את Google מהטלפון על תחנת העלייה כשאחד מהם פתוח, לכל היותר כל עשר דקות: Google רואה את התחנה ואת כתובת ה-IP שלכם.",
-    ))
-    ListGroup {
-        row {
-            ToggleRow(
-                T("How busy, from Google", "עומס, מ-Google"), GoogleCrowd.enabled,
-                { Icon(Icons.Rounded.Groups, null, tint = toggleInk(GoogleCrowd.enabled), modifier = Modifier.size(22.dp)) },
-            ) { on -> GoogleCrowd.enabled = on; Prefs.setGoogleCrowd(ctx, on) }
-        }
+    var crowd by remember { mutableStateOf(Prefs.crowdSource(ctx)) }
+    // What each choice sends where, behind the (i) with the rest, so it fades as the choice changes.
+    val said = when (crowd) {
+        Prefs.CROWD_KAV -> T(
+            "Your phone asks Kav's server (or your own, when live times come from it) how busy the lines you look at usually are: the first time each shows after Kav opens, and again after six hours (after ten minutes when there was no answer). It learns which lines you look at. Nothing goes to Google.",
+            "הטלפון שואל את השרת של Kav (או את השרת שלכם, כשהזמנים בזמן אמת מגיעים ממנו) כמה עמוסים בדרך כלל הקווים שאתם מסתכלים עליהם: בפעם הראשונה שכל קו מוצג אחרי ש-Kav נפתחת, ושוב אחרי שש שעות (אחרי עשר דקות כשלא הייתה תשובה). הוא יודע אילו קווים אתם מסתכלים עליהם. שום דבר לא נשלח ל-Google.",
+        )
+        Prefs.CROWD_GOOGLE -> T(
+            "Kav asks Google from your phone about the stop you board at while a trip, navigation or a line's page is open, at most every ten minutes: Google sees the stop and your IP address.",
+            "Kav שואלת את Google מהטלפון על תחנת העלייה כשנסיעה, ניווט או דף של קו פתוחים, לכל היותר כל עשר דקות: Google רואה את התחנה ואת כתובת ה-IP שלכם.",
+        )
+        else -> T("Nothing is shown, and no one is asked.", "לא מוצג דבר, ואף אחד לא נשאל.")
     }
+    InfoHeader(T("How busy", "עומס"), T(
+        "How busy the next bus usually is at that hour, on trips, in navigation, on a line's page and on a bus's card. Kav's compares the hour with the line's own hours, from the Ministry of Transport's count of Rav-Kav taps: taps are boardings, so it never says how full a bus is, and it has nothing for trains. Google's is Google Maps' prediction.",
+        "כמה עמוס בדרך כלל האוטובוס הבא בשעה הזו, בנסיעות, בניווט, בדף של קו ובכרטיס של אוטובוס. של Kav משווה את השעה לשעות של הקו עצמו, לפי ספירת תיקופי הרב-קו של משרד התחבורה: תיקופים הם עליות, ולכן הוא לא אומר כמה מלא האוטובוס, ואין לו נתונים לרכבות. של Google הוא התחזית של Google Maps.",
+    ) + " " + said)
+    KavSegmented(
+        listOf("Kav", "Google", T("Off", "כבוי")), Prefs.CROWDS.indexOf(crowd),
+        { i ->
+            crowd = Prefs.CROWDS[i]
+            Prefs.setCrowdSource(ctx, crowd)
+            GoogleCrowd.enabled = crowd == Prefs.CROWD_GOOGLE
+            uk.noammm.kav.data.KavCrowd.enabled = crowd == Prefs.CROWD_KAV
+        },
+    )
 }
 
 @Composable
@@ -1163,6 +1263,9 @@ internal fun PlanningSource() {
             KavPlan.offered = at == KavLive.KAV_SERVER || (c as? KavLive.Check.Answers)?.planner != null
         },
         note = when {
+            uk.noammm.kav.ext.Selections.planner != null ->
+                T("An extension you chose plans your trips instead. See Settings › Extensions.",
+                    "תוסף שבחרתם מתכנן את המסלולים שלכם במקום השרת. ראו הגדרות › תוספים.")
             KavPlan.source == Source.OWN && KavLive.ownServer.isEmpty() ->
                 if (KavLive.source == Source.OWN) T("Set up your server above, under live locations. Until then, Kav's server plans trips.",
                     "הגדירו את השרת שלכם למעלה, תחת מיקומים בזמן אמת. עד אז, השרת של Kav מתכנן מסלולים.")
@@ -1364,8 +1467,9 @@ private fun SourceChoice(
             signingIn = false
         }
     }
-    Column(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+    // Outside the eased column: the header eases its own height (InfoHeader), and twice would be slower than every other (i).
     InfoHeader(title, about(source))
+    Column(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
     // In the choice's own order (Source.LIVE, Source.PLANNING): its default first.
     Column(verticalArrangement = Arrangement.spacedBy(K.gap1)) {
         val rows = if (order.size > 4) order.chunked(3) else listOf(order)
@@ -1379,11 +1483,6 @@ private fun SourceChoice(
                 { i -> moving { onSource(choices[i]) }; KavLive.recheck.trySend(Unit) },
             )
         }
-        // Kav's own, each choice's first, is the one Kav recommends.
-        if (order.firstOrNull() == Source.KAV) Text(
-            T("Recommended: Kav", "מומלץ: Kav"), style = K.type.caption,
-            modifier = Modifier.padding(start = K.gap3, top = K.gap1),
-        )
     }
     var said by remember { mutableStateOf(note) }
     if (note != null) said = note
@@ -1653,7 +1752,7 @@ private fun LinkCustomization() {
             Sub(T("Stop names", "שמות תחנות"))
             KavSegmented(listOf("English", "עברית"), languages.indexOf(style.stopLanguage.takeUnless { it == "auto" } ?: kavStops),
                 { save(style.copy(stopLanguage = languages[it])) })
-            Sub(T("Colours", "צבעים"))
+            Sub(T("Colors", "צבעים"))
             val themes = listOf("oled", "light", "dark")
             KavSegmented(listOf("OLED", T("Light", "בהיר"), T("Dark", "כהה")), themes.indexOf(style.theme.takeUnless { it == "auto" } ?: kavTheme),
                 { save(style.copy(theme = themes[it])) })
@@ -1805,7 +1904,9 @@ private fun serverUses(): String {
         else -> T("your server", "השרת שלכם")
     }
     val live = named(KavLive.server)
-    val trips = if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
+    // An extension the rider chose to plan with is named, not called a server.
+    val trips = uk.noammm.kav.ext.Extensions.selectedPlanner?.let { uk.noammm.kav.ext.Extensions.nameOf(it) }
+        ?: if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
     val timetable = if (Schedules.source.provider) sourceName(Schedules.source)
         else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else "Kav"
     // Where links are made, once there's a choice of it (ShareServerChoice).
@@ -1865,10 +1966,10 @@ internal fun toggleInk(on: Boolean): Color =
 @Composable
 internal fun ToggleRow(
     title: String, on: Boolean, glyph: @Composable () -> Unit, subtitle: String? = null,
-    subtitleMaxLines: Int = 1, onChange: (Boolean) -> Unit,
+    subtitleMaxLines: Int = 1, subtitleColor: Color? = null, onChange: (Boolean) -> Unit,
 ) = ListRow(
     title, subtitle = subtitle,
-    subtitleMaxLines = subtitleMaxLines,
+    subtitleMaxLines = subtitleMaxLines, subtitleColor = subtitleColor,
     modifier = Modifier.semantics { toggleableState = if (on) ToggleableState.On else ToggleableState.Off },
     leading = { Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { glyph() } },
     trailing = { KavSwitch(on) }, onClick = { onChange(!on) }, chevron = false,
@@ -1923,7 +2024,7 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
                 when (seen) {
                     Seen.NONE -> T("Searches carry no location, so results aren't sorted by distance.",
                         "החיפוש לא כולל מיקום, ולכן התוצאות לא ממוינות לפי מרחק.")
-                    Seen.CITY -> T("The centre of your town, worked out on your phone. ", "מרכז היישוב שלכם, שמחושב בטלפון. ") +
+                    Seen.CITY -> T("The center of your town, worked out on your phone. ", "מרכז היישוב שלכם, שמחושב בטלפון. ") +
                         (town?.let { T("Now: $it.", "כרגע: $it.") } ?: "")
                     Seen.PLACE -> T("A place you pick, so results near it come first.", "מקום שתבחרו, כך שתוצאות קרובות אליו מופיעות ראשונות.")
                 },

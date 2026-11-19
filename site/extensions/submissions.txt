@@ -1,0 +1,7 @@
+# Extension sources for the community list (kavapp.link/community), one GitHub repository per line, as you would type
+# it in Kav:
+#   github.com/owner/repo   (or owner/repo)
+# A line here makes a source a candidate, nothing more: site/scripts/community.mjs lists it only if it passes the
+# checks. Most sources won't need a line, as the kav-extension topic and the site's Submit button reach the script
+# without one. To unlist a source, add it to exclusions.txt.
+github.com/ImNoammm/kav-extensions

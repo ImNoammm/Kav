@@ -1,0 +1,58 @@
+# NOT ENABLED. GitHub runs only the workflows in .github/workflows/, and this one is kept here, in site/extensions/,
+# until Noam moves it there (see README.md beside it). Nothing below has been run.
+name: Community list
+
+# Each night, the community list of extension sources (site/scripts/community.mjs, kavapp.link/community): every
+# public GitHub repository with the kav-extension topic, every line of site/extensions/submissions.txt and every
+# "Kav source:" issue, its latest release's bundle read with the developer kit, then the site built with the result. Nobody looks at
+# what goes in: the log says what was left out and why.
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The developer kit, whose bundle reader decides what is listed. ITS REPOSITORY IS NOT PUBLIC YET: this address is
+      # where it is expected to be (KIT in site/.vitepress/theme/sources.js).
+      - uses: actions/checkout@v7
+        with:
+          repository: ImNoammm/kav-extension-kit
+          path: kit
+
+      # The kit needs Node 22.2 or newer.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: List
+        working-directory: site
+        env:
+          # Only for GitHub's search limits; the script reads public data and writes nothing to GitHub.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/community.mjs --kit ../kit
+
+      - name: Build
+        working-directory: site
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: |
+            site/.vitepress/dist
+            site/extensions/community.log
+
+      # Getting the built site onto kavapp.link: today the site is copied to the server by hand, so this step needs a
+      # decision and a secret first (for example an rsync over SSH with a key that can write only to the site's folder).
+      # Until then the built site is the artifact above, to download and deploy as now.

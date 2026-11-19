@@ -41,6 +41,10 @@
          so Kav sets them again once it's back up. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Display over other apps, only if the rider turns it on (PayOverlay.kt): one button over Rav-Pass, after a Pay tap,
+         that brings them back to Kav. Asked at the first Pay tap or in Settings, never at install or start. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Deliberately NOT declared, and why each one is refused:
            ADVERTISING_ID            - there is no advertising
            ACCESS_BACKGROUND_LOCATION- nothing tracks you between sessions
@@ -49,6 +53,13 @@
     <!-- Gett, to open a taxi ride in it when it's installed (Gett.kt), else its Play Store page. -->
     <queries>
         <package android:name="com.gettaxi.android" />
+        <!-- Rav-Pass, to hand a rider over to it to pay (RavPass.kt), else its store page. -->
+        <package android:name="co.hopon.client" />
+        <!-- The apps that open Rav-Pass's store link, to offer the Play Store or Aurora Store for getting it (RavPass.store). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
         <!-- The apps a trip can be sent to straight from the Share sheet. -->
         <intent>
             <action android:name="android.intent.action.SEND" />
@@ -101,6 +112,23 @@
                 <data android:pathPrefix="/l/" />
                 <data android:pathPrefix="/s/" />
             </intent-filter>
+            <!-- An extension source shared as a link (PLAN.md 9.6): kav://add-source?github=owner/repo, and the same on
+                 kavapp.link. Each opens Kav's confirm sheet; nothing is added without the rider. The https one is not
+                 autoVerify yet: kavapp.link doesn't list Kav in an assetlinks.json, and before Android 12 one host failing
+                 verification un-verifies all of them, share.kavapp.link's trip links too. Until it does, Android asks
+                 which app opens it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kav" android:host="add-source" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="kavapp.link" android:path="/add-source" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -150,6 +178,29 @@
                 <data android:pathPattern=".*\\..*\\.kav" />
                 <data android:pathPattern=".*\\..*\\..*\\.kav" />
             </intent-filter>
+            <!-- A .kavb extension bundle tapped in a file manager, matched by its name the same way as .kav above; it
+                 opens Kav's add-source popup. -->
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.kavb" />
+                <data android:pathPattern=".*\\..*\\.kavb" />
+            </intent-filter>
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.kavb" />
+                <data android:pathPattern=".*\\..*\\.kavb" />
+            </intent-filter>
         </activity>
 
         <!-- the ongoing trip notification's anchor -->
@@ -174,8 +225,46 @@
             </intent-filter>
         </receiver>
 
+        <!-- tickets read from Rav-Pass: each deleted when it ends, also with the reader off and Kav closed -->
+        <receiver
+            android:name=".TicketEnd"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- the background check that asks GitHub for Kav's recipes and a new version, never
              because Kav opened, and what Android's installer says about an update Kav handed it -->
+        <!-- The ticket reader (TicketReader.kt): Rav-Pass's ticket screens only, read-only, off until the rider turns it on
+             in Android's accessibility settings after Kav's own sheet (TicketAskHost). -->
+        <service
+            android:name=".TicketReader"
+            android:enabled="@bool/ticket_reader"
+            android:exported="true"
+            android:label="@string/ticket_reader_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ticket_reader" />
+        </service>
+        <!-- Quick settings: pay for a ride, or show the live ticket. On only while paying is (PayEntry.sync). -->
+        <service
+            android:name=".PayTile"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_pay"
+            android:label="@string/pay_tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
+        </service>
         <service
             android:name=".Checks"
             android:exported="false"

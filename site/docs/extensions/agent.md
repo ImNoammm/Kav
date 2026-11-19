@@ -1,0 +1,1958 @@
+---
+title: "For your agent"
+editLink: false
+---
+
+<div v-pre>
+
+> This page as plain text, to give an AI coding agent: <a href="/docs/extensions/agent.txt">https://kavapp.link/docs/extensions/agent.txt</a>
+
+# For your agent
+
+Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: https://kavapp.link/docs/extensions/agent. For Kav 5 and newer, API level 2.
+
+## What a Kav extension is
+
+- Android code, in Kotlin or Java, compiled into one `classes.dex` that Kav loads and runs inside itself, with full access: it can do anything Kav can. There is no other kind.
+- A folder with a `manifest.json` (what it is, what it adds, its settings and the words riders see) and that dex. Its entry class implements `kav.kavapp.api.KavExtension`.
+- Published as a source: a public GitHub repository whose latest GitHub Release carries one bundle file (`.kavb`) with all its extensions. Riders add the repository in Kav, under Settings, Extensions, Sources, or with a link: `https://kavapp.link/add-source?github=OWNER/REPO`. A rider can also add a `.kavb` file from the phone.
+- Each extension comes in off. It runs once the rider switches it on, and then each time Kav starts.
+
+## Rules
+
+- Declare what the extension does in its manifest, and nothing more. Riders see it on the extension's page.
+- You are the sole author and publisher of your extension and fully responsible for it.
+- You must have the right to use every service, API and piece of data your extension touches, and follow their terms.
+- Don't present the extension as made, endorsed or approved by Kav, or use Kav's name or logo as your branding. "for Kav" in a description is fine.
+- Kav can block an extension found stealing, spreading malware, impersonating someone or abusing a bug in Kav.
+
+## What you need
+
+- Kav's API jar: https://kavapp.link/docs/extensions/kav-api.jar (a few KB). Or compile the four Java files under "The API" below yourself.
+- A JDK, the Android SDK (its `android.jar` and `d8`) and, for Kotlin, the Kotlin compiler.
+- The developer kit's `kavx` command line does every step (check, bundle, verify). Without it, follow "Kotlin and Java" and "The bundle format" below by hand.
+- A phone or an emulator with Kav 5 or newer to try it.
+
+## Kotlin and Java extensions
+
+A Kav extension is Android code that runs inside Kav. You write it in Kotlin or Java against Kav's small API
+(`kav.kavapp.api`), the kit builds it into one dex, and the dex goes into the bundle beside its `manifest.json`.
+Kav loads it and calls your entry class once. From there you add cards to Kav's screens, screens of your own, a Home
+and a tab, things on Kav's maps, a trip planner, route rules and stop boards. Anything else (location,
+notifications, the camera, files, the network) you do with Android itself.
+
+It runs in Kav's own process, with Kav's permissions and full access. Riders are told exactly that ("Runs its own
+Android code: full access"), and they switch it on at their own risk, the way browser add-ons work. Kav does not
+review, sandbox or approve it.
+
+Taken from Kav 5's code: `android/app/src/main/java/kav/kavapp/api/` (the API) and `ext/Native.kt`,
+`ext/NativeMap.kt`, `ext/NativeRules.kt`, `ext/Hooks.kt` (how Kav loads, calls and guards it).
+
+### What you need
+
+- **Node.js** 22.2 or newer, for `kavx`.
+- **A JDK**, 17 or newer. Set `JAVA_HOME`, or have `java` and `javac` on your `PATH`.
+- **The Android SDK**, with one platform (`platforms;android-36`) and the build tools (`build-tools;36.0.0` or
+  newer). Android Studio installs it; so do the command-line tools from developer.android.com. Set `ANDROID_HOME`,
+  or keep it at `~/Android/Sdk`.
+- **For Kotlin, the Kotlin compiler.** Download `kotlin-compiler-<version>.zip` from
+  <https://github.com/JetBrains/kotlin/releases>, unpack it, and put its `bin` folder on your `PATH` (or set
+  `KOTLINC` to its `kotlinc`). The kit was tried with 2.2.10, the version Kav itself is built with.
+
+No Gradle and no Android Studio project: the kit runs `kotlinc` or `javac`, then Android's own `d8` or R8.
+
+### From nothing to a bundle
+
+```
+cp -r starter-kotlin ~/hello-kotlin
+kavx check ~/hello-kotlin
+kavx bundle ~/hello-kotlin
+```
+
+`kavx check` builds the folder and prints what Kav and riders would see, or why Kav would refuse it. `kavx bundle`
+builds it the same way and writes `hello-kotlin.kavb`, a bundle with this one extension in it. For a source with
+several extensions, put each in its own folder under `extensions/` and run `kavx bundle` on the folder above
+([format.md](https://kavapp.link/docs/extensions/format)).
+
+The build, for a folder whose manifest has `"native"` and which has a `src/` folder:
+
+1. compiles every `.kt` and `.java` file under `src/` against `android.jar` and the kit's `api/kav-api.jar`;
+2. turns the classes into one dex: with `d8` for Java, with R8 when there is Kotlin (below);
+3. puts `manifest.json`, the dex (where `"native"` says) and every other file of the folder (an icon, pictures) in
+   `<folder>/build/package/`, the extension's folder as the bundle holds it. `src/`, `build/` and files starting
+   with a dot stay out.
+
+The build also leaves `classes/` and `dex/` in `<folder>/build/`.
+
+**Kotlin's standard library.** Kotlin code calls the Kotlin standard library, and Kav's release build shrinks and
+renames its own copy, so an extension can't use Kav's. When there is Kotlin, the kit runs R8 with these rules: every
+class of yours is kept exactly as it is, and the parts of the standard library your code uses are shrunk and moved
+into a package of yours (`<your entry's package>.kotlin`), under short names, so they never meet Kav's. The starter's
+dex is about 5 KB. `kotlinx` libraries (coroutines and so on) are not bundled: use Android's own threads and
+handlers, or copy what you need.
+
+**One dex.** Kav loads one dex file, so the code must fit one (65,536 methods). The build stops if it makes two.
+
+**The API jar.** `api/kav-api.jar` is made from Kav's own sources by `node tools/make-api-jar.js <Kav's source
+folder>`, and `api/src/` holds those sources to read. It is for compiling only: Kav provides these classes when it
+loads your code, so they never go into your dex.
+
+### The manifest's native part
+
+```json
+{
+  "format": 1,
+  "name": "hello-kotlin",
+  "displayName": "Hello Kotlin",
+  "version": "1.0.0",
+  "release": 1,
+  "minKav": 45,
+  "api": 2,
+  "description": "A card on Kav's Home and a screen of its own, written in Kotlin.",
+  "native": { "dex": "classes.dex", "entry": "org.example.hello.Hello" },
+  "contributions": [
+    { "id": "card", "capability": "slot.home" },
+    { "id": "screens", "capability": "page.provide" }
+  ],
+  "pages": [{ "id": "about", "title": { "en": "Hello Kotlin", "he": "שלום קוטלין" } }]
+}
+```
+
+- `native.dex` is the dex's path inside the extension's folder (`classes.dex` is the usual name). Kav refuses an
+  extension whose dex isn't there, and any other `.dex` file in it.
+- `native.entry` is the full name of your class that implements `KavExtension`. It needs a public constructor with
+  no arguments.
+- `minKav: 45` is Kav 5. `api: 2` is this API.
+- A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
+  runs it.
+
+The rest of the manifest is in [format.md](https://kavapp.link/docs/extensions/format). What you register in code only shows when the manifest
+declares it too:
+
+| In code | In the manifest |
+|---|---|
+| `kav.card("home", ...)`, `"results"`, `"trip"`, `"stop"` | a contribution `slot.home`, `slot.results`, `slot.trip` or `slot.stop` |
+| `kav.screen("about", ...)` | a contribution `page.provide` and the page `{"id": "about", ...}` under `pages` |
+| a tab | the same, with `"tab": true` on the page |
+| `kav.home(...)` | a contribution `home.body`, and the page `"home"` (with `page.provide`) |
+| `kav.provide("plan.provide", ...)` | a contribution `plan.provide` |
+| `kav.provide("walk.time", ...)` and the other route rules | a contribution with that capability |
+| `kav.provide("board.stops", ...)`, `"board.departures"` | a contribution `board.provide` |
+| `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](https://kavapp.link/docs/extensions/screens)) |
+| `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
+
+### The API
+
+Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
+one; `kav.apiVersion()` says which level the Kav in front of you has (2 is Kav 5). Plain types only: text, numbers,
+JSON as text, and Android's own `Context`, `View` and `Bitmap`.
+
+**When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
+or an update of it arrives: no restart is needed. Never in safe mode.
+
+**Threads.** `start` runs on a background thread. Kav asks a card or screen for its view on the main thread, each
+time the screen shows it. Every `KavUi` method must be called on the main thread. Hooks and `onSettings` are called
+on a thread of Kav's, never the main one. `KavMap` may be called from any thread; its tap and stop-look calls come on
+the main thread.
+
+#### KavExtension
+
+```kotlin
+class Hello : KavExtension {
+    override fun start(kav: Kav) {
+        // register everything here
+    }
+}
+```
+
+`start(kav)` may throw: Kav catches it, counts it as a crash (below) and carries on without your extension.
+
+#### Kav
+
+| Method | What it gives |
+|---|---|
+| `Kav.API` | the API level this jar was built for (2) |
+| `apiVersion()` | the API level of the Kav that loaded you |
+| `context()` | the application's `Context` |
+| `id()` | your identity: your source and your name, `"github.<owner>.<repo>/<name>"`, or `"file.<digest>/<name>"` for a bundle added from a file |
+| `locale()` | Kav's language, `"en"` or `"he"` |
+| `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
+| `screen(page, screen)` | a screen for one of your pages |
+| `home(screen)` | your Home body |
+| `map()` | Kav's maps (`KavMap`) |
+| `provide(name, hook)` | a hook Kav calls with JSON text and that answers JSON text |
+| `settings()` | the rider's values for your settings, as JSON text (`{}` with none) |
+| `onSettings(changed)` | told each time the rider changes one of your settings, with all of them as JSON text (`null` stops it) |
+| `settingsScreen(screen)` | your own settings view, shown on your extension's page in Settings › Extensions under the settings you declare (or alone) |
+| `pickPlace(picked)` | Kav's own place search over the screen; told the place chosen as JSON text (`{"name", "lat", "lon"}`), or `null` when the rider closed it, on the main thread |
+| `log(text)` | a line in your log |
+| `ui()` | Kav's components and theme (`KavUi`) |
+
+```kotlin
+val app = kav.context()
+kav.log("started as ${kav.id()} in ${kav.locale()}")
+
+// about: what the screen shows, as JSON text. Home: {}. A stop: {"stop": "il.mot/gtfs/stop/21345", "name": "..."}.
+// A trip's page and a search result: {"trip": <the route, in the shape route rules get it (hooks.md)>}.
+kav.card("stop") { context, about -> kav.ui().card(context, TextView(context).apply { text = JSONObject(about).optString("name") }) }
+kav.card("results") { context, about ->
+    val legs = JSONObject(about).getJSONObject("trip").getJSONArray("legs")
+    TextView(context).apply { text = "${legs.length()} legs" }
+}
+
+// args: the page's arguments, as JSON text.
+kav.screen("about") { context, _ -> kav.ui().blocks(context, """{"title": "About", "sections": [{"blocks": [{"type": "text", "text": "Hi"}]}]}""") }
+
+kav.home { context, _ -> kav.ui().header(context, "My Home") }
+
+// A route rule: the search in, one answer per route out (hooks.md).
+kav.provide("results.filter") { input ->
+    val routes = JSONObject(input).getJSONArray("routes")
+    JSONArray().apply { for (i in 0 until routes.length()) put(i % 2 == 0) }.toString()
+}
+
+val pace = JSONObject(kav.settings()).optDouble("pace", 15.0)
+
+// Your own settings view: anything you like, your own pickers and colors. Kav shows it under your declared settings.
+kav.settingsScreen { context, _ -> ColourPicker(context) }
+
+// Kav's place search, from anywhere in your code: the rider picks, you're told.
+kav.pickPlace { place -> if (place != null) home = JSONObject(place) }
+
+// Told when the rider changes a setting, with all of them. Not on the main thread.
+kav.onSettings { all -> kav.log("pace is now ${JSONObject(all).optDouble("pace")}") }
+```
+
+`card`, `screen` and `home` may be called again later to replace what was registered; the next time the screen
+shows, it asks the new one.
+
+**Cards.** Kav puts each card under "by &lt;your extension's name>", where its slot is ([screens.md](https://kavapp.link/docs/extensions/screens)).
+Kav calls `create` each time the screen shows the card, on the main thread, so make the view quickly and load
+anything slow on a thread of your own.
+
+**Settings** are declared in the manifest: `text`, `number`, `toggle`, `choice`, and the ones Kav picks with its own
+pickers, `place`, `stop`, `time`, `date` and `color`, drawn by Kav on your extension's page
+([screens.md](https://kavapp.link/docs/extensions/screens#settings)). Kav's own Map style in github.com/ImNoammm/kav-extensions uses a `place` setting
+and its own color picker as `settingsScreen`.
+
+**Hooks** (`provide`) take JSON text and answer JSON text. [hooks.md](https://kavapp.link/docs/extensions/hooks) has every field:
+
+| Name | Input | Answer |
+|---|---|---|
+| `walk.time`, `transfer.policy`, `results.filter`, `results.rank`, `results.annotate` | the search: `{"query", "routes", "walks", "transfers"}` | an array, one entry per walk, change or route |
+| `plan.provide` | `{"from": [lat, lon], "to": [lat, lon], "at", "way", "modes", "settings"}` | a plan, or `null` for no routes |
+| `board.stops` | `{}` | `{"stops": [...], "lines": {...}}` |
+| `board.departures` | `{"stop", "from", "limit"}` | an array of departures |
+
+A route rule is asked within the search's shared budget (400 ms for all rules together, at most 150 to 200 ms
+each); a planner and a stop board within 30 seconds (`board.stops` 60). A hook that throws, answers late or answers
+something Kav can't read is skipped and written to your log. A hook that throws also counts as a crash.
+`samples/native/native-rules` has a planner, three route rules and a stop board.
+
+#### KavUi: Kav's own components
+
+Each one is an ordinary `View`, drawn by Kav, that follows Kav's theme, dark mode, right-to-left and text size by
+itself. Put them in any layout.
+
+```kotlin
+val ui = kav.ui()
+ui.button(c, "Save", true) { save() }                    // primary: the screen's one main action
+ui.card(c, myContent)                                     // Kav's panel around your own view
+ui.row(c, "info", "Where it comes from", "Your GPS", null) // icon (Kav's name, or null), title, subtitle, onClick
+ui.switchRow(c, "Miles", "Instead of km/h", on) { now -> setMiles(now) }
+ui.textField(c, "Haifa", "Your town") { text -> town = text }
+ui.chip(c, "Buses", selected = true) { toggle() }
+ui.header(c, "Units")
+ui.sheet(c, "Details", detailsView)                       // a sheet over the screen
+ui.dialog(c, "Hello", "Saved.", "OK") { }                 // with Cancel beside OK
+ui.blocks(c, pageJson)                                    // a whole screen from a block tree (screens.md)
+val text = ui.color("text")                               // ARGB, 0 for a name Kav doesn't know
+val gap = ui.dp("gap3")                                   // dp
+val size = ui.textSize("body")                            // sp
+```
+
+- Icons for `row`: `star`, `heart`, `bus`, `train`, `walk`, `bike`, `clock`, `map`, `pin`, `info`, `warning`,
+  `check`, `plus`, `edit`, `delete`, `search`, `list`, `home`, `calendar`, `settings`. Another name shows none.
+- Colors: `bg`, `surface`, `surfaceRaised`, `fill`, `fillStrong`, `separator`, `text`, `textSecondary`,
+  `textTertiary`, `surface2`, `surface3`, `surface4`, `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`,
+  `realtime`, `accent`.
+- Sizes (`dp`): `rCard`, `rSheet`, `rTile`, `rBadge`, `gap1` to `gap8`. Text styles (`textSize`): `largeTitle`,
+  `title`, `headline`, `body`, `subhead`, `caption`.
+- The `Changed<T>` callbacks (`switchRow`, `textField`) are told each new value.
+- `blocks` throws when Kav can't read the tree ([screens.md](https://kavapp.link/docs/extensions/screens#blocks) says what that means). Inside a
+  card's or screen's `create`, an uncaught throw counts as a crash.
+
+#### KavMap: Kav's maps
+
+Places are latitude and longitude in degrees, colors ARGB, sizes in dp, icons `Bitmap`s you draw. `on` is the map a
+shape shows on: `"live"` (the Live tab), `"trip"` (a trip's map), or `null` for both. `id` is your own name for the
+shape; adding one with an id you used before replaces it.
+
+```kotlin
+val map = kav.map()
+map.marker("star", null, 32.0725, 34.7795, Color.RED, starBitmap)       // icon centered on the place; null: a dot
+map.line("route", "live", doubleArrayOf(32.06, 34.77, 32.07, 34.78), 0xFF7B1FA2.toInt(), 6f)
+map.area("park", null, doubleArrayOf(32.070, 34.771, 32.072, 34.772, 32.070, 34.774), 0x5500C853, 0xFF00C853.toInt())
+map.remove("route")
+map.clear()                                                             // every shape of yours, off every map
+map.onTap { id, context -> kav.ui().dialog(context, "Map", "You tapped $id", "OK") {} }   // null stops it
+map.stopLook { stop, name, lat, lon ->                                  // your look for Kav's stop marks on Live
+    if (stop.endsWith("0")) KavMap.Look(0, 0, squareBitmap) else KavMap.Look(0xFFC8E6C9.toInt(), 0xFF1B5E20.toInt(), null)
+}
+```
+
+`stopLook` is asked once per stop (its reference is `"il.mot/gtfs/stop/<code>"`) and the answer is kept until you
+set a look again, so keep it quick. Return `null` for Kav's own look for that stop; `stopLook(null)` gives every stop
+back Kav's look. When two extensions set a stop look, the last one set wins. `samples/native/map-pins` uses all of
+it.
+
+### The crash guard and safe mode
+
+Your code runs inside Kav, so a crash of yours is Kav's crash. Kav counts each one against the extension that
+caused it:
+
+- **A crash in a call Kav makes** (`start`, a card's or screen's `create`, a hook, a map tap, a stop look, a settings
+  or place callback) is caught. Kav carries on: the card or screen shows nothing, the hook is skipped. It is counted.
+- **Any other crash** (a tap on one of your own views, a thread of your own) closes Kav. Before it closes, Kav
+  writes it down against the extension whose classes are in the crash's stack.
+- **A hang counts too.** A call Kav makes on the main thread (a card's or screen's `create`, a map tap, a stop look)
+  that is still running after 3 seconds is counted as a crash, because Android's "not responding" would close Kav with
+  nothing to catch. `start` runs on a thread of its own and Kav waits 5 seconds for it before going on without it;
+  a start that never finished (Kav closed during it) is counted at the next start.
+- **2 crashes within 5 minutes, and at the next start your extension is switched off** before any of its code
+  loads. Kav says which extension it turned off and why ("It made Kav close twice"). The rider turns it on again on
+  its page in Settings › Extensions; its count starts again.
+- **Switched off, removed or blocked** while Kav runs, your extension stops being called at once: its cards,
+  screens, hooks and map shapes go. What your code started on its own (a thread, a listener) runs until Kav closes,
+  so stop your own work when your views go away.
+- **Safe mode** starts Kav with every extension off, so a crash can never leave Kav unable to start. The rider turns
+  it on under Settings › Extensions › Options ("Safe mode", from the next time Kav opens), and Kav turns it on by
+  itself after closing with an error 3 times within 10 minutes. Your code never loads in safe mode.
+
+`samples/native/crash-test` has a Home card whose button throws, to see the guard work: tap it twice, open Kav
+again, and Kav says it turned the extension off.
+
+### Seeing logs
+
+- **`kav.log(text)`** keeps a line (at most 4,000 characters) in your extension's log, with the failures of your
+  code (a hook that threw or was late, and why). Kav keeps the newest 200. The rider sees them under "Log" on your
+  extension's page in Settings › Extensions.
+- **logcat.** Kav writes to these tags: `KavNative` (your extension started, and how many cards and screens it
+  registered), `KavNativeGuard` (a crash of yours, and an extension switched off), `KavExtHooks` (a hook that failed),
+  `KavExt` (loading). Your own `android.util.Log` lines show there too:
+
+```
+adb logcat -s KavNative KavNativeGuard KavExtHooks KavExt MyTag
+```
+
+A crash's stack trace is in logcat under `AndroidRuntime`.
+
+### Trying it
+
+Try it in Kav itself, on a phone or an emulator with Kav 5 or newer ([testing.md](https://kavapp.link/docs/extensions/testing)):
+
+1. `kavx bundle <folder>`.
+2. Copy the `.kavb` to the device (`adb push hello-kotlin.kavb /sdcard/Download/`).
+3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. The sheet lists your extension and what
+   it can do, first "Runs its own Android code: full access". Add.
+4. Switch your extension on in Settings › Extensions. It starts at once. Your Home card shows on Home, under
+   "by &lt;your extension's name>"; your screens open from your extension's page. logcat says
+   `KavNative: <id>: started, 1 cards, 1 screens`.
+
+A bundle file never updates, and each build is a different file, so each is a different source to Kav. Remove the
+old source before you add the new build.
+
+### The samples
+
+In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
+
+| Sample | Shows |
+|---|---|
+| `speed-card` | a Home card made of Kav's components and a view of its own, the GPS, a notification, a settings screen |
+| `map-pins` | a marker, a line and an area on Kav's maps, a tap, and its own look for Kav's stops |
+| `native-rules` | a trip planner, three route rules and a stop board |
+| `my-home` | a Home body and a tab of its own |
+| `crash-test` | a button that crashes Kav, to see the crash guard switch it off |
+
+The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
+
+
+## The API
+
+Kav's own sources for `kav.kavapp.api`, as they are in Kav 5. Every interface and method an extension can call.
+
+### `kav/kavapp/api/Kav.java`
+
+```java
+package kav.kavapp.api;
+
+import android.content.Context;
+
+/**
+ * What Kav gives a native extension. Plain types only: text, numbers, Android's own Context and View. Anything else
+ * (location, notifications, the camera, files, the network) the extension does with Android itself: it runs inside
+ * Kav, with Kav's permissions.
+ */
+public interface Kav {
+    /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen. */
+    int API = 2;
+
+    int apiVersion();
+
+    /** The application's Context. */
+    Context context();
+
+    /** This extension's identity ("publisher/name") and Kav's language ("en" or "he"). */
+    String id();
+
+    String locale();
+
+    /**
+     * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
+     * "stop" (the manifest declares it as a contribution "slot.home", "slot.results", "slot.trip" or "slot.stop"). Kav
+     * asks the card for a view each time the screen shows it.
+     */
+    void card(String on, Card card);
+
+    /** A screen of its own, for a page the manifest declares (opened from its page in Settings › Extensions). */
+    void screen(String page, Screen screen);
+
+    /** Its Home body, for a manifest that declares "home.body" and the page "home": shown when the rider chooses it as
+     *  their Home. A tab is a screen whose page the manifest marks "tab": true. */
+    void home(Screen screen);
+
+    /** Kav's maps: its markers, lines and areas, and its look for Kav's stops. */
+    KavMap map();
+
+    /**
+     * A hook Kav calls, for a contribution the manifest declares. Input and answer are JSON text:
+     *   route rules ("walk.time", "transfer.policy", "results.filter", "results.rank", "results.annotate"): the search,
+     *     {"query", "routes", "walks", "transfers"}; the answer is an array, one item for each walk, transfer or route.
+     *   "plan.provide": {"from": [lat, lon], "to", "at", "way", "modes", "settings"}; the answer is a plan (Plan v2), or
+     *     null for no routes.
+     *   "board.stops": {} answered with {"stops", "lines"}; "board.departures": {"stop", "from", "limit"} answered with
+     *     an array of departures.
+     * Called on a thread of Kav's, never the main one, within the hook's deadline.
+     */
+    void provide(String name, Hook hook);
+
+    /** Its settings as the rider set them, as JSON text ({} when it declares none). */
+    String settings();
+
+    /** Told each time the rider changes one of its settings, with all of them as settings() gives them, on a thread of
+     *  Kav's, never the main one. null stops it. */
+    void onSettings(SettingsChanged changed);
+
+    /** Kav's own place search over the screen, the one the rider plans trips with (suggestions, their saved places, a pick on
+     *  the map): told the place chosen, as JSON text ({"name", "lat", "lon"}), or null when the rider closed it. Called
+     *  from any thread; told on the main thread. */
+    void pickPlace(Picked picked);
+
+    /** Its own settings view, for pickers and looks Kav doesn't have: shown on its page in Settings › Extensions, under
+     *  the settings its manifest declares (or alone, with none declared), each time the page shows. args: {}. */
+    void settingsScreen(Screen screen);
+
+    /** A line in its log (Settings › Extensions, its page). */
+    void log(String text);
+
+    /** Kav's own look: Kav's components as views, and its theme as values. */
+    KavUi ui();
+
+    /** A card's view, made each time its screen shows it. about: what the screen shows, as JSON text: the trip, or the
+     *  result's route ({"trip": the route as route rules get it}), or the stop ({"stop": "<ref>", "name": "..."}); {} on
+     *  Home. A results card that has nothing to say for a route makes no view (null). */
+    interface Card {
+        android.view.View create(Context context, String about);
+    }
+
+    /** A screen's view. args: the page's arguments, as JSON text. */
+    interface Screen {
+        android.view.View create(Context context, String args);
+    }
+
+    /** Its settings, all of them, as JSON text, after the rider changed one. */
+    interface SettingsChanged {
+        void changed(String settings);
+    }
+
+    /** The place the rider chose, as JSON text, or null. */
+    interface Picked {
+        void picked(String place);
+    }
+
+    /** A hook's answer to its input, both JSON text. */
+    interface Hook {
+        String call(String input) throws Exception;
+    }
+}
+```
+
+### `kav/kavapp/api/KavExtension.java`
+
+```java
+package kav.kavapp.api;
+
+/**
+ * The class a native extension names in its manifest ("native": {"dex": "classes.dex", "entry": "your.Entry"}).
+ * Kav makes it with its public no-argument constructor and calls {@link #start} once each time Kav starts, on a
+ * background thread. Everything here is kept un-renamed in Kav's release builds and only ever grows.
+ */
+public interface KavExtension {
+    void start(Kav kav) throws Exception;
+}
+```
+
+### `kav/kavapp/api/KavMap.java`
+
+```java
+package kav.kavapp.api;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+
+/**
+ * Kav's maps for a native extension: markers, lines and areas it adds, a call when the rider taps one, and its own look
+ * for Kav's stop marks. Plain types: places are latitude and longitude in degrees, colours ARGB, sizes in dp, icons
+ * Android Bitmaps the extension draws. Callable from any thread.
+ *
+ * on: the map a shape shows on: "live" (the Live tab), "trip" (a trip's map), or null for both. id: the extension's own
+ * name for it; adding with an id it used before replaces that shape.
+ */
+public interface KavMap {
+    /** A marker: its icon, centred on the place, or a dot of the colour when icon is null. */
+    void marker(String id, String on, double lat, double lon, int color, Bitmap icon);
+
+    /** A line through points (lat, lon, lat, lon, ...). */
+    void line(String id, String on, double[] points, int color, float widthDp);
+
+    /** An area inside points (lat, lon, lat, lon, ...), filled, with an outline (0 for none). */
+    void area(String id, String on, double[] points, int fill, int outline);
+
+    void remove(String id);
+
+    /** Every shape of this extension's, off every map. */
+    void clear();
+
+    /** Told when the rider taps one of its shapes. null stops it. */
+    void onTap(Tapped tapped);
+
+    /** Its look for Kav's own stop marks on the Live tab. null gives them back Kav's look. */
+    void stopLook(StopLook look);
+
+    interface Tapped {
+        /** On the main thread. context: the screen's, for a sheet or dialog. */
+        void tapped(String id, Context context);
+    }
+
+    interface StopLook {
+        /**
+         * A stop's look: stop is its reference ("il.mot/gtfs/stop/<code>"), as on a stop's card. null keeps Kav's look for
+         * it. Asked once per stop and kept until stopLook is set again, on the main thread: keep it quick.
+         */
+        Look look(String stop, String name, double lat, double lon);
+    }
+
+    /** A stop mark: the dot's fill and ring, or an icon in its place when icon isn't null. */
+    final class Look {
+        public final int fill;
+        public final int ring;
+        public final Bitmap icon;
+
+        public Look(int fill, int ring, Bitmap icon) {
+            this.fill = fill;
+            this.ring = ring;
+            this.icon = icon;
+        }
+    }
+}
+```
+
+### `kav/kavapp/api/KavUi.java`
+
+```java
+package kav.kavapp.api;
+
+import android.content.Context;
+import android.view.View;
+
+/**
+ * Kav's own components as ordinary views, drawn by Kav: they follow Kav's theme, dark mode, right-to-left and text
+ * size by themselves. Put them in any layout. And Kav's theme as values, for views an extension draws itself.
+ * Every method must be called on the main thread.
+ */
+public interface KavUi {
+    /** A button: primary is the one main action of a screen; otherwise a quiet one. */
+    View button(Context context, String label, boolean primary, Runnable onClick);
+
+    /** A card: Kav's panel around the extension's own content. */
+    View card(Context context, View content);
+
+    /** A list row: icon (one of Kav's icon names, or null), title, subtitle (or null), and a chevron when onClick isn't null. */
+    View row(Context context, String icon, String title, String subtitle, Runnable onClick);
+
+    /** A row with a switch. */
+    View switchRow(Context context, String title, String subtitle, boolean on, Changed<Boolean> onChange);
+
+    /** A text field, with its placeholder. */
+    View textField(Context context, String value, String placeholder, Changed<String> onChange);
+
+    /** A chip, lit when selected. */
+    View chip(Context context, String label, boolean selected, Runnable onClick);
+
+    /** A section header. */
+    View header(Context context, String text);
+
+    /** A sheet over the screen with a title and the extension's content. */
+    void sheet(Context context, String title, View content);
+
+    /** A dialog with a title, a text, and a confirm button (and Cancel). */
+    void dialog(Context context, String title, String text, String confirm, Runnable onConfirm);
+
+    /** A whole screen in Kav's look from a block tree, as JSON text ({"title", "sections": [{"blocks": [...]}]}). */
+    View blocks(Context context, String page);
+
+    /** A colour of Kav's theme now, as ARGB: bg, surface, surfaceRaised, fill, fillStrong, separator, text,
+     *  textSecondary, textTertiary, surface2, surface3, surface4, borderStrong, sunken, routeIdle, problem, critical,
+     *  realtime, accent. 0 for a name Kav doesn't know. */
+    int color(String role);
+
+    /** A size of Kav's in dp: rCard, rSheet, rTile, rBadge, gap1 to gap8. 0 for a name Kav doesn't know. */
+    float dp(String name);
+
+    /** A text style's size in sp: largeTitle, title, headline, body, subhead, caption. 0 for a name Kav doesn't know. */
+    float textSize(String style);
+
+    /** A value that changed. */
+    interface Changed<T> {
+        void changed(T value);
+    }
+}
+```
+
+## Hook reference
+
+Everything your code can provide to Kav with `Kav.provide(name, hook)`, every field Kav hands it, and every answer
+it may give. Input and answer are JSON text. Kav calls a hook on a thread of its own, never the main one, within the
+hook's deadline. Taken from Kav 5's code, paths under `android/app/src/main/java/uk/noammm/kav/`: `ext/Hooks.kt`,
+`ext/NativeRules.kt`, `ext/Pipeline.kt`, `ext/BoardAnswers.kt`, `data/KavPlan.kt`. If this page and the code
+disagree, the code is right; please report it.
+
+A hook only runs when the manifest declares its contribution ([native.md](https://kavapp.link/docs/extensions/native) has the table). Cards, pages,
+settings and themes have a page of their own: [screens.md](https://kavapp.link/docs/extensions/screens).
+
+```kotlin
+kav.provide("results.annotate") { input ->
+    val routes = JSONObject(input).getJSONArray("routes")
+    val out = JSONArray()
+    for (i in 0 until routes.length()) out.put(JSONArray().put("quiet"))
+    out.toString()
+}
+```
+
+### The five route rules
+
+After a planner answers a search, Kav puts the routes through the rules the rider switched on, in this order:
+walking model, transfer policy, filters, ranker, annotators (`ext/Pipeline.kt`). A rider has at most one walking
+model, one transfer policy and one ranker; filters and annotators run in the order they were switched on.
+
+Each rule is **one call per search** with every route in it. The input is the whole search:
+
+| Field | What it is |
+|---|---|
+| `query` | What was asked (below). |
+| `routes` | Every route being judged. |
+| `walks` | Every walk in those routes. |
+| `transfers` | Every change in those routes. |
+
+A rule answers a JSON array for one of those lists: `walk.time` for `walks`, `transfer.policy` for `transfers`, the
+other three for `routes`. The array has **exactly one entry per item, in the same order**. Any other length, or an
+answer that isn't an array, is refused and the rule is skipped for that search.
+
+Taxi cards (a route with a taxi leg and no ride) are never sent to a rule and keep their places.
+
+#### `query`
+
+| Field | Type | What it is |
+|---|---|---|
+| `way` | string | `"d"` leaving at a time, `"a"` arriving by a time, `"l"` the last way there tonight. |
+| `at` | number | The time asked about, in seconds since 1970 (UTC). When the rider asked to leave now, the time of the search. |
+| `now` | number | When the search was made, same unit. |
+| `settings` | string | The rider's own planner settings, four letters (`data/PlanSettings.kt`): pace `s` slow, `n` usual, `f` fast; walking `l` less, `n` usual, `m` more; changes `n` usual, `f` fewer; time to spare `t` tight, `n` usual, `r` relaxed. The usual is `"nnnn"`. |
+| `locale` | string | `"he"` or `"en"`. |
+
+#### A route
+
+| Field | Type | What it is |
+|---|---|---|
+| `index` | number | Its place in `routes`. This is the number a ranker answers with. |
+| `provider` | string | Whose plan it is: an extension planner's namespace, or `""` for Kav's own server. |
+| `dep`, `arr` | number | When the rider leaves and arrives, seconds since 1970. |
+| `fare` | number | The fare as the planner gave it (Kav's own server gives agorot), or `-1` when it isn't known. |
+| `accessible` | boolean | Whether the planner marked the route accessible. |
+| `tags` | string[] | The tags on the route so far: the planner's and Kav's own (below), and other extensions' as `x:<namespace>:<contribution>:<tag>`. |
+| `legs` | object[] | The legs, in order. |
+
+Kav's own tags (`data/KavPlan.kt` and `data/TripPlanner.kt`): `early_arrival`, `latest_departure`, `direct`,
+`least_walking`, `low_transfer`, `last_departure`, `long_walk`, `long_wait_time`, `risky_transfer` (shown as "Tight
+connection"), `likely_missed`, `high_frequency`, `flexible_route`, `after_shabbat`, `after_holiday`.
+
+A card on a trip's page and a line under a search result are told about their route in this same shape
+([screens.md](https://kavapp.link/docs/extensions/screens)).
+
+#### A leg
+
+| Field | Type | What it is |
+|---|---|---|
+| `kind` | string | `"walk"`, `"wait"`, `"ride"`, `"taxi"`, `"bike"` or `"other"`. |
+| `dep`, `arr` | number | Seconds since 1970. |
+| `metres` | number | Its length. `0` when the planner gave none. |
+| `insideMetres` | number | For a walk: how many of its meters are inside a station. `0` when the planner gave none. |
+| `from`, `to` | object | Where it starts and ends: `{ stop, name, lat, lon }`. `stop` is a stop's reference (below) or `null` for a place that is not a stop; `name` the stop's name or `null`; `lat` and `lon` are degrees, to six decimals, and `0` when unknown. |
+| `line` | string or null | For a ride: its line's reference. `null` for every other leg. |
+| `lineNumber` | string or null | For a ride: the line's number as riders know it. May be `""`. `null` for every other leg. |
+| `mode` | number | For a ride: the line's route type as its planner gave it. `2` is a train (Kav treats it as one), `3` a bus (what Kav assumes when a planner says nothing). `-1` when the line isn't known, and for every other leg. |
+| `trip` | string or null | For a ride: the trip's reference, `null` when Kav has none for it. `null` for every other leg. |
+| `stops` | number | For a ride: how many stops it calls at, counting the first and the last. `0` otherwise. |
+
+A `wait` comes before each ride. It is at one stop, the one the ride leaves from: its `from` and `to` are both that
+stop.
+
+A **reference** names a thing in someone's data (`ext/Contracts.kt`): `publisher/dataset/kind/localId`, where kind
+is `stop`, `route`, `trip` or `agency`. The Ministry of Transport's own are `il.mot/gtfs/stop/<stop code>`,
+`il.mot/gtfs/route/<route id>` and `il.mot/gtfs/trip/<trip id>`. In the local id, `%`, `/` and `#` are written
+`%25`, `%2F` and `%23`. The same local id from two publishers is two different things.
+
+#### `walk.time`: a walking model
+
+Answers for `walks`. A walk:
+
+| Field | Type | What it is |
+|---|---|---|
+| `route` | number | The route it is in (`routes[route]`). |
+| `leg` | number | Which leg of that route it is. |
+| `role` | string | `"access"` before the first ride, `"transfer"` between two, `"egress"` after the last, `"only"` when the route has no ride at all. |
+| `metres` | number | Its length. |
+| `insideMetres` | number | How many of those meters are inside a station. |
+| `plannedSec` | number | How long the planner gave it, in seconds. |
+| `fromKind`, `toKind` | string | What is at each end: `"place"`, `"stop"`, or `"station"` (a train's stop). |
+
+**Answer:** for each walk, its time in seconds: a number, or `{"sec": number}`. Kav rounds it to a whole second.
+
+```kotlin
+kav.provide("walk.time") { input ->
+    val walks = JSONObject(input).getJSONArray("walks")
+    JSONArray().apply { for (i in 0 until walks.length()) put(walks.getJSONObject(i).getInt("metres") / 1.2) }.toString()
+}
+```
+
+**What Kav does with it:**
+- It takes the times as they are. It never cuts one back towards the planner's time.
+- It refuses the **whole answer** when any time is negative. Whether a walk is believable is your business.
+- It then checks every route again on the same timetable. If the walks before the first ride no longer fit, the
+  rider leaves earlier, but never before the time they asked to leave at (or before now). If a change can no longer
+  be made, or an arrive-by time is missed, the route leaves the list. It is only counted, as "1 route isn't
+  catchable with your walking settings"; it is never shown lower down.
+- When any time changed or a route left, it works its own tags out again for the routes that are left. A model that
+  answers with the planner's own times changes nothing, tags included.
+
+Deadline: 200 ms.
+
+#### `transfer.policy`: how changes are judged
+
+Answers for `transfers`: every change from one ride to the next where only walking and waiting come between, except
+a change at a stop the rider asked to stay at. A change:
+
+| Field | Type | What it is |
+|---|---|---|
+| `route` | number | The route it is in. |
+| `fromLeg`, `toLeg` | number | The ride arrived on and the ride boarded. |
+| `fromMode`, `toMode` | number | Their route types (`2` a train, `3` a bus, `-1` unknown). |
+| `walkMetres` | number | The walking between them, in meters. |
+| `walkSec` | number | That walking's time: the walking model's when one answered, else the planner's. |
+| `gapSec` | number | The time in hand: from arriving to the next ride leaving, less `walkSec`. Can be negative. |
+| `sameStop` | boolean | Whether the rider gets off and boards at the same stop. |
+| `fromStop`, `toStop` | string or null | The two stops' references. |
+
+**Answer:** for each change, one of
+
+| Answer | Meaning |
+|---|---|
+| a number | That many seconds to spare, as a hard rule. |
+| `{"minSpareSec": n, "hard": b}` | `minSpareSec` seconds to spare (default `0`). `hard` defaults to `true`; only `false` makes it soft. |
+| `{"forbid": "why"}` | The route is hidden, whatever its times. |
+| `null` | No spare asked: the same as `0`. |
+
+**What Kav does with it:**
+- `minSpareSec` must be from 0 to 86,400 (a day), or the whole answer is refused.
+- Hard: the walk plus the spare must fit before the next ride leaves, or the route is dropped and counted as not
+  catchable.
+- Soft: the route stays; when the spare doesn't fit, Kav puts its own "Tight connection" tag on it.
+- Forbid: the route is dropped and counted as hidden ("1 route hidden by your extensions' rules"). A reason given as
+  text is shown to the rider with that count; see "Reasons" below. `"forbid": true` forbids with no reason.
+- When the policy changes nothing (no route dropped, no time moved), the routes stay exactly as they came: Kav does
+  not work its own tags out again. A soft spare that doesn't fit still adds "Tight connection".
+
+Deadline: 150 ms.
+
+#### `results.filter`: hiding routes
+
+Answers for `routes`: the routes left after the walking model and the transfer policy, or after the filter before
+this one.
+
+**Answer:** for each route, `false` or a string (the reason) to drop it. Anything else keeps it. Dropped routes are
+counted as hidden, and a reason is shown to the rider with that count.
+
+##### Reasons, and the row of hidden routes
+
+Kav keeps every route a rule left out, with the rule and the reason it gave. Under the routes the rider then sees a
+quiet row: how many were hidden and by which extension ("2 routes hidden by "Calm changes""), your reasons in a small
+line under it, as you gave them, each once, and a Show button that shows the hidden routes this once, after the kept
+ones (`ui/ExtHiddenRoutes.kt`). Nothing is judged again and nothing is remembered. Write a few plain words: the row
+shows two lines of reasons at most.
+
+Deadline: 150 ms.
+
+#### `results.rank`: the order of Recommended
+
+Called with the routes of Kav's main list only, and only when there are at least two.
+
+**Answer:** the routes' `index` values in the order you want them: each a number, or an object with an `index`.
+Every index must appear exactly once. Anything else is refused and Kav keeps its own order.
+
+A ranker is never required: when it fails or is late the search is shown without it.
+
+Deadline: 150 ms.
+
+#### `results.annotate`: tags on routes
+
+Answers for `routes`.
+
+**Answer:** for each route, a list of tags, or `{"tags": [...]}`, or anything else for none. A tag is any text; Kav
+takes up to 64 per route, drops blank ones and repeats, and shows every one after its own tags, kept as the
+extension's (`x:<namespace>:<contribution>:<tag>`), so it is never taken for one of Kav's.
+
+A tag the manifest declares under `tags` shows with the words declared there, in the rider's language:
+
+```json
+"tags": { "quiet": { "en": "Quiet streets", "he": "רחובות שקטים" } }
+```
+
+Any other tag shows as its own text.
+
+Deadline: 150 ms.
+
+#### Time, failure, and "required"
+
+- The five rules share **400 ms** for the whole search, counted from the planner's answer. Each hook gets what is
+  left, up to its own limit above. Kav shows its own routes first and applies the rules' changes when they arrive.
+- With less than 20 ms left a hook is not asked at all: an optional rule is skipped for that search, a required one
+  fails it visibly.
+- A rider can mark a walking model, a transfer policy or a filter **required**. Kav switches a walking model and a
+  transfer policy on as required, and a filter as optional. When a required rule fails, is late, or its extension
+  is off, the search shows no routes and says so ("Can't use your walking rules (...) right now, so no routes are
+  shown"), with a way to see the routes unjudged. An optional rule is skipped with a note ("Shown without ...: it
+  didn't answer in time").
+- A late or unreadable answer is written to the extension's log and skipped. Kav switches nothing off for it. A hook
+  that throws is also counted as a crash ([native.md](https://kavapp.link/docs/extensions/native), "The crash guard and safe mode").
+- A late hook is not stopped: Kav stops waiting and leaves it to finish. Keep rules quick.
+
+### `plan.provide`: a planner
+
+Declared as a contribution with capability `plan.provide`. Kav asks it instead of its own planner when the rider
+picks it. Deadline: 30 seconds.
+
+The input (`ext/Hooks.kt`, `NativePlanner`):
+
+| Field | Type | What it is |
+|---|---|---|
+| `from`, `to` | [lat, lon] | Where from and where to, in degrees. Kav never sends a place's name. |
+| `at` | number | The time asked about, seconds since 1970. |
+| `way` | string | `"d"`, `"a"` or `"l"`, as in a query above. |
+| `modes` | number[] | The route types the rider wants. |
+| `settings` | string | The rider's four settings letters. |
+
+It answers a plan, or `null` for no routes. Kav reads the plan with its own plan reader (`data/KavPlan.kt`, `parse`)
+and treats every id in it as the extension's own. A trip with stops on the way is planned part by part and joined by
+Kav.
+
+The smallest plan Kav's own test planner returns (`android/app/src/debug/java/uk/noammm/kav/ext/Fixtures.kt`) has
+this shape:
+
+```json
+{
+  "stops": { "17038": ["17038", "Gamma Pier", 32.083, 34.783] },
+  "agencies": { "5": "Gamma Lines" },
+  "lines": { "7": ["7", "Gamma Market", "", "Gamma Pier", "", 5, 3, ""] },
+  "it": [{
+    "dep": 1795420860, "arr": 1795422780,
+    "legs": [
+      { "k": "w", "dep": 1795420860, "arr": 1795421100, "m": 300, "shape": "..." },
+      { "k": "r", "line": "7", "trip": "1994912", "dep": 1795421100, "arr": 1795421700, "sdep": 1795421100, "stops": ["17038", "25565"], "shape": "..." }
+    ]
+  }]
+}
+```
+
+- `stops`: id to `[code, name, lat, lon]`.
+- `agencies`: operator id to name.
+- `lines`: id to `[number, to, to city, from, from city, operator id, route type, the operator's own name for the
+  line]`.
+- `it`: the routes. A leg's `k` is `"w"` for a walk (`m` its meters, `im` its meters inside a station) or `"r"` for a
+  ride.
+- `shape` is a polyline in Google's encoding at five decimals.
+
+The plan reader takes more than this (alternatives, fares, tags, sections, turns). **That part of the contract is not
+written up here yet.**
+
+Every planner's answer is read as plumbing (`ext/PlanChecks.kt`, `data/KavPlan.kt`):
+
+- **One ceiling:** the whole answer may be at most 262,144 characters. Past it, it is refused whole, and the rider is
+  told the planner answered something Kav can't read as routes.
+- **Your words are shown as you gave them:** stop names, line ends, operators, street names, tags. Kav's screens cut
+  what doesn't fit.
+- **Ids of any length.** Kav keeps an id (a stop's, a line's, a trip's, an operator's) over 64 characters as a short
+  stand-in made from it ("~" and 24 hex characters of its SHA-256), the same one every time, so nothing breaks; but
+  the id your route rules or a later call see for it is the stand-in, not yours.
+- **Only routes Kav can draw:** a route is dropped when it has no legs, ends before it starts, or has a leg that ends
+  before it starts or starts before the leg before it ended. Whether a route is sensible (a fast walk, a day-long
+  ride, a time other than the one asked) is your business.
+
+When every route is dropped the rider is not told "no routes": they are told the planner answered routes Kav can't
+show. What Kav sends the rider's route rules about your routes must also fit 512 KB; an answer that comes to more is
+refused whole as too large. Short ids and no more stops and shape than a route needs keep you far from it.
+
+Ids in your plan are your own: an id that looks like the ministry's is not taken for the ministry's, so its rides
+get no live times from Kav.
+
+### Timetables and stop boards: `board.provide`
+
+A contribution with capability `board.provide` gives Kav stops of its own and what leaves them. Riders find those
+stops in the Stops tab, in search and nearby, after Kav's own and marked "by &lt;your extension>"; opening one shows
+Kav's stop board filled with your times, marked as yours, refreshed every 30 seconds; and a rider can save the stop
+like any other (`ext/Hooks.kt`, `NativeBoard`). Kav asks only the stop's own publisher about it, wherever it shows
+departures.
+
+The timetable may be inside your code, or read from a server with Android's own networking. You provide two hooks.
+
+#### `board.stops`: the stops and lines
+
+Asked once per release, and the answer is kept. The input is `{}`.
+
+```kotlin
+kav.provide("board.stops") { _ ->
+    """{"stops": [{"id": "old-quay", "name": "Old Quay", "lat": 32.8201, "lon": 34.9712, "code": "Q1", "mode": 4}],
+        "lines": {"blue": {"number": "B", "name": "Old Quay to Lighthouse Island", "mode": 4}}}"""
+}
+```
+
+| Field | Rule |
+|---|---|
+| `stops[].id` | Your own id for the stop: text of 1 to 128 characters, or a whole number. No control characters, no tabs or line breaks. Unique. Kav never mixes it with another publisher's or its own. |
+| `stops[].name` | Needed: text, not empty. Shown as you gave it. |
+| `stops[].lat`, `lon` | Needed: degrees, within -90 to 90 and -180 to 180. |
+| `stops[].code` | Optional: the code riders know the stop by. A search for exactly this finds the stop. |
+| `stops[].mode` | Optional: the kind of stop, as a route type from 0 to 12 (0 tram, 1 metro, 2 train, 3 bus, 4 ferry, 5 cable car, 6 gondola, 7 funicular). Default 3. |
+| `lines` | Optional: an object, each key a line's id. `number`, `name` and `mode`, each as above. |
+
+At most 200,000 stops and 20,000 lines. An answer with no stops means the provider offers nothing.
+
+Deadline: 60 seconds.
+
+#### `board.departures`: one stop's board
+
+Called when a rider opens one of your stops, and again as the board refreshes:
+
+| Field | Type | What it is |
+|---|---|---|
+| `stop` | string | The stop's id, as you gave it. |
+| `from` | number | Seconds since 1970: departures from this time on are wanted. |
+| `limit` | number | How many Kav will take. |
+
+**Answer:** an array of departures, or `null` for none.
+
+| Field | Rule |
+|---|---|
+| `line` | Needed: the id of a line. |
+| `time` | Needed: the timetable's time, whole seconds since 1970, above 0 and not after 4102444800 (the start of the year 2100). |
+| `estimated` | Optional: the time now expected, when you know better than the timetable. Leave it out when you don't: a `null` here is refused. |
+| `trip` | Optional: your id for the trip. Without one Kav makes one from the line and the time. Leave it out when you have none: a `null` is refused. |
+| `platform` | Optional. |
+| `headsign` | Optional: where it goes. Leave it out when the line's name says it. |
+
+Kav sorts the list itself, soonest first, by `estimated` when there is one.
+
+**What Kav does with an answer** (`ext/BoardAnswers.kt`): it checks every field. Anything outside the rules above, or
+more departures than `limit`, makes the whole answer malformed, and a malformed answer is shown as a provider that
+could not answer, never as an empty board. Only `null` or an empty array is an empty board.
+
+Deadline: 30 seconds.
+
+`samples/native/native-rules` has a stop board for two stops of its own.
+
+### What is not here yet
+
+- The full shape of a plan (alternatives, fares, tags, sections, turns): see `plan.provide` above.
+- Saving one of your lines: Kav has no page for an extension's line yet, so only stops can be saved.
+
+
+## Screens: cards, pages, settings, the Home body and themes
+
+What an extension can show on Kav's screens. Taken from Kav 5's code: `ext/Slots.kt`, `ext/Pages.kt`,
+`ext/Blocks.kt`, `ext/Looks.kt` (paths under `android/app/src/main/java/uk/noammm/kav/`). If this page and the code
+disagree, the code is right; please report it.
+
+Every card and screen is an Android view your code makes ([native.md](https://kavapp.link/docs/extensions/native)). To look like the rest of Kav, build
+it from Kav's own components (`kav.ui()`), or hand Kav a block tree and let it draw the whole view
+(`kav.ui().blocks`, "Blocks" below).
+
+| You want to | Declare | In code |
+|---|---|---|
+| Add a card to one of Kav's own screens | a slot: `slot.home`, `slot.results`, `slot.trip` or `slot.stop` | `kav.card(...)` |
+| Have screens of your own | `page.provide` and `pages` | `kav.screen(...)` |
+| Offer a Home screen of your own | `home.body` and a page called `home` | `kav.home(...)` |
+| Let the rider set things | `settings` | `kav.settings()`, `kav.onSettings(...)` |
+| Change Kav's colors | `theme` | nothing |
+
+### Cards on Kav's screens
+
+| Slot | Capability | `kav.card(on, ...)` | Where Kav puts it | `about` |
+|---|---|---|---|---|
+| Home card | `slot.home` | `"home"` | On Home, after Kav's own suggestions; three extensions at most | `{}` |
+| Results line | `slot.results` | `"results"` | In the footer of each route's card in a search's results | `{"trip": <the route>}` |
+| Trip page | `slot.trip` | `"trip"` | After Kav's timeline on a trip's page; three extensions at most | `{"trip": <the route>}` |
+| Stop board | `slot.stop` | `"stop"` | After Kav's own rows on a stop board; two extensions at most | `{"stop": "il.mot/gtfs/stop/<code>", "name": "..."}` |
+
+A route is in the shape route rules get it ([hooks.md](https://kavapp.link/docs/extensions/hooks), "A route"): times, fare, tags, and its legs with
+their stops, coordinates, lines and trips.
+
+```json
+"contributions": [{ "id": "card", "capability": "slot.home" }]
+```
+
+```kotlin
+kav.card("home") { context, _ -> kav.ui().card(context, kav.ui().row(context, "bus", "Next shuttle", "in 4 min", null)) }
+kav.card("results") { context, about ->
+    val walked = JSONObject(about).getJSONObject("trip").getJSONArray("legs").let { legs ->
+        (0 until legs.length()).map { legs.getJSONObject(it) }.filter { it.getString("kind") == "walk" }.sumOf { it.getInt("metres") }
+    }
+    if (walked > 800) TextView(context).apply { text = "A long walk" } else null
+}
+```
+
+- A card shows once the extension is on, under "by &lt;its name>", in the order the extensions were switched on. The
+  rider can turn each one off, and back on, at the end of its row under "It can" on the extension's page in
+  Settings › Extensions.
+- Kav calls `create` on the main thread each time the screen shows the card. Make the view quickly and load anything
+  slow on a thread of your own. A call that runs past 3 seconds counts as a crash ([native.md](https://kavapp.link/docs/extensions/native)).
+- Return `null` to show nothing. A results line then takes no space.
+- A Home card isn't told where the rider is. Use the phone's GPS from your code (`samples/native/speed-card`), or ask
+  for a place in a setting.
+
+### Pages: screens of your own
+
+```json
+"contributions": [{ "id": "screens", "capability": "page.provide" }],
+"pages": [
+  { "id": "log", "title": { "en": "Rides", "he": "נסיעות" }, "tab": true },
+  { "id": "about", "title": { "en": "About" } }
+]
+```
+
+```kotlin
+kav.screen("log") { context, args -> RidesView(context, kav) }
+```
+
+- Up to 64 pages. A page's `id` is lower-case letters, digits, `.`, `_` and `-`, up to 40. Its `title` needs English
+  words (`en`); Hebrew (`he`) is optional.
+- Kav shows your view under its own header, with the page's title.
+- `"tab": true` lets the rider pin the page as a tab in Kav. You cannot pin it yourself.
+- Kav offers "Open &lt;title>" for each page on your extension's page in Settings › Extensions. `"entry": false` leaves
+  that row out, for a page that only makes sense opened another way. A tab can't be `"entry": false`.
+- Pages without a `page.provide` contribution, or `page.provide` without pages, are refused.
+
+### The Home body
+
+An extension can offer a Home screen of its own. The rider chooses it ("Use it as my Home screen"); switching the
+extension on does not replace anything.
+
+```json
+"contributions": [
+  { "id": "screens", "capability": "page.provide" },
+  { "id": "home", "capability": "home.body" }
+],
+"pages": [{ "id": "home", "title": { "en": "Ride log" } }]
+```
+
+```kotlin
+kav.home { context, _ -> MyHomeView(context, kav) }
+```
+
+- Kav keeps its own search bar, the card of a trip under way and the way back to Kav's own Home above your body.
+- Kav shows its own Home whenever yours isn't there: not chosen, safe mode, the extension off or gone, your code
+  failed, or not ready within 100 ms.
+
+`samples/native/my-home` has a Home body and a tab.
+
+### Settings
+
+Declare them and Kav draws the settings page, keeps the values with the extension's data, and hands them to your
+code.
+
+```json
+"settings": [
+  { "key": "town", "type": "text", "label": { "en": "Your town" }, "maxLength": 40, "default": "" },
+  { "key": "walk", "type": "number", "label": { "en": "Longest walk" }, "min": 1, "max": 40, "default": 15, "unit": { "en": "min", "he": "דק׳" } },
+  { "key": "quiet", "type": "toggle", "label": { "en": "Quiet stops only" } },
+  { "key": "units", "type": "choice", "label": { "en": "Distances in" }, "default": "km",
+    "options": [{ "value": "km", "label": { "en": "Kilometers" } }, { "value": "mi", "label": { "en": "Miles" } }] },
+  { "key": "home", "type": "place", "label": { "en": "Your home" } },
+  { "key": "stop", "type": "stop", "label": { "en": "Your stop" } },
+  { "key": "leave", "type": "time", "label": { "en": "Leave at" }, "default": "08:00" },
+  { "key": "trip", "type": "date", "label": { "en": "Trip day" } },
+  { "key": "tint", "type": "color", "label": { "en": "Color" }, "default": "#00897B" }
+]
+```
+
+| Type | Fields | Default when left out |
+|---|---|---|
+| `text` | `maxLength` (1 to 100,000, 10,000 if left out), `default` | `""` |
+| `number` | `min`, `max` (both needed, `min` below `max`), `default` (needed, within them), `step` (above 0, 1 if left out), `unit` (optional words said after the value, `{ "en": "min", "he": "דק׳" }`) | none: give one |
+| `toggle` | `default` | `false` |
+| `choice` | `options`: one or more `{ value, label }`, each `value` different, `default` | the first option |
+| `place` | none: the value is `{ "name", "lat", "lon" }`, chosen with Kav's own place search | `null` (none chosen yet) |
+| `stop` | none: the value is `{ "code", "name", "lat", "lon" }`, chosen with Kav's own search (a stop, or the stop nearest the place picked) | `null` |
+| `time` | `default` (`"HH:MM"`, 24-hour) | `""` |
+| `date` | `default` (`"YYYY-MM-DD"`) | `""` |
+| `color` | `default` (`"#RRGGBB"`) | `""` |
+
+A `key` is lower-case letters, digits, `.`, `_` and `-`, up to 40. A `label` needs English words.
+
+Kav draws them on your extension's page in Settings › Extensions, under "Its settings", always with Kav's own
+controls: a switch for a `toggle`, buttons or chips for a `choice`, a field for `text`, a stepper for a `number`
+(`step` at a time, never outside `min` and `max`), Kav's place search for a `place` and a `stop` (the same "Where
+to?" search riders plan with, with their saved places and a pick on the map), Kav's time entry for a `time`, its day
+stepper for a `date`, and a color picker with presets, a hue and a shade for a `color`.
+
+For anything Kav doesn't draw (a picker of your own, your own look), give your own settings view with
+`kav.settingsScreen(...)` ([native.md](https://kavapp.link/docs/extensions/native)): Kav shows it under the declared settings, or alone. Say
+`"settings"` in `adds` so riders are told.
+
+`kav.settings()` gives every declared setting as JSON text: what the rider set, or its default where they set
+nothing or the value no longer fits the declaration. An update keeps the values. To know at once when the rider
+changes one:
+
+```kotlin
+kav.onSettings { all -> pins.redraw(JSONObject(all)) }   // all of them, as kav.settings() gives them
+```
+
+### Blocks
+
+`kav.ui().blocks(context, json)` turns a block tree into a view drawn with Kav's own components, in its own layout,
+language direction and accessibility. Use it for a whole screen or inside a card.
+
+```kotlin
+kav.screen("about") { context, _ ->
+    kav.ui().blocks(context, """{"title": "Ferry", "sections": [
+        {"title": "Today", "blocks": [
+            {"type": "notice", "level": "warning", "text": "The 18:00 sailing is canceled"},
+            {"type": "row", "icon": "clock", "title": "Next sailing", "value": "17:30"},
+            {"type": "button", "label": "Plan a trip to the pier", "style": "primary",
+             "action": {"plan": {"lat": 32.8201, "lon": 34.9712, "name": "Old Quay"}}}]}]}""")
+}
+```
+
+A tree is `{ "title", "sections" }`. A section is `{ "title", "blocks" }`, its title optional. Text is shown as you
+give it; Kav's components cut what doesn't fit. A field not listed here is ignored, and a block type Kav doesn't know
+is skipped.
+
+| Block | Fields | Notes |
+|---|---|---|
+| `text` | `text` (needed, may have line breaks), `style`: `"title"`, `"body"` (the default) or `"caption"` | |
+| `row` | `title` (needed), `subtitle`, `value`, `icon`, `action` | |
+| `card` | `title` (needed), `subtitle`, `icon`, `badge`, `action` | |
+| `notice` | `text` (needed), `level`: `"info"` (the default) or `"warning"` | There is no critical level: that is Kav's. |
+| `metric` | `label`, `value` (both needed, text), `unit` | A big value with its label. |
+| `button` | `label` and `action` (both needed), `icon`, `style`: `"primary"` or `"secondary"` (the default) | |
+| `chips` | `items`: `{ label, action }` each, both needed | |
+| `list` | `items`: rows (a row's fields, with or without `"type": "row"`) | |
+| `trips` | `source`: `"recent"` or `"journey"` (needed), `limit` (1 to 50, 3 if left out) | Kav draws the rider's own trips; your code never sees them. |
+| `image` | `src`: an `https://` address or a `data:image/...` address (needed); `alt`, words for TalkBack; `ratio` (width over height, 0.1 to 10, 1.5 if left out) | At most 8 MB. |
+| `stop` | `ref`: `il.mot/gtfs/stop/<code>` | Kav's own row for a ministry stop, opening its board. |
+| `departures` | `ref`, `limit` (1 to 50, 4 if left out) | The stop's next timetabled departures, from what is on the phone. |
+| `line` | `number` (letters, digits, Hebrew letters and "-", at most 8) | Kav's plate for a line, opening Kav's search for it. |
+
+Icons Kav has: `star`, `heart`, `bus`, `train`, `walk`, `bike`, `clock`, `map`, `pin`, `info`, `warning`, `check`,
+`plus`, `edit`, `delete`, `search`, `list`, `home`, `calendar`, `settings`. Another name shows no icon.
+
+An action is an object with one of these:
+
+| Action | What it does |
+|---|---|
+| `{ "settings": true }` | Opens your settings page. |
+| `{ "plan": { "lat", "lon", "name" } }` | Opens Kav's planner with that destination filled in. The rider sees it and it is planned only by their tap. |
+| `{ "link": "<address>" }` or `{ "open": "<address>" }` | Opens any address or app link: `https:`, `geo:`, `tel:`, another app's. |
+
+For anything else a tap should do, make that view yourself with `kav.ui()` and your own code.
+
+`blocks` throws when it can't read the tree: it isn't JSON or is over 512 KB, a block has no `type`, a needed field
+is missing or of the wrong kind, `sections` or `blocks` isn't a list, an action has nothing to do, an image isn't
+`https:` or `data:`, or a `stop` names a stop that isn't the ministry's.
+
+### Themes
+
+A theme is colors in the manifest. Kav reads them; your code does nothing for it. The extension still needs
+`"native"` like any other, even if its `start` does nothing.
+
+```json
+"contributions": [{ "id": "look", "capability": "theme" }],
+"theme": { "looks": { "dark": { "bg": "#0B0F14", "realtime": "#3DDC84" }, "light": { "...": "..." } } }
+```
+
+- `looks` lists any of `dark`, `oled` and `light`. A look you leave out stays Kav's.
+- Each look sets **any of the 18 roles**, as many as you like: `bg`, `surface`, `surfaceRaised`, `fill`,
+  `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`,
+  `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime`. A role you leave out stays Kav's.
+- A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, and fields Kav
+  doesn't take yet (shapes, type, a map style) are left out. The rider's own accent color stays.
+- Only a `theme` contribution whose `"theme"` isn't an object is refused.
+- The rider chooses it ("Use its look").
+
+**Readability is yours to check.** Kav refuses nothing for it. `kavx check` warns when `text` or `textSecondary` is
+below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
+theme sets both colors. Look at it in Kav, in each look you set, before you publish.
+
+Kav keeps its own colors on its protected screens: Settings (with extension management, sources and safe mode), its
+notices, the report form and navigation.
+
+### When your code fails
+
+A card or screen whose `create` throws or hangs shows nothing, and counts as a crash: 2 crashes in 5 minutes switch
+the extension off at the next start ([native.md](https://kavapp.link/docs/extensions/native), "The crash guard and safe mode"). A Home body that
+fails gives the rider Kav's Home, with a line saying so.
+
+
+## The bundle format
+
+What `kavx bundle` writes and what Kav reads. Taken from Kav 5's code, files under
+`android/app/src/main/java/uk/noammm/kav/ext/`: `Bundle.kt`, `Archive.kt`, `Package.kt`, `Native.kt`, `GitHub.kt`,
+`Hub.kt` and `Registry.kt`. In the kit, every number and rule on this page lives in one file, `lib/format.js`. If
+this page and Kav's code disagree, the code is right.
+
+### A bundle
+
+A bundle (`.kavb`) is a ZIP archive with every extension of one source in it:
+
+```
+bundle.json                    {"format": 1, "name": "Dana's extensions", "icon": "icon.png"}
+icon.png
+speed-card/manifest.json
+speed-card/classes.dex
+speed-card/icon.png
+map-pins/manifest.json
+map-pins/classes.dex
+```
+
+- `bundle.json` has `format` (`1`), `name` and `icon`, all optional. `name` is the source's name as riders see it
+  ("Names" below). Without one, Kav shows the repository's name, or the file's name for a bundle added from a file.
+  `icon` names the source's picture, a file at the top beside `bundle.json`: a PNG or JPEG of at most 256 KB and 1024
+  by 1024 pixels. Without one, Kav shows the GitHub owner's picture, or a letter. At most 16 KB.
+- One folder per extension, named exactly as its manifest's `name`. It holds its `manifest.json`, its dex (where its
+  manifest's `"native"` says) and its own files: an icon, pictures, data.
+- Nothing else at the top.
+- At least one extension and at most 64.
+
+`kavx bundle <folder>` builds every extension under `<folder>/extensions/` (or `<folder>` itself, when it is one
+extension) and writes the bundle. `--name` sets `bundle.json`'s name, `--icon` the source's picture, `--out` the file. `kavx verify <file.kavb>`
+reads a bundle as Kav does.
+
+Kav reads the whole bundle and checks it before it writes anything: the archive's rules, each manifest's rules, each
+extension's dex and icon. One bad extension refuses the whole bundle. An extension whose manifest has `"runtime"`, or
+has no `"native"`, is not refused: Kav lists it as "made for an older version of Kav" and never runs it.
+
+#### The archive (`Archive.kt`)
+
+| Rule | Limit |
+|---|---|
+| Archive size | 64 MB |
+| Size once expanded | 256 MB |
+| One file | 64 MB |
+| Entries | 4096 |
+| Compression | stored or deflate only; a file over 1 MB may not be more than 100 times its compressed size |
+| Paths | ASCII letters, digits, `.`, `_` and `-`, in parts of 1 to 96 characters between single slashes; never `.` or `..`; at most 16 parts; at most 255 characters |
+| Names | no two files whose names differ only in capitals |
+| Never | links, encrypted entries, ZIP64, multi-part archives, files ending `.kavb`, `.jar`, `.apk`, `.so` or `.aab` |
+| Code | a `.dex` file only as the one its extension's `"native"` names |
+| Consistency | the central directory and each local header must agree on name and method; sizes and CRC-32 must be exact |
+
+A `.zip` inside a bundle is fine (a timetable, say): it is a file like any other.
+
+#### JSON
+
+`bundle.json` and every `manifest.json` must be UTF-8, with no duplicate keys, at most 32 levels deep, and nothing
+after the closing brace. Every number a rule reads (`format`, `release`, `minKav`, `api`) must be a JSON integer:
+`1`, never `"1"`, `1.0` or `1e0`.
+
+### `manifest.json` (`Package.kt`)
+
+At most 64 KB.
+
+```json
+{
+  "format": 1,
+  "name": "speed-card",
+  "displayName": "Speed card",
+  "version": "1.0.0",
+  "release": 1,
+  "minKav": 45,
+  "api": 2,
+  "description": "Your speed on Home, from the phone's GPS.",
+  "native": { "dex": "classes.dex", "entry": "org.example.speed.Speed" },
+  "adds": ["location", "notifications"],
+  "contributions": [{ "id": "card", "capability": "slot.home" }]
+}
+```
+
+| Field | Rule |
+|---|---|
+| `format` | `1`. |
+| `name` | `a` to `z`, digits, `.`, `_`, `-`; starts with a letter or digit; at most 64 characters. Its folder in the bundle has this name. With the source it is the extension's identity, so it never changes. |
+| `displayName` | What riders see. Any language and emoji. Kav cleans it ("Names" below) and cuts it at 64 characters; never refused. Defaults to `name`. |
+| `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
+| `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
+| `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
+| `api` | The API it was made for: `2` for Kav 5. Default 1. |
+| `description` | At most 2000 characters. |
+| `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed. See [native.md](https://kavapp.link/docs/extensions/native). |
+| `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |
+| `adds` | What it adds that Kav can't see in its code: any of `"map"` (draws on Kav's maps), `"notifications"`, `"location"` (uses the phone's location) and `"settings"` (a settings view of its own). Kav says these, with what the rest of the manifest shows (a Home card, a tab, route rules), on its row in Settings › Extensions and under "It can". Another word is ignored. |
+| `contributions` | What it offers. Each: `id` (same rule as `name`, unique in the manifest), `capability` (a plain word; one from the table below does something, any other installs and does nothing), and optionally its own `permissions`. An old `domain` field is ignored. |
+| `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
+| `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](https://kavapp.link/docs/extensions/screens). |
+| `theme` | Colors, for a `theme` contribution. See [screens.md](https://kavapp.link/docs/extensions/screens). |
+| `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
+| `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |
+| `issues`, `homepage` | `https://` links. Without `issues`, "Report an issue" goes to the source's GitHub issues. |
+| anything else | Ignored. A misspelled field (`reason` for `reasons`) is silently lost. `kavx check` warns about every field it does not know. |
+
+#### Capabilities (`Contracts.kt`)
+
+| Capability | What it is |
+|---|---|
+| `walk.time`, `transfer.policy`, `results.filter`, `results.rank`, `results.annotate` | the route rules ([hooks.md](https://kavapp.link/docs/extensions/hooks)) |
+| `plan.provide` | a trip planner |
+| `board.provide` | stops, timetables and stop boards |
+| `page.provide`, `home.body` | its own pages, and the page `home` as a Home body |
+| `theme` | colors from the manifest |
+| `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | a card on Home, a line under each search result, a card on a trip's page, a card on stop boards |
+
+Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
+declares it too ([native.md](https://kavapp.link/docs/extensions/native) has the table).
+
+#### Reasons
+
+Kav shows riders a few lines about every extension, in its own words ([what-riders-see.md](https://kavapp.link/docs/extensions/what-riders-see)).
+Under any of them you may add one short reason of your own:
+
+```json
+"reasons": {
+  "slot.home": { "en": "Shows your speed while you ride", "he": "..." },
+  "location": { "en": "Reads the GPS only while Home is open" }
+}
+```
+
+| Key | The line it sits under |
+|---|---|
+| `plan.provide`, `board.provide`, `walk.time`, `transfer.policy`, `results.filter`, `results.rank`, `results.annotate` | what the extension is (one line per kind) |
+| `page.provide` | it has its own screens |
+| `tab` | it has a page the rider can pin as a tab |
+| `home.body` | it can replace the Home screen |
+| `theme` | it changes how Kav looks |
+| `map`, `notifications`, `location`, `settings` | what it adds, from `adds` |
+| `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | it can add a card to Home, a line to results, a part to a trip's page, a row to stop boards |
+| `searches` | it sees the rider's trip searches |
+| `results` | it changes the rider's results |
+| `data` | it keeps its own data on the phone |
+| `native` | it runs its own Android code, with full access |
+| `permissions` | it asks for permissions |
+
+Each value has `en`, `he` or both, each at most 140 characters; longer, or `reasons` that isn't an object of objects,
+refuses the extension. A reason for a line the extension does not have, or for a key Kav does not know, is never
+shown, and `kavx check` warns about it. A reason cannot add, hide or reorder a line.
+
+### Identity
+
+An extension's identity is its source plus its name: `github.<owner>.<repo>/<name>` for a GitHub source (in lower
+case), `file.<16 hex digits of the bundle's SHA-256>/<name>` for a bundle file. `Kav.id()` gives it. The same name in
+another source is another extension, with its own switch and data.
+
+### A source on GitHub (`GitHub.kt`, `Hub.kt`)
+
+A source is a GitHub repository whose latest GitHub Release carries exactly one `.kavb` asset. Kav asks GitHub's
+public API for `repos/<owner>/<repo>/releases/latest`, with no sign-in and nothing about the rider, and downloads
+that one asset. No release, no `.kavb`, or more than one `.kavb` on it, and the source can't be added (or its check
+fails and the old bundle stays). GitHub never gives a draft or a pre-release as the latest release, so Kav doesn't
+see those.
+
+Riders add it by typing `owner/repo`, `github.com/owner/repo` or any GitHub address in the repository, or with an
+add-source link (below).
+
+**Updates.** Kav's background check (about every six hours, while Kav is closed) and Check now ask GitHub for each
+source's latest release, with a conditional request, so an unchanged release costs nothing. When the bundle's SHA-256
+differs from the one in use, Kav reads the new bundle and puts it in place of the old one:
+
+- each extension keeps its switch and its settings;
+- a new extension comes in off;
+- one the new bundle no longer has is removed, with its data;
+- one whose files changed loads its new code at once if it is on;
+- while a trip is under way nothing is replaced; the next check asks again.
+
+Kav does not compare `release` or `version`: a different bundle is the update. A source whose bundle fails the
+checks keeps the one it had and shows the reason.
+
+### A bundle file
+
+A rider can add a `.kavb` from the phone (Settings › Extensions › Sources › Add a bundle file). It becomes a source of
+its own, named by its `bundle.json` or the file's name. A file source never updates: a new build is a different
+file, so it is a different source with different identities. Remove the old one before you add the new one.
+
+### Add-source links
+
+```
+https://kavapp.link/add-source?github=owner/repo
+kav://add-source?github=owner/repo
+```
+
+Both open Kav's add-source sheet for that repository. `kavx link github owner/repo` prints them, with a Markdown
+"Add to Kav" link. Kav always shows the sheet and asks before it adds anything.
+
+### The block list
+
+Kav's security block list is Kav's own signed file. An entry names a GitHub repository or a bundle's SHA-256, with a
+security reason. A blocked source can't be added, and what was installed from it is switched off. The rider can turn
+the list off under Settings › Extensions › Options.
+
+### Names
+
+A source's name and an extension's `displayName` are shown inside Kav's own sentences, so Kav prints them as plain
+text (`Package.kt`, `Names.clean`). Any language and any emoji is a name. Kav cleans each one before it shows it, and
+never refuses one for it:
+
+- Unicode's NFKC form;
+- control and formatting characters removed: line breaks, text direction controls, zero-width characters (except a
+  joiner between two emoji, which makes a family or a flag one picture), private-use and unassigned code points,
+  half of a surrogate pair on its own, and the Hangul filler letters, which draw as nothing;
+- double quotes of every kind removed, except a straight one between two Hebrew letters, which is how a Hebrew
+  abbreviation is typed (ת"א, בע"מ);
+- any run of spaces one space, none at the ends;
+- at most 64 characters.
+
+A `displayName` that is empty after cleaning is the extension's `name` instead.
+
+Nothing an extension draws itself is cleaned: its views, a filter's reasons and its tags are shown as they come.
+
+
+## What riders see about your extension
+
+When a rider adds your source, and on each extension's page, Kav tells them in plain words what the extension is and
+what it can do. This page says where each of those lines comes from, so that what a rider reads is what you meant.
+Riders switch extensions on at their own risk, the way they would a browser add-on: these lines are how they decide.
+
+### Adding a source
+
+Adding a source (by typing the repository, from an add-source link, or with "Add a bundle file") shows one sheet:
+
+- the source's name and picture (for a GitHub source, its owner's GitHub picture) and its address;
+- "Third-party. Not made or reviewed by Kav.", or "Made by Kav." for Kav's own source, github.com/ImNoammm/kav-extensions;
+- "Its extensions come in off: you switch on the ones you want.";
+- each extension in the bundle with its icon, its name and its "It can" lines (below). One made for an older version
+  of Kav says so instead.
+
+The first time, before any source, Kav shows "Before you add extensions": they are made by other people, Kav doesn't
+review them, they can do anything Kav can on the phone, and installing one is the rider's own call.
+
+After Add, every extension of the source shows in Settings › Extensions with its own switch, off until the rider
+switches it on. On, it runs at once. Each extension's page shows the same lines under "It can", with "By &lt;name>, a
+third-party extension, not made by Kav" where its parts show.
+
+### Kav writes the lines, from your manifest
+
+You do not write these lines and you cannot change them. One function in Kav (`ext/ExtUses.kt`) turns your
+`manifest.json` into the lines, and Kav words each one itself. No line comes from your description or your README.
+
+These are all the lines there are, in the order Kav lists them. The exact words, in English and Hebrew, are in
+[riders-wording.md](https://kavapp.link/docs/extensions/riders-wording).
+
+| Line | Your extension has it when | Key |
+|---|---|---|
+| **What it is**, one line per kind: a trip planner, a provider of timetables and stop boards, a walking model, a transfer rule, a route filter, a ranker, route tags | it has a contribution with capability `plan.provide`, `board.provide`, `walk.time`, `transfer.policy`, `results.filter`, `results.rank` or `results.annotate`. One line per capability, in that order | the capability |
+| **It has its own screens** | it has a `page.provide` contribution | `page.provide` |
+| **It has a page the rider can pin as a tab** | one of its `pages` has `"tab": true` | `tab` |
+| **It can replace the Home screen** | it has a `home.body` contribution | `home.body` |
+| **It changes how Kav looks** | it has a `theme` contribution | `theme` |
+| **It draws on Kav's maps**, **sends notifications**, **uses the rider's location**, **has settings of its own** | `adds` lists `map`, `notifications`, `location` or `settings`. One line each | the word |
+| **It can add a card to the Home screen** | it has a `slot.home` contribution | `slot.home` |
+| **It can add a line to trip results** | it has a `slot.results` contribution | `slot.results` |
+| **It can add a part to a trip's page** | it has a `slot.trip` contribution | `slot.trip` |
+| **It can add a row to stop boards** | it has a `slot.stop` contribution | `slot.stop` |
+| **It sees the rider's trip searches** | it has any of the kinds above except `board.provide`: a stop board is not given trip searches | `searches` |
+| **It changes the rider's results**, saying which: walk times, which changes can be made, which routes show, their order, tags on routes | it has any route rule. A planner alone does not count | `results` |
+| **It keeps its own data on the phone** | it declares any `settings` | `data` |
+| **It runs its own Android code: full access** | the manifest has `native`, which every extension has | `native` |
+| **It asks for permissions**, naming them | `permissions`, or any contribution's `permissions`, lists anything | `permissions` |
+
+Kav can't see what your Android code does by itself. `adds` is how you tell riders: draws on the map, posts
+notifications, uses the location, has its own settings view. Say what your code does.
+
+Beside the lines Kav always shows that the extension is a third party's (or Kav's own), the source it came from, and
+a "Report an issue" link (your `issues`, or the source's GitHub issues). Your `description` is shown on the
+extension's page.
+
+### Your own reason under a line
+
+The "Key" column is for `reasons`, an optional field of the manifest (its old name, `explanations`, is still read).
+With it you put one short reason of your own under a line: why the extension needs the location, what the data it
+keeps is.
+
+```json
+"reasons": {
+  "location": { "en": "Reads the GPS only while the card is on screen" },
+  "data": { "en": "Keeps one number: how much slower or faster than usual you walk" }
+}
+```
+
+Kav shows the reason under its own line, after "From the publisher:", in the rider's language when you gave it
+(`en`, `he`) and in the other one when you did not.
+
+- It never replaces Kav's line, and it cannot add, hide or reorder one.
+- A reason for a line your extension does not have is never shown. So is one for a key Kav does not know.
+- At most 140 characters in each language, or Kav refuses the extension ([format.md](https://kavapp.link/docs/extensions/format), "Reasons").
+
+### So declare only what the extension needs
+
+Every entry in the manifest becomes something a rider reads before they switch it on.
+
+- **A contribution you declare "for later" still shows as something the extension is.** Declare it in the release
+  that uses it.
+- **Settings read as "keeps its own data".** They are the rider's own values, kept on the phone. A reason under that
+  line saying what they are ("Only the town you type") costs you one sentence.
+- **A card shows once the extension is on.** The rider can turn it off on your extension's page.
+- **Leave `permissions` empty** unless you mean something by it. Kav shows each one to the rider as it is written.
+- **An update shows the new lines on the extension's page and runs at once.** Kav doesn't ask again, so tell riders
+  in your release notes when a release starts doing something new.
+
+### See it before a rider does
+
+`kavx check <folder>` and `kavx verify <file.kavb>` print the lines your manifest produces, with your reasons, and
+warn about a reason that would never be shown:
+
+```
+  Speed card (speed-card) 1.0.0, release 1
+  does       slot.home as "card"
+  native     org.example.speed.Speed, from classes.dex
+  riders see adds: location
+             from the publisher: Reads the GPS only while the card is on screen
+  riders see adds: notifications
+  riders see can add a card to the Home screen
+  riders see runs its own Android code: full access
+```
+
+These are the kit's descriptions of the lines, not Kav's wording. If a line here surprises you, it will surprise a
+rider.
+
+
+## The words a rider meets
+
+When you tell riders how to use your extension, use Kav's own names for things. These are the exact words, in English
+and Hebrew, taken from Kav 5's code (`ui/ExtensionsScreen.kt`, `ui/ExtensionParts.kt`, `ui/ExtSlots.kt`,
+`ui/ExtPages.kt`, `ui/ExtHiddenRoutes.kt`, `ui/DirectionsOnline.kt`). **If the app and this page ever differ, the app
+is right**: wording changes between versions, so quote a switch's name, and do not build a manual on a whole
+sentence.
+
+### Where things are
+
+A rider reaches everything by one path: **Settings**, then **Extensions**. That screen lists each source with its
+extensions, each with its own switch. A tap on an extension opens its page.
+
+| English | Hebrew | Where, or when |
+|---|---|---|
+| Extensions | תוספים | the entry in Kav's Settings, and the screen's title |
+| Add a source | הוספת מקור | the plus at the top, and the sheet it opens: "A GitHub repository whose releases carry a Kav bundle." |
+| Sources | מקורות | a row on the Extensions screen: every source, with Check now and Add a bundle file |
+| Check now | בדיקה עכשיו | asks GitHub for every source's latest release now |
+| Add a bundle file | הוספת קובץ חבילה | adds a `.kavb` from the phone as a source of its own |
+| Options | אפשרויות | on the Extensions screen: the security block list, safe mode, About extensions |
+| Security block list | רשימת חסימה אבטחתית | the switch there, on by default |
+| Safe mode | מצב בטוח | the switch there: Kav starts with every extension off |
+| Its extensions come in off: you switch on the ones you want. | התוספים שלו נוספים כבויים: אתם מפעילים את אלה שאתם רוצים. | on the sheet that adds a source |
+| What it does for you | מה הוא עושה בשבילכם | section of an extension's page: a planner and route rules, one switch each |
+| Its screens and look | המסכים והמראה שלו | section: its pages, tab, Home screen and theme |
+| Its settings | ההגדרות שלו | section: the settings your manifest declares, filled in right there |
+| It can | התוסף יכול | section: what it is and does (the lines below); a card's row ends in its switch |
+| Log | יומן | a row that opens its log: its `Kav.log` lines and its failures |
+| Report an issue | דיווח על בעיה | on an extension's page and a source's page |
+| Remove | הסרה | on a source's page: removes the source, its extensions and their settings |
+
+### The switches
+
+| English | Hebrew | For |
+|---|---|---|
+| Plan my trips with it | תכנון הנסיעות שלי איתו | `plan.provide` |
+| Time my walks with it | חישוב זמני ההליכה שלי איתו | `walk.time`. Starts as Required |
+| Judge my transfers with it | בדיקת ההחלפות שלי איתו | `transfer.policy`. Starts as Required |
+| Filter my routes with it | סינון המסלולים שלי איתו | `results.filter`. Starts optional |
+| Order Recommended with it | סידור "מומלץ" איתו | `results.rank` |
+| Show its tags on routes | הצגת התגיות שלו על מסלולים | `results.annotate` |
+| Required | חובה | under a walking model, a transfer rule or a filter that is on: "Without it, a search shows no routes" |
+| Use it as my Home screen | שימוש בו כמסך הבית שלי | `home.body`, with "Kav's Home shows if it fails" |
+| Use its look | שימוש במראה שלו | `theme`, with "Settings keep Kav's own look" |
+
+A page marked `"tab": true` gets a switch named after the page: "Show &lt;page title> as a tab" ("הצגת &lt;page title>
+כלשונית"). Every page that opens on its own gets a row "Open &lt;page title>" ("פתיחת &lt;page title>"). A stop board
+(`board.provide`) has no switch of its own: its stops are there whenever the extension is on.
+
+A card shows once the extension is on. Its switch is at the end of its row under "It can" (the row "Can add a card to
+your Home screen", say), for the rider who wants it off.
+
+### The lines under "It can"
+
+These are the lines of [what-riders-see.md](https://kavapp.link/docs/extensions/what-riders-see), in Kav's words. Where a line ends with a colon, Kav
+adds the permissions or what is changed.
+
+| English | Hebrew | Line |
+|---|---|---|
+| Trip planner | מתכנן מסלולים | `plan.provide` |
+| Provides timetables and stop boards | מספק לוחות זמנים ולוחות תחנה | `board.provide` |
+| Walking model | מודל הליכה | `walk.time` |
+| Transfer rule | כלל החלפות | `transfer.policy` |
+| Route filter | מסנן מסלולים | `results.filter` |
+| Ranker | מדרג מסלולים | `results.rank` |
+| Route tags | תגיות למסלולים | `results.annotate` |
+| Adds its own screens | מוסיף מסכים משלו | key `page.provide` |
+| Adds a tab you can pin | מוסיף לשונית שאפשר להצמיד | key `tab` |
+| Can replace your Home screen | יכול להחליף את מסך הבית שלכם | key `home.body` |
+| Changes how Kav looks | משנה את המראה של Kav | key `theme` |
+| Draws on Kav's maps | מצייר על המפות של Kav | `adds`: `map` |
+| Sends notifications | שולח התראות | `adds`: `notifications` |
+| Uses your location | משתמש במיקום שלכם | `adds`: `location` |
+| Has settings of its own | יש לו הגדרות משלו | `adds`: `settings` |
+| Can add a card to your Home screen | יכול להוסיף כרטיס למסך הבית שלכם | key `slot.home` |
+| Can add a line to your trip results | יכול להוסיף שורה לתוצאות החיפוש שלכם | key `slot.results` |
+| Can add a part to a trip's page | יכול להוסיף חלק לעמוד של נסיעה | key `slot.trip` |
+| Can add a row to stop boards | יכול להוסיף שורה ללוחות תחנה | key `slot.stop` |
+| Sees your trip searches | רואה את חיפושי המסלולים שלכם | key `searches` |
+| Changes your results: | משנה את התוצאות שלכם: | key `results`, followed by what changes |
+| Keeps its own data on your phone | שומר מידע משלו בטלפון שלכם | key `data` |
+| Runs its own Android code: full access | מריץ קוד Android משלו: גישה מלאה | key `native` |
+| Asks for: | מבקש הרשאות: | key `permissions` |
+
+After "Changes your results:" Kav lists what changes: "walk times" (זמני הליכה), "which changes you can make" (אילו
+החלפות אפשר לעשות), "which routes show" (אילו מסלולים מוצגים), "their order" (הסדר שלהם), "tags on routes" (תגיות על
+מסלולים).
+
+Kav also has shorter forms of some lines: "Its own screens" (מסכים משלו), "A tab you can pin" (לשונית שאפשר להצמיד),
+"Home card" (כרטיס במסך הבית), "Line on trip results" (שורה בתוצאות החיפוש), "Part on a trip's page" (חלק בעמוד של
+נסיעה), "Row on stop boards" (שורה בלוחות תחנה), "Timetables and stop boards" (לוחות זמנים ולוחות תחנה), "Keeps data
+on this phone" (שומר מידע בטלפון הזה).
+
+Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by
+Kav." ("נוצר על ידי Kav.") for Kav's own source. Your reason follows a line after "From the publisher:" ("מהמפרסם:").
+
+A card or page of yours on Kav's screens shows under "by &lt;its name>" ("מאת &lt;its name>").
+
+### When something of yours hides routes or does not run
+
+| English | Hebrew | Where, or when |
+|---|---|---|
+| &lt;n> routes hidden by &lt;name> | &lt;n> מסלולים הוסתרו על ידי &lt;name> | under a search's routes, with a "Show" (הצגה) button; "1 route hidden by &lt;name>" for one |
+| Showing &lt;n> hidden routes | מוצגים גם &lt;n> מסלולים שהוסתרו | after the rider tapped Show |
+| Shown without &lt;name>: it didn't answer in time. | המסלולים מוצגים בלי &lt;name>, כי הוא לא ענה בזמן. | under a search, when an optional rule was skipped |
+| Shown without &lt;name>: Kav couldn't ask it about these routes. | המסלולים מוצגים בלי &lt;name>, כי Kav לא הצליחה לשאול אותו על המסלולים האלה. | under a search, when what Kav would send an optional rule is more than one call carries |
+| Can't use your walking rules (&lt;name>) right now, so no routes are shown. | אי אפשר להשתמש כרגע בכללי ההליכה שלכם (&lt;name>), ולכן לא מוצגים מסלולים. | a required rule failed; also "your transfer rules", "your route filter". With "Try again" and "Show routes without this check" |
+| &lt;name> couldn't plan this trip. | &lt;name> לא הצליח לתכנן את הנסיעה הזו. | the planner failed; Kav's own planner isn't asked instead |
+| &lt;name> answered something Kav can't read as routes. | &lt;name> החזיר תשובה ש-Kav לא יכולה לקרוא כמסלולים. | the planner's answer was refused |
+| Kav turned it off | Kav כיבתה אותו | on the extension's page, with "It made Kav close twice" and a "Turn on" button |
+| It made Kav close | הוא גרם ל-Kav להיסגר | on the Extensions screen, under that extension |
+
+Under "&lt;n> routes hidden by &lt;name>" Kav puts the reasons your filter or transfer rule gave, in a small line, as you
+wrote them. With two extensions it names both ("by &lt;one> and &lt;other>"); with more, "by &lt;n> extensions" ("על ידי &lt;n>
+תוספים").
+
+A card whose code fails shows nothing at all, not a message.
+
+
+## Testing
+
+An extension is Android code, so it runs only inside Kav. Test it in three steps.
+
+### 1. Check it
+
+```
+kavx check <folder>
+```
+
+This builds the folder and checks it the way Kav does: the manifest, the dex, the icon, the pages, settings and
+theme. It prints what riders will see and warns about what Kav accepts but you probably did not mean (an unknown
+manifest field, a reason that is never shown, a theme color that is hard to read). `REFUSED:` means Kav would
+refuse it, and says why.
+
+### 2. Unit-test your hook code
+
+Your hooks take JSON text and answer JSON text ([hooks.md](https://kavapp.link/docs/extensions/hooks)), so test them on your computer like any other
+Kotlin or Java code: build an input shaped as hooks.md describes, call your hook, and check the answer. Keep the code
+that works out the answer in a plain function with no Android types, and the test needs nothing from Kav.
+
+```kotlin
+// In your extension:
+fun hideLongWalks(input: String): String {
+    val routes = JSONObject(input).getJSONArray("routes")
+    return JSONArray().apply {
+        for (i in 0 until routes.length()) {
+            val legs = routes.getJSONObject(i).getJSONArray("legs")
+            val walked = (0 until legs.length()).map { legs.getJSONObject(it) }.filter { it.getString("kind") == "walk" }.sumOf { it.getInt("metres") }
+            put(if (walked > 1500) "Over 1.5 km on foot" else true)
+        }
+    }.toString()
+}
+
+// In a test, with org.json on the classpath:
+val search = """{"query": {"way": "d", "at": 1800000000, "now": 1800000000, "settings": "nnnn", "locale": "en"},
+  "routes": [{"index": 0, "legs": [{"kind": "walk", "metres": 2000}]}, {"index": 1, "legs": [{"kind": "walk", "metres": 300}]}],
+  "walks": [], "transfers": []}"""
+check(hideLongWalks(search) == """["Over 1.5 km on foot",true]""")
+```
+
+`org.json` is part of Android, not of the JVM: add a copy of it (the `org.json:json` artifact) to your test's
+classpath only. Your extension uses Android's own.
+
+Mind the deadlines when you test: 200 ms for a walking model, 150 ms for the other rules, 400 ms for all of them
+together, on a phone slower than your computer.
+
+### 3. Try it in Kav
+
+On a phone or an emulator with Kav 5 or newer:
+
+1. `kavx bundle <folder>` writes a `.kavb`.
+2. Copy it to the device: `adb push my-extension.kavb /sdcard/Download/`.
+3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. Add.
+4. Switch the extension on. It runs at once.
+5. Watch `adb logcat -s KavNative KavNativeGuard KavExtHooks KavExt`, and the "Log" row on its page
+   ([native.md](https://kavapp.link/docs/extensions/native), "Seeing logs").
+
+A bundle file never updates. For the next build, remove the old source (its page, Remove) and add the new file.
+
+To try the path your riders take, publish a GitHub Release with the `.kavb` on it and add the repository in Kav
+(type `owner/repo`, or open the link `kavx link github owner/repo` prints). Then Check now picks up each new release.
+`kavx verify <file.kavb>` reads a bundle as Kav will before you publish it.
+
+
+## The Kotlin starter
+
+One extension in one Kotlin file. Copy it, rename it, and build it.
+
+A card on Kav's Home with a button and a dialog, and a screen of its own, in one Kotlin file. Copy this folder,
+change the names, and build it:
+
+```
+kavx check <this folder>       # builds it and prints what Kav and riders would see
+kavx bundle <this folder>      # writes <folder name>.kavb
+```
+
+That compiles `src/` against Kav's API, makes the dex and writes a bundle with this one extension in it. You need a
+JDK, the Android SDK and the Kotlin compiler; the kit's `docs/native.md` says where to get them, and explains every
+method used here.
+
+- `manifest.json`: what Kav and riders are told. Change `name`, `displayName`, `description`, and `native.entry` if
+  you rename the class or its package. A card needs its `slot.home` contribution, a screen its page under `pages`.
+- `src/org/example/hello/Hello.kt`: the code. `start` registers the card and the screen; Kav asks each for a view
+  when its screen shows.
+
+To try it: copy the `.kavb` to a phone or emulator with Kav 5 or newer, open Settings › Extensions › Sources › Add a
+bundle file, add it, and switch Hello Kotlin on. The card is on Home, and the screen opens from the extension's page
+in Settings › Extensions.
+
+
+### `manifest.json`
+
+```json
+{
+  "format": 1,
+  "name": "hello-kotlin",
+  "displayName": "Hello Kotlin",
+  "version": "1.0.0",
+  "release": 1,
+  "minKav": 45,
+  "api": 2,
+  "description": "A card on Kav's Home and a screen of its own, written in Kotlin.",
+  "native": { "dex": "classes.dex", "entry": "org.example.hello.Hello" },
+  "contributions": [
+    { "id": "card", "capability": "slot.home" },
+    { "id": "screens", "capability": "page.provide" }
+  ],
+  "pages": [
+    { "id": "about", "title": { "en": "Hello Kotlin", "he": "שלום קוטלין" } }
+  ]
+}
+```
+
+### `src/org/example/hello/Hello.kt`
+
+```kotlin
+package org.example.hello
+
+import android.content.Context
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
+import kav.kavapp.api.Kav
+import kav.kavapp.api.KavExtension
+
+// Kav makes this class (the manifest's "native" entry) and calls start once each time Kav starts, on a background
+// thread. Everything the extension adds to Kav is registered here.
+class Hello : KavExtension {
+    override fun start(kav: Kav) {
+        // The Home card: the manifest declares it as the contribution "slot.home". Kav asks for a view each time Home
+        // shows it, on the main thread.
+        kav.card("home") { context, _ -> card(kav, context) }
+        // The screen for the page "about": Settings › Extensions › Hello Kotlin › About opens it.
+        kav.screen("about") { context, _ -> about(kav, context) }
+        // A line in its log, on its page in Settings › Extensions.
+        kav.log("Hello Kotlin started, API ${kav.apiVersion()}, language ${kav.locale()}")
+    }
+
+    private var taps = 0
+
+    // Kav's own card, button and dialog, so it looks like the rest of Kav in light, dark and Hebrew.
+    private fun card(kav: Kav, c: Context): View {
+        val ui = kav.ui()
+        val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(text(kav, c, if (kav.locale() == "he") "שלום מקוטלין" else "Hello from Kotlin", "headline"))
+        box.addView(ui.button(c, if (kav.locale() == "he") "לחצו כאן" else "Tap me", true) {
+            taps++
+            kav.log("tapped $taps times")
+            ui.dialog(c, "Hello Kotlin", "You tapped $taps time${if (taps == 1) "" else "s"}.", "OK") {}
+        })
+        return ui.card(c, box)
+    }
+
+    private fun about(kav: Kav, c: Context): View {
+        val ui = kav.ui()
+        return LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(ui.header(c, "About"))
+            addView(ui.row(c, "info", "Hello Kotlin", "A starter extension for Kav", null))
+            addView(ui.row(c, "check", "Your extension's id", kav.id(), null))
+        }
+    }
+
+    // A text in Kav's colours and type sizes, for a view the extension draws itself.
+    private fun text(kav: Kav, c: Context, s: String, style: String) = TextView(c).apply {
+        text = s
+        setTextColor(kav.ui().color("text"))
+        textSize = kav.ui().textSize(style)
+        setPadding(0, 0, 0, (kav.ui().dp("gap3") * c.resources.displayMetrics.density).toInt())
+    }
+}
+```
+
+## Publishing: the source template
+
+Extensions for [Kav](https://kavapp.link), the open-source transit app. Made and published by me, not by Kav.
+
+[![Add to Kav](https://kavapp.link/img/add-to-kav.svg)](https://kavapp.link/add-source?github=OWNER/REPO)
+
+To add this source by hand: in Kav open Settings, Extensions, Sources, the plus, and enter `OWNER/REPO`. Its
+extensions come in off: switch on the ones you want.
+
+### What is here
+
+| Extension | What it does |
+|---|---|
+| My extension | Say in a sentence what it does for a rider. |
+
+Problems with these extensions go to this repository's issues, not to Kav.
+
+### For developers
+
+This repository was started from the Kav extension kit's template. Replace `OWNER/REPO` and the table above, and
+delete this section when you no longer need it.
+
+Each extension is a folder under `extensions/`: its `manifest.json` and its Kotlin or Java under `src/`. The kit's
+`kavx` builds them all into one bundle (`.kavb`), and each GitHub Release of this repository carries it. Kav reads the
+latest release's bundle.
+
+```
+kavx check extensions/my-extension     builds one extension and checks it the way Kav does
+kavx bundle . --out my.kavb            builds the bundle; add it in Kav with Settings, Extensions, Sources, Add a bundle file
+```
+
+#### Releasing
+
+Raise `release` and `version` in the manifest of each extension that changed, commit, then tag and push
+(`git tag v1 && git push origin v1`). `.github/workflows/release.yml` builds the bundle and attaches it to a release
+for the tag. By hand: `kavx bundle . --out my.kavb`, then `gh release create v1 my.kavb`.
+
+### License
+
+GPL-3.0. See [LICENSE](https://kavapp.link/docs/license).
+
+
+### `.github/workflows/release.yml`
+
+```yaml
+# Builds the bundle of every extension under extensions/ and attaches it to a GitHub Release when a tag is pushed
+# (git tag v1 && git push origin v1). Kav reads the latest release's bundle at its next check.
+#
+# The extensions are Kotlin or Java: they need a JDK and the Android SDK, which GitHub's Ubuntu runner has, and the Kotlin
+# compiler, which this downloads. It checks out the Kav extension kit from github.com/ImNoammm/kav-extension-kit beside
+# this repository and runs its kavx (the kit has no dependencies). Until the kit is published there, this workflow
+# fails and the bundle is built and released by hand (README, "Releasing").
+#
+# UNTESTED ON GITHUB: its commands were run by hand on a computer, but it has not run on GitHub yet. Read its first
+# run's log.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ImNoammm/kav-extension-kit
+          path: kav-extension-kit
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Get the Kotlin compiler
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kotlin.zip" https://github.com/JetBrains/kotlin/releases/download/v2.2.10/kotlin-compiler-2.2.10.zip
+          unzip -q "$RUNNER_TEMP/kotlin.zip" -d "$RUNNER_TEMP"
+          echo "KOTLINC=$RUNNER_TEMP/kotlinc/bin/kotlinc" >> "$GITHUB_ENV"
+
+      - name: Build the bundle
+        working-directory: source
+        run: |
+          node ../kav-extension-kit/bin/kavx.js bundle . --name "${{ github.event.repository.name }}" --out "$RUNNER_TEMP/${{ github.event.repository.name }}.kavb"
+          node ../kav-extension-kit/bin/kavx.js verify "$RUNNER_TEMP/${{ github.event.repository.name }}.kavb"
+
+      - name: Release it
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/${{ github.event.repository.name }}.kavb" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+```
+
+</div>

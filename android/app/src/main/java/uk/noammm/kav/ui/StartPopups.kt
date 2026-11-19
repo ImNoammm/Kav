@@ -20,7 +20,7 @@ import uk.noammm.kav.data.WhatsNew
 // version (Tell me about new versions), one Kav downloaded itself to install (Download updates automatically), and
 // "Kav has been updated" with what's new, after any update. Setup comes before all of them, as Root shows nothing else
 // until it's done.
-enum class StartPopup { LOOK, NOTICE, MAP, IMPORT, SUPPORT, UPDATE, READY, UPDATED }
+enum class StartPopup { LOOK, NOTICE, MAP, IMPORT, EXTENSION, BLOCKED, CRASHED, SUPPORT, UPDATE, READY, UPDATED }
 
 // Which one shows: one at a time, kept until it closes, and one a time Kav opens, the rest waiting for the next opening.
 // One the rider asked for (a backup or a link they opened) still waits for the one showing to close, but not for the
@@ -78,12 +78,15 @@ fun StartPopups(model: KavModel) {
     var ready by remember { mutableStateOf<AutoUpdate.Notice?>(null) }
     // Later: not again until Kav next opens, when it's wanted again at once.
     var readyLater by remember { mutableIntStateOf(-1) }
+    // Something the security block list names, read from the phone as Kav opens (ExtensionsScreen.kt).
+    var blocked by remember { mutableStateOf<List<Pair<String, Boolean>>>(emptyList()) }
     val opening = Openings.count
     val supportWaits = supportWait.held(opening, { StartNotice.supportWaits(ctx) }) { StartNotice.supportWaited(ctx) }
     LaunchedEffect(opening) {
         val app = ctx.applicationContext
         if (updated == null) updated = withContext(Dispatchers.IO) { AutoUpdate.notice(app) ?: WhatsNew.notice(app) }
         if (ready == null && Prefs.autoUpdate(app)) ready = withContext(Dispatchers.IO) { AutoUpdate.ready(app) }
+        blocked = withContext(Dispatchers.IO) { runCatching { BlockNotice.names(app) }.getOrDefault(emptyList()) }
     }
     val readyNow = ready?.takeIf { r -> model.update?.let { Updates.isNewer(it.version, r.to) } != true }
     val wanted = buildSet {
@@ -91,6 +94,10 @@ fun StartPopups(model: KavModel) {
         if (notice != null) add(StartPopup.NOTICE)
         if (mapPromptWanted) add(StartPopup.MAP)
         if (PendingBackup.uri != null) add(StartPopup.IMPORT)
+        if (PendingExtension.link != null || PendingExtension.file != null) add(StartPopup.EXTENSION)
+        if (blocked.isNotEmpty()) add(StartPopup.BLOCKED)
+        // Extensions the crash guard switched off as Kav opened (NativeGuard), said in this opening.
+        if (ExtCrashes.items.isNotEmpty()) add(StartPopup.CRASHED)
         if (pickSupport && !supportWaits) add(StartPopup.SUPPORT)
         // The version downloaded in the background, unless the check as Kav opened found a newer one, which is offered
         // to download and install instead.
@@ -100,7 +107,10 @@ fun StartPopups(model: KavModel) {
         if (readyNow != null && readyLater != opening) add(StartPopup.READY)
         if (updated != null) add(StartPopup.UPDATED)
     }
-    when (if (Openings.launched) queue.pick(wanted, setOf(StartPopup.IMPORT), opening) else null) {
+    val shown = if (Openings.launched) queue.pick(wanted, setOf(StartPopup.IMPORT, StartPopup.EXTENSION, StartPopup.CRASHED), opening) else null
+    // Kav's notices and prompts keep Kav's own look under a theme (ExtLook).
+    ExtLook.Protected(shown != null)
+    when (shown) {
         StartPopup.LOOK -> LookPrompt { Prefs.lookPicked(ctx); pickLook = false }
         StartPopup.NOTICE -> notice?.let { n ->
             NoticePrompt(n) { coffee ->
@@ -111,6 +121,18 @@ fun StartPopups(model: KavModel) {
         }
         StartPopup.MAP -> MapPrompt()
         StartPopup.IMPORT -> ImportPrompt(model)
+        StartPopup.EXTENSION -> ExtensionPrompt()
+        StartPopup.BLOCKED -> BlockedPrompt(blocked, { BlockNotice.seen(ctx); blocked = emptyList() }) {
+            BlockNotice.seen(ctx); blocked = emptyList()
+            model.settingsOpen = true
+            SettingsNav.wanted = "extensions"
+        }
+        StartPopup.CRASHED -> CrashedPrompt(ExtCrashes.items, { ExtCrashes.items = emptyList() }) { id ->
+            ExtCrashes.items = emptyList()
+            model.settingsOpen = true
+            SettingsNav.wanted = "extensions"
+            ExtUi.wanted = "e:$id"
+        }
         StartPopup.SUPPORT -> SupportPrompt { Prefs.supportShown(ctx); pickSupport = false }
         StartPopup.UPDATE -> UpdatePrompt(model)
         StartPopup.READY -> readyNow?.let { ReadyPrompt(it) { readyLater = opening } }

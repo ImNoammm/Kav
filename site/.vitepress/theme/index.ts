@@ -1,4 +1,4 @@
-// VitePress's own theme, in the system font (no Inter download), Kav's colours, and motion between pages.
+// VitePress's own theme, in the system font (no Inter download), Kav's colors, and motion between pages.
 import DefaultTheme from 'vitepress/theme-without-fonts'
 import { inBrowser, type Theme } from 'vitepress'
 import { nextTick } from 'vue'
@@ -6,6 +6,10 @@ import Layout from './Layout.vue'
 import HomePage from './components/HomePage.vue'
 import DownloadButton from './components/DownloadButton.vue'
 import ReleaseList from './components/ReleaseList.vue'
+import AddSource from './components/AddSource.vue'
+import Community from './components/Community.vue'
+import BadgeMaker from './components/BadgeMaker.vue'
+import AgentPrompt from './components/AgentPrompt.vue'
 import { reveal } from './reveal'
 import './style.css'
 
@@ -16,6 +20,10 @@ export default {
     app.component('HomePage', HomePage)
     app.component('DownloadButton', DownloadButton)
     app.component('ReleaseList', ReleaseList)
+    app.component('AddSource', AddSource)
+    app.component('Community', Community)
+    app.component('BadgeMaker', BadgeMaker)
+    app.component('AgentPrompt', AgentPrompt)
     if (!inBrowser) return
 
     // Going to another page is a View Transition where the browser has them: the old page fades away and the new one

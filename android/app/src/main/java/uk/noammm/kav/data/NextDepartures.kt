@@ -10,8 +10,8 @@ internal class LineDepartures(val route: Int, val departures: List<Transit.Depar
 internal fun Net.nextDepartures(
     ride: Transit.Leg, r: Transit.Resolved, now: Long, board: KavLive.Board? = null,
 ): List<LineDepartures> {
-    val from = r.stop(ride.fromStop)?.code?.toIntOrNull() ?: return emptyList()
-    val to = r.stop(ride.toStop)?.code?.toIntOrNull() ?: return emptyList()
+    val from = r.stop(ride.fromStop)?.ministryCode() ?: return emptyList()
+    val to = r.stop(ride.toStop)?.ministryCode() ?: return emptyList()
     val type = r.routeType(r.line(ride.lineId)?.agencyId ?: -1)
     if (from <= 0 || to <= 0) return emptyList()
     val rows = ArrayList<Int>()

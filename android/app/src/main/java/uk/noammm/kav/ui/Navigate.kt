@@ -42,6 +42,12 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -74,6 +80,7 @@ import uk.noammm.kav.data.shownName
 import java.util.Date
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.rounded.OutlinedFlag
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
@@ -207,15 +214,28 @@ internal fun chosenLegs(trip: Transit.Itinerary, chosen: Map<Int, Int>): List<Tr
         ).first
     }
 
-// When the trip gets there as things stand. On board, the time left on the ride and the plan after it, the same count
-// the ride's card shows; otherwise the plan, moved by how far its last ride runs from it.
+// When the trip gets there as things stand. On board, the time left on the ride and the plan after it, by the same
+// times the ride's card counts down; otherwise the plan, moved by how far its last ride runs from it.
 internal fun tripArrival(
     trip: Transit.Itinerary, r: Transit.Resolved, chosen: Map<Int, Int>,
-    riding: Transit.Leg? = null, fix: Fix? = null, now: Long = 0,
+    riding: Transit.Leg? = null, fix: Fix? = null, now: Long = 0, boarding: Pair<Transit.Leg, Transit.Leg?>? = null,
 ): Long {
-    if (riding != null) return now + minutesToAlight(riding, r, fix, now) * 60 + (trip.arr - riding.arr)
-    val last = chosenLegs(trip, chosen).lastOrNull { it.kind == Transit.LegKind.RIDE } ?: return trip.arr
-    return trip.arr + (r.alightAt(last) - last.arr)
+    if (riding != null) return now + secondsToAlight(riding, r, fix, now) + (trip.arr - riding.arr)
+    val last = chosenLegs(trip, chosen).lastOrNull { it.kind == Transit.LegKind.RIDE }
+    val planned = if (last == null) trip.arr else trip.arr + (r.alightAt(last) - last.arr)
+    return maxOf(planned, trip.arr + (boarding?.let { (ride, wait) -> waitedOn(ride, wait, r, now) } ?: 0L))
+}
+
+// Waiting for a bus over a minute past its time with nothing saying it's still coming (its own live time at the stop,
+// as busGone() reads it), the wait card has left it for the next one it shows: how much later that one leaves than the
+// plan's (from now when none is known), else 0.
+private fun waitedOn(ride: Transit.Leg, wait: Transit.Leg?, r: Transit.Resolved, now: Long): Long {
+    val deps = r.departures(ride, wait, now)
+    val own = r.live[Transit.ArrivalKey(ride.fromStop, ride.tripId)]?.departure()
+        ?: deps.firstOrNull { it.tripId == ride.tripId } ?: Transit.Departure(ride.tripId, ride.dep)
+    if (own.timeUtc >= now - 60) return 0L
+    val next = deps.filter { it.timeUtc >= now - 60 && it.state != Transit.TimeState.CANCELED }.minOfOrNull { it.timeUtc } ?: now
+    return next - ride.dep
 }
 
 @Composable
@@ -288,6 +308,32 @@ fun NavigateScreen(
         }
     }
     val scope = rememberCoroutineScope()
+    // A plan that stopped working (planFailure): its card stays for the step it came on, until the trip moves on or the
+    // rider keeps the route, so a prediction crossing the line and back doesn't make it come and go.
+    val failing = remember(trip, r, chosen, currentStep, fix, now / 5) {
+        if (journey == null) null else planFailure(steps, currentStep, trip, r, chosen, fix, now)
+    }
+    var held by remember(trip) { mutableStateOf<Pair<Int, Failure>?>(null) }
+    SideEffect { if (failing != null) held = currentStep to failing else if (held?.first != currentStep) held = null }
+    var kept by remember(trip) { mutableStateOf(emptySet<String>()) }
+    val failure = (failing ?: held?.takeIf { it.first == currentStep }?.second)?.takeIf { it.key !in kept }
+    var replanning by remember(trip) { mutableStateOf(false) }
+    var replanFailed by remember(trip) { mutableStateOf(false) }
+    // One tap: the planner's first route from where the failure says, and the trip goes on with it.
+    fun replan(f: Failure) {
+        val current = model.activeJourney?.takeIf { it.trip === trip } ?: return
+        val step = currentStep
+        replanning = true; replanFailed = false
+        scope.launch {
+            val next = withContext(Dispatchers.IO) { runCatching { replanned(current, f.from, routeTypesFor(model.filters), step) }.getOrNull() }
+            replanning = false
+            // The trip moved on, or was ended, while it planned: the new route was planned for a trip no longer there.
+            if (model.activeJourney?.trip !== trip) return@launch
+            if (next == null) { replanFailed = true; return@launch }
+            model.journeyStep = next.second
+            model.activeJourney = next.first
+        }
+    }
 
     val liquid = rememberLiquidBackdrop()
     val bottomInset = LocalBottomBarInset.current
@@ -317,9 +363,13 @@ fun NavigateScreen(
                     Column(Modifier.weight(1f)) {
                         val riding = (steps.getOrNull(currentStep) as? Step.Ride)
                             ?.let { boardingChoice(it.ride, it.wait, chosen[it.legIndex] ?: 0).first }
-                        val arrive = tripArrival(trip, r, chosen, riding, fix, now)
+                        // The ride walked to or waited for next, before any ride: its wait card's bus is the one taken.
+                        val boarding = if (riding != null) null else steps.drop(currentStep.coerceAtLeast(0))
+                            .takeWhile { it !is Step.Ride }.firstOrNull { it is Step.Wait }
+                            ?.let { it as Step.Wait; boardingChoice(it.ride, it.wait, chosen[it.legIndex] ?: 0) }
+                        val arrive = tripArrival(trip, r, chosen, riding, fix, now, boarding)
                         Text(T("Trip", "נסיעה"), style = K.type.headline)
-                        LiveText("${dur((arrive - now).toInt().coerceAtLeast(0))} · ${hm.format(Date(arrive * 1000))}",
+                        LiveText("${durMinutes(minsLeft(arrive - now).toInt())} · ${hm.format(Date(arrive * 1000))}",
                             style = K.type.subhead.tabular, maxLines = 1)
                     }
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
@@ -328,6 +378,9 @@ fun NavigateScreen(
                 if (!compact) StepStrip(pager, steps.size, currentStep) { target ->
                     scope.launch { pager.animateScrollToPage(target) }
                 }
+                // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
+                if (failure != null) ReplanCard(failure, r, now, replanning, replanFailed,
+                    onReplan = { replan(failure) }, onKeep = { kept = kept + failure.key; replanFailed = false })
             }
 
             Column(
@@ -362,23 +415,28 @@ fun NavigateScreen(
                 } else Column(if (compact) Modifier.fillMaxHeight() else Modifier) {
                 val ceiling = with(LocalDensity.current) { cardHeight.roundToPx() }
                 val pageHeights = remember(steps) { mutableStateMapOf<Int, Int>() }
+                val cards = remember { TouchedCards() }
+                cards.Settle(pager)
                 HorizontalPager(
                     state = pager,
-                    modifier = if (compact) Modifier.weight(1f)
-                        else Modifier.pageSized(pager, pageHeights, ceiling, bottom = true),
+                    modifier = (if (compact) Modifier.weight(1f)
+                        else Modifier.pageSized(pager, pageHeights, ceiling, bottom = true)).then(cards.only),
                     contentPadding = PaddingValues(horizontal = K.gap3),
                     pageSpacing = K.gap2,
                     verticalAlignment = Alignment.Bottom,
                     beyondViewportPageCount = 1,
                 ) { page ->
                     Column(Modifier.fillMaxWidth().onSizeChanged { pageHeights[page] = it.height }.animateContentSize()) {
-                        CurrentStepButton(page, currentStep, shown = page == pager.targetPage) { scope.launch { pager.animateScrollToPage(currentStep) } }
-                        StepCard(
-                            steps[page], r, active = page == currentStep, now = now,
-                            chosen = chosen, fix = fix,
-                            onChoose = ::choose,
-                            report = { model.report = it },
-                        )
+                        CurrentStepButton(page, currentStep, shown = page == pager.targetPage, modifier = Modifier.touched(cards, page to 0)) { scope.launch { pager.animateScrollToPage(currentStep) } }
+                        Box(Modifier.touched(cards, page to 1)) {
+                            StepCard(
+                                steps[page], r, active = page == currentStep, now = now,
+                                chosen = chosen, fix = fix,
+                                onChoose = ::choose,
+                                pay = Shown.payments,
+                                report = { model.report = it },
+                            )
+                        }
                     }
                 }
                 Row(
@@ -397,11 +455,41 @@ fun NavigateScreen(
     }
 }
 
+// The plan stopped working: why, and a new route from here in one tap; the close button keeps the route.
+@Composable
+private fun ReplanCard(
+    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean,
+    onReplan: () -> Unit, onKeep: () -> Unit,
+) {
+    Column(Modifier.padding(horizontal = K.gap3).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = K.critical, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(K.gap2))
+            Text(failureTitle(failure, r), style = K.type.bodyStrong, color = K.text, modifier = Modifier.weight(1f))
+            KavIconButton(Icons.Rounded.Close, T("Keep this route", "להישאר במסלול הזה"), onKeep, size = 36.dp)
+        }
+        failureText(failure, r, now)?.let {
+            LiveText(it, style = K.type.subhead, color = K.textSecondary)
+        }
+        Spacer(Modifier.height(K.gap2))
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(K.capsule).background(K.live)
+                .clickable(enabled = !planning, role = Role.Button, onClick = onReplan).padding(horizontal = K.gap3),
+            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (planning) T("Finding a new route…", "מחפשים מסלול חדש…") else T("New route from here", "מסלול חדש מכאן"),
+                style = K.type.bodyStrong, color = K.onAccent)
+        }
+        if (failed) Text(T("Couldn't find a new route. Try again.", "לא נמצא מסלול חדש. נסו שוב."),
+            style = K.type.subhead, color = K.critical, modifier = Modifier.padding(top = K.gap1))
+    }
+}
+
 // shown: the page is the one the pager is going to. As the trip reaches its next step the pager is carried there, and
 // the page it leaves showed the button for a moment as it slid away. The button keeps its room while it fades: the
 // page is anchored to the bottom, so a height that came and went with the swipe made the card jump up and down.
 @Composable
-internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, onClick: () -> Unit) {
+internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var back by remember { mutableStateOf(page > current) }
     if (page != current) back = page > current
     if (page == current) return
@@ -410,7 +498,7 @@ internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, o
         .then(if (shown) Modifier else Modifier.clearAndSetSemantics { }),
         horizontalArrangement = if (back) Arrangement.Start else Arrangement.End) {
         Row(
-            Modifier.heightIn(min = 44.dp).glassSurface(22.dp)
+            modifier.heightIn(min = 44.dp).glassSurface(22.dp)
                 .clickable(enabled = shown, role = Role.Button, onClick = onClick)
                 .padding(horizontal = K.gap3, vertical = K.gap2),
             verticalAlignment = Alignment.CenterVertically,
@@ -421,6 +509,57 @@ internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, o
             if (!back) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = K.text, modifier = Modifier.size(20.dp))
         }
     }
+}
+
+// The step cards' pager takes touches on its cards and its Current step button only: the room around them (above a card
+// shorter than the one beside it, beside the button) is the map's, for a drag to move the map. A layer clipped to
+// where the cards are is what a touch misses the pager by, made again in the same layout pass whenever a card moves or
+// changes size, so it's right the moment a card is switched to. While the cards slide it's off, and the pager takes its
+// whole box as before. (Once it waited for the cards to rest a moment, and a drag right after switching cards still
+// moved them.)
+private class TouchedCards {
+    val placed = HashMap<Any, LayoutCoordinates>()
+    val rects = HashMap<Any, Rect>()
+    var host: LayoutCoordinates? = null
+    var sliding = true
+    var region by mutableStateOf<Shape?>(null)
+
+    val only = Modifier.onGloballyPositioned { val first = host == null; host = it; if (first) rebuild() }
+        .graphicsLayer { region.let { s -> clip = s != null; shape = s ?: RectangleShape } }
+
+    fun rebuild() {
+        val h = host?.takeIf { it.isAttached }
+        if (sliding || h == null) { region = null; return }
+        val path = Path()
+        for (at in placed.values) if (at.isAttached) path.addRect(h.localBoundingBoxOf(at, clipBounds = false).inflate(1f))
+        region = GenericShape { _, _ -> addPath(path) }
+    }
+
+    // One laid out again in the same place (its text changing as the rider moves, every second) changes nothing.
+    fun put(key: Any, at: LayoutCoordinates) {
+        placed[key] = at
+        val r = host?.takeIf { it.isAttached && at.isAttached }?.localBoundingBoxOf(at, clipBounds = false)
+        if (r != null && rects[key] == r) return
+        if (r != null) rects[key] = r
+        rebuild()
+    }
+
+    fun drop(key: Any) { rects.remove(key); if (placed.remove(key) != null) rebuild() }
+
+    @Composable
+    fun Settle(pager: PagerState) {
+        LaunchedEffect(pager) {
+            snapshotFlow { pager.isScrollInProgress || kotlin.math.abs(pager.currentPageOffsetFraction) > 0.001f }.collect {
+                sliding = it
+                rebuild()
+            }
+        }
+    }
+}
+
+private fun Modifier.touched(cards: TouchedCards, key: Any): Modifier = composed {
+    DisposableEffect(cards, key) { onDispose { cards.drop(key) } }
+    onGloballyPositioned { cards.put(key, it) }
 }
 
 @Composable
@@ -486,6 +625,9 @@ internal fun StepCard(
     chosen: Map<Int, Int> = emptyMap(),
     fix: Fix? = null,
     onChoose: (leg: Int, option: Int) -> Unit = { _, _ -> },
+    // The ride's paying in Rav-Pass, or its ticket once Kav has one, on its riding card; a train's on the way to its
+    // station too.
+    pay: Boolean = false,
     // Reporting the bus ridden to the ministry.
     report: ((ReportFor) -> Unit)? = null,
 ) {
@@ -503,6 +645,10 @@ internal fun StepCard(
                 Spacer(Modifier.height(K.gap2))
             } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(T("Leave at ${hm.format(Date(step.time * 1000))}", "יציאה בשעה ${hm.format(Date(step.time * 1000))}"), fontSize = 12.sp, color = K.dim)
+            // A trip starting at its station: the train is paid at the gates, before its waiting card.
+            if (pay && board != null && step.boardLeg >= 0 && RavPass.section(board, r) == RavPass.Section.TRAIN) {
+                RidePay(boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).first, r)
+            }
         }
 
         is Step.Arrive -> Card(T("Arrive", "הגעה"), active) {
@@ -538,9 +684,14 @@ internal fun StepCard(
                 nextTurn(step.leg, fix?.takeIf { active })?.let { (turn, metres) ->
                     Spacer(Modifier.height(K.gap2))
                     LiveText(
-                        turnText(turn) + if (metres >= 10) " · " + distanceLabel(metres) else "",
+                        turnText(turn, step.leg) + if (metres >= 10) " · " + distanceLabel(metres) else "",
                         style = K.type.subhead, color = K.textSecondary,
                     )
+                }
+                // A train is paid at the station's gates, reached on the way to it: its paying is on this card too.
+                val ride = step.toRide
+                if (pay && ride != null && step.toLeg >= 0 && RavPass.section(ride, r) == RavPass.Section.TRAIN) {
+                    RidePay(boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0).first, r)
                 }
             }
         }
@@ -644,7 +795,7 @@ internal fun StepCard(
             val progress = stopsProgress(ride, names, busOn(ride, r, trip), fix, now)
             val times = rideTimes(ride, r, trip, names, fix, now)
             // On board, the time left until the rider's stop; before, how long the ride takes.
-            val mins = if (active) (((times.lastOrNull()?.utc ?: r.alightAt(ride)) - now + 59) / 60).coerceAtLeast(0)
+            val mins = if (active) minsLeft((times.lastOrNull()?.utc ?: r.alightAt(ride)) - now)
                 else ride.minutes.toLong()
             // On board, the stops left to the rider's own, counted down as the bus passes them.
             val left = stops.size - progress.toInt()
@@ -664,11 +815,23 @@ internal fun StepCard(
                     Box(Modifier.weight(1f)) { LineRow(ride, r) }
                     if (report != null) rideReport(ride, r, busOn(ride, r, trip), now)?.let { ReportButton { report(it) } }
                 }
+                // On board, with a change after the ride: how much later the next bus there leaves, if this one is missed.
+                if (active) missedChangeNext(step, r, chosen, now)?.let {
+                    LiveText(T("If you miss your change, the next one is $it min later", "אם תפספסו את ההחלפה, היציאה הבאה $it דק׳ אחריה"),
+                        style = K.type.subhead, color = K.textSecondary, modifier = Modifier.padding(top = K.gap2))
+                }
+                // Above the stops, so a long ride's paying is in sight without scrolling.
+                if (pay) RidePay(ride, r)
                 if (stops.size > 1) {
                     // The rail draws its first stop 5 dp into its row, hence the 5 dp less above it.
-                    Spacer(Modifier.height(K.gap2))
-                    Box(Modifier.height(1.dp).fillMaxWidth().background(K.border))
-                    Spacer(Modifier.height(K.gap2 - 5.dp))
+                    if (pay) {
+                        // The pay card already parts the line from the stops: the same gap below it as above.
+                        Spacer(Modifier.height(K.gap3 - 5.dp))
+                    } else {
+                        Spacer(Modifier.height(K.gap2))
+                        Box(Modifier.height(1.dp).fillMaxWidth().background(K.border))
+                        Spacer(Modifier.height(K.gap2 - 5.dp))
+                    }
                     StopRail(
                         stops, names, progress, ride.arr, times,
                         Modifier.onGloballyPositioned { railTop = it.positionInParent().y.toInt() },
@@ -1116,7 +1279,7 @@ private fun NavigateMap(
 
     val reach = with(LocalDensity.current) { 36.dp.toPx() }
     Box(Modifier.fillMaxSize()) {
-        TileMap(framedPoints, modifier, focusKey = step to chosenRide?.tripId,
+        TileMap(framedPoints, modifier, focusKey = step to chosenRide?.tripId, name = "trip view",
             fitMaxZoom = if (step is Step.Walk || step is Step.Arrive) 18.4f else Geo.MAX_Z.toFloat(),
             recenterOn = remember(shownHere, legs) { recentreOn(shownHere, legs.map { it.shape }) },
             contentPadding = contentPadding, follow = follow,
@@ -1158,10 +1321,10 @@ private fun VehicleCard(
         // How fresh its position is ticks each second: only the number rolls (LiveText), the words stay put, and a new
         // state eases to its colour (LiveText eases it). A crossfade faded the whole line out and in every second.
         LiveText(headline, style = K.type.subhead.copy(fontSize = 14.sp), color = tint)
-        if (a.sampleUtc > 0) LiveText(
-            updatedLabel(a),
+        if (a.sampleUtc > 0) updatedLine(a, headline, now)?.let { line -> LiveText(
+            line,
             style = K.type.subhead,
-        )
+        ) }
         val eta = a.rtUtc.takeIf { it > 0 } ?: a.staticUtc
         r.stopName(a.stopId)?.takeIf { it.isNotBlank() && eta > 0 }?.let {
             // Marked and coloured like the search results' departures.
@@ -1174,6 +1337,7 @@ private fun VehicleCard(
         }
         if (a.platform.isNotBlank()) Text(T("Platform ${a.platform}", "רציף ${a.platform}"), style = K.type.subhead)
         KavLive.plateOf(a.vehicleId)?.let { Text(T("Number plate $it", "מספר רישוי $it"), style = K.type.subhead) }
+        rememberBusKind(a.vehicleId)?.let { Text(it, style = K.type.subhead) }
         rideReport(leg, r, a, now)?.let { report ->
             Text(if (report.lightRail) T("Report this light rail", "דיווח על הרכבת הקלה") else if (report.train) T("Report this train", "דיווח על הרכבת הזו")
                 else T("Report this bus", "דיווח על האוטובוס הזה"),
@@ -1194,8 +1358,9 @@ internal fun ReportButton(onClick: () -> Unit) =
 // one's platform isn't known.
 internal fun platformChange(step: Step.Ride, ride: Transit.Leg, r: Transit.Resolved, chosen: Map<Int, Int>): String? {
     val (next, nextWait) = step.change?.let { boardingChoice(it.ride, it.wait, chosen[it.legIndex] ?: 0) } ?: return null
-    val code = r.stop(next.fromStop)?.code
-    val alight = r.stop(ride.toStop)?.code
+    // The same station by the ministry's code; an extension's stops only by their own ids.
+    val code = r.stop(next.fromStop)?.ministryCode()?.toString()
+    val alight = r.stop(ride.toStop)?.ministryCode()?.toString()
     val there = next.fromStop == ride.toStop || !code.isNullOrBlank() && code == alight
     val out = if (there && r.isTrain(ride) && r.isTrain(next)) r.platform(next, nextWait) else ""
     if (out.isBlank()) return null
@@ -1283,8 +1448,8 @@ internal fun rememberGreyRoad(ride: Transit.Leg, arrival: Transit.Arrival?, r: T
     val net = uk.noammm.kav.Loaded.net
     val stops by produceState(emptyList<Pair<Double, Double>>(), ride, road, net, uk.noammm.kav.data.Schedules.source) {
         val number = ride.shortName.ifBlank { r.line(ride.lineId)?.number.orEmpty() }
-        val from = r.stop(ride.fromStop)?.code?.toIntOrNull()
-        val to = r.stop(ride.toStop)?.code?.toIntOrNull()
+        val from = r.stop(ride.fromStop)?.ministryCode()
+        val to = r.stop(ride.toStop)?.ministryCode()
         value = if (road.size < 2 || number.isEmpty() || from == null || to == null) emptyList()
         else withContext(Dispatchers.IO) {
             approachStops(ctx, net, number, r.line(ride.lineId)?.routeName.orEmpty(), from, to)

@@ -17,36 +17,47 @@ Only Kav is answered: it signs each request with the key it's built with (KAV_AP
 Settings come from the environment: MOT_KEY, MOT_URL, MOT_URL_BACKUP (the ministry's test
 server, used when the main one fails), MOT_CA (the intermediate certificate the ministry leaves
 out of its chain), KAV_APP_KEY, GTFS_URL, OTP_URL (the planner), PLANNER (off for none), PLAN_URL (a planner of your
-own, asked instead: see plan_elsewhere()), PORT, and alerts.py's ALERTS_SOURCE and the rest.
+own, asked instead: see plan_elsewhere()), BY_TAXI (on for a taxi to the station among the routes), PORT, and
+alerts.py's ALERTS_SOURCE and the rest.
 """
 import array
-from contextlib import closing
+from contextlib import ExitStack, closing, contextmanager
 import bisect
 import base64
+import calendar
 import csv
 import datetime
 import functools
 import gzip
 import hashlib
+import heapq
 import hmac
 import html
+import http.client
 import io
 import ipaddress
 import itertools
 import json
 import math
 import os
+import queue
 import re
+import resource
 import secrets
 import shutil
 import sqlite3
+import subprocess
+import socket
 import ssl
+import statistics
+import struct
 import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 import zoneinfo
 from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -103,8 +114,15 @@ NO_PLANNER = os.environ.get("PLANNER", "on").lower() in ("off", "0", "no", "fals
 # A planner of one's own, which plans every trip instead of OpenTripPlanner (plan_elsewhere()).
 PLAN_URL = "" if NO_PLANNER else os.environ.get("PLAN_URL", "")
 OTP_URL = "" if NO_PLANNER or PLAN_URL else os.environ.get("OTP_URL", "http://kav-otp:8080/otp/gtfs/v1")
-MAX_PLANNING = 4  # trips planned at once; each takes OpenTripPlanner a second or two
+# Trips planned at once, each from its first question to its answer. One keeps the planner's four processors busy
+# for most of its two or three seconds (nine processor-seconds of questions), so more at once only makes every one
+# of them slower. The next ones wait their turn, up to PLAN_QUEUE seconds, and only then are turned away as busy:
+# the app waits fifteen seconds for an answer, and asks a busy server twice more.
+MAX_PLANNING, PLAN_QUEUE = 2, 6
 MORE_WAIT = 5  # seconds a trip's other sections may take after its routes list
+# Seconds from a trip's request coming in (before its turn) by which the other lines' questions are given up, so the
+# answer still leaves inside the app's fifteen (KavLive.get's readTimeout), a second spare for the way to the phone.
+PLAN_BY = 14
 
 TLS = ssl.create_default_context()
 if os.environ.get("MOT_CA"):
@@ -328,27 +346,385 @@ def naim_lines(data):
 
 
 def load_lines():
-    found = parse_routes(zipfile.ZipFile(Remote(GTFS_URL)).read("routes.txt").decode("utf-8-sig"))
+    text = zipfile.ZipFile(Remote(GTFS_URL)).read("routes.txt").decode("utf-8-sig")
+    found = parse_routes(text)
+    busy_held["lines"] = ministry_lines(text)
     # The copy the planner's rebuild keeps in the shared folder first: the city's site answers a server abroad with a
     # maintenance page.
     kept = os.path.join(REALTIME, "naim-gtfs.zip") if REALTIME else ""
     try:
         if kept and os.path.exists(kept):
             with open(kept, "rb") as f:
-                naim_held["lines"] = naim_lines(f.read())
+                data = f.read()
         else:
             with urllib.request.urlopen(urllib.request.Request(NAIM_URL, headers={"User-Agent": "kav-server"}), timeout=60) as r:
-                naim_held["lines"] = naim_lines(r.read())
+                data = r.read()
+        naim_held["lines"] = naim_lines(data)
+        naim_held.update(naim_trips(data))
     except Exception as e:
         log("weekend lines failing:", repr(e))
     found.update(naim_held["lines"])
     return found
 
 
+# Their buses: the city's own feed of where each is (GTFS-RT vehicle positions, every 10 s while they run, its ids its
+# timetable's), beside their timetable on its open data site (item 21), which invites apps to use it. The ministry's feed
+# has none of them. Each goes into the ministry's snapshot as the ministry reports a bus, so the planner's live updates,
+# the boards, the map and the passings kept take it as any other. Asked only while their timetable has a bus on the road.
+# A thread of its own fetches and reads it (keep_weekend_buses()), each time within one deadline for all of it, and keeps
+# the buses it found; a snapshot only takes the last ones kept, fresh, and never waits for the city.
+NAIM_LIVE_URL = os.environ.get("NAIM_LIVE_URL", "https://api.goryde.com/api/v1/core/c/101/gtfs-rt/vehicle-positions")
+NAIM_LIVE_EVERY = 10  # seconds between fetches while they run: the feed is renewed every 10 s
+NAIM_LIVE_DEADLINE = 8  # seconds for a fetch and the reading of it, all of it: the name, the connection, every byte, each bus
+NAIM_LIVE_FRESH = 30  # seconds the buses of a fetch go into snapshots after it
+NAIM_LIVE_MOST = 1 << 20  # bytes; tonight's 57 buses were 3,750
+NAIM_LIVE_BUSES = 2000  # entries in the feed at most, counted before any is read
+# Seconds before a trip's first departure and after its end that its bus is on it, after as long as the planner's updates
+# take a late bus (LiveFeed.TOO_LATE). Some trips of their timetable are far off (936_2300_d: 35 stops, 11 km, in 5
+# minutes): where the bus is wins.
+NAIM_EARLY, NAIM_LATE = 1800, 2 * 3600
+NAIM_OFF = 300  # metres off its trip's way that a bus isn't running it
+NAIM_ALIKE = 30  # metres within which two stretches of its way are as near a bus: the one its timetable has it on wins
+NAIM_AT_STOP = 60  # metres from its next stop that a bus is at it (NEAR_STOP)
+# "got": (when fetched, its buses as snapshot reports), replaced whole, never changed in place.
+naim_live = {"got": (0.0, ()), "failed": None}
+naim_lookups = threading.BoundedSemaphore(1)  # the city's name being looked up, one at a time (a hung one keeps the slot)
+
+
+def naim_trips(data):
+    """The weekend lines' trips from their GTFS (bytes), for where their buses are (weekend_buses()): "trips" {trip id:
+    (route, service, [(stop sequence, stop code, lat, lon, seconds into its day, metres along or None)])}, "days"
+    {service: (runs Monday to Sunday, first day, last day, days added, days taken)} and "spans" {service: (its first
+    departure, its last arrival)}, seconds into its day."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        def table(name):
+            return csv.DictReader(io.StringIO(z.read(name).decode("utf-8-sig"))) if name in z.namelist() else []
+        where = {s["stop_id"]: (s["stop_code"].strip(), float(s["stop_lat"]), float(s["stop_lon"])) for s in table("stops.txt")}
+        trips = {t["trip_id"]: (int(t["route_id"]), t["service_id"], []) for t in table("trips.txt")}
+        for s in table("stop_times.txt"):
+            clock = s["departure_time"] or s["arrival_time"]
+            if s["trip_id"] in trips and s["stop_id"] in where and clock:
+                h, m, sec = (int(x) for x in clock.split(":"))
+                along = s.get("shape_dist_traveled")
+                trips[s["trip_id"]][2].append((int(s["stop_sequence"]), *where[s["stop_id"]], h * 3600 + m * 60 + sec,
+                                               float(along) if along else None))
+        week = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+        days = {c["service_id"]: ([c[d] == "1" for d in week], c["start_date"], c["end_date"], set(), set())
+                for c in table("calendar.txt")}
+        for c in table("calendar_dates.txt"):
+            days.setdefault(c["service_id"], ([False] * 7, "", "", set(), set()))[3 if c["exception_type"] == "1" else 4].add(c["date"])
+    trips = {k: (route, service, sorted(calls)) for k, (route, service, calls) in trips.items() if len(calls) >= 2}
+    spans = {}
+    for _, service, calls in trips.values():
+        start, end = spans.get(service, (calls[0][4], calls[-1][4]))
+        spans[service] = (min(start, calls[0][4]), max(end, calls[-1][4]))
+    return {"trips": trips, "days": days, "spans": spans}
+
+
+def naim_day(service, start, end, now, days):
+    """The day (a date) whose run of the service from start to end (seconds into its day) is on the road about now, and
+    that day's midnight; None when neither today's nor yesterday's is."""
+    today = datetime.datetime.fromtimestamp(now, ISRAEL).date()
+    for day in (today, today - datetime.timedelta(days=1)):
+        on, first, last, added, taken = days.get(service) or ((False,) * 7, "", "", (), ())
+        ymd = day.strftime("%Y%m%d")
+        midnight = datetime.datetime.combine(day, datetime.time(), ISRAEL).timestamp()
+        if (ymd in added or ymd not in taken and on[day.weekday()] and first <= ymd <= last) \
+                and midnight + start - NAIM_EARLY <= now <= midnight + end + NAIM_LATE:
+            return day, midnight
+    return None
+
+
+def naim_running(now, held=None):
+    """Whether the weekend lines' timetable has a bus on the road about now."""
+    held = naim_held if held is None else held
+    days = held.get("days") or {}
+    return any(naim_day(service, start, end, now, days) for service, (start, end) in (held.get("spans") or {}).items())
+
+
+def naim_place(calls, lat, lon, into):
+    """Where along its trip's stops (calls) a bus at lat, lon is: (the index of the stop it is at or has just passed,
+    metres along its way or None), by the stretch between two stops nearest it; of stretches about as near, the one its
+    timetable has it on `into` seconds into its day (a way can come back along its own road). At the next stop within
+    NAIM_AT_STOP of it. None when it is further than NAIM_OFF from all of them."""
+    across = 111_320 * math.cos(math.radians(lat))
+    near = []
+    for k in range(len(calls) - 1):
+        (_, _, y0, x0, _, _), (_, _, y1, x1, _, _) = calls[k], calls[k + 1]
+        ax, ay, dx, dy = (x0 - lon) * across, (y0 - lat) * 111_320, (x1 - x0) * across, (y1 - y0) * 111_320
+        f = min(1.0, max(0.0, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) if dx or dy else 0.0
+        near.append((math.hypot(ax + f * dx, ay + f * dy), k, f))
+    best = min(off for off, _, _ in near)
+    if best > NAIM_OFF:
+        return None
+    _, k, f = min((x for x in near if x[0] <= best + NAIM_ALIKE), key=lambda x: abs(calls[x[1]][4] - into))
+    a, b = calls[k][5], calls[k + 1][5]
+    metres = None if a is None or b is None else round(a + f * (b - a))
+    if math.hypot((calls[k + 1][2] - lat) * 111_320, (calls[k + 1][3] - lon) * across) <= NAIM_AT_STOP:
+        k += 1
+    return k, metres
+
+
+def naim_fields(data):
+    """(field, value) of one protobuf message, as alerts.fields gives them, but refusing (ValueError) what no feed of the
+    city's holds: a varint over ten bytes, a length past the message's end, a group or another wire type. Reading a field
+    costs no more than its own bytes, whatever is in them."""
+    i, end = 0, len(data)
+
+    def varint():
+        nonlocal i
+        result = 0
+        for shift in range(0, 70, 7):
+            if i >= end:
+                raise ValueError("protobuf: cut short")
+            b = data[i]
+            i += 1
+            result |= (b & 0x7F) << shift
+            if b < 0x80:
+                return result
+        raise ValueError("protobuf: a varint over ten bytes")
+    while i < end:
+        key = varint()
+        number, wire = key >> 3, key & 7
+        if wire == 0:
+            value = varint()
+        elif wire in (1, 2, 5):
+            n = 8 if wire == 1 else 4 if wire == 5 else varint()
+            if n > end - i:
+                raise ValueError("protobuf: a field past the end")
+            value, i = data[i:i + n], i + n
+        else:
+            raise ValueError("protobuf: wire type %d" % wire)
+        yield number, value
+
+
+def weekend_buses(data, now, held=None, until=None):
+    """The city's feed of the weekend lines' buses (bytes) as the ministry's snapshot reports buses: [MonitoredStopVisit],
+    ids NAIM_OFFSET up, each naming the stop its bus is at or has just passed (naim_place()) and reported then, on the day
+    its trip is on the road (naim_day()). Its entries are counted before any is read (NAIM_LIVE_BUSES at most), and the
+    reading stops at until (time.monotonic()), with a ValueError or a TimeoutError. An entry that can't be read, a bus on
+    no trip of their timetable, on one not on the road about now, or off its trip's way is left out alone."""
+    held = naim_held if held is None else held
+    trips, days = held.get("trips") or {}, held.get("days") or {}
+    entries = [entity for number, entity in naim_fields(data) if number == 2]
+    if len(entries) > NAIM_LIVE_BUSES:
+        raise ValueError("weekend buses: %d entries, over %d" % (len(entries), NAIM_LIVE_BUSES))
+    out = []
+    for entity in entries:
+        if until is not None and time.monotonic() > until:
+            raise TimeoutError("weekend buses: read past the deadline")
+        # All of an entry's reading inside: one that fails, however, takes no other bus with it.
+        try:
+            e = dict(naim_fields(entity))
+            vehicle = dict(naim_fields(e.get(4, b"")))
+            trip = dict(naim_fields(vehicle.get(1, b""))).get(1, b"").decode()
+            where, seen = dict(naim_fields(vehicle.get(2, b""))), vehicle.get(5)
+            lat, lon = struct.unpack("<f", where[1])[0], struct.unpack("<f", where[2])[0]
+            label = dict(naim_fields(vehicle.get(8, b""))).get(1, b"").decode() or e.get(1, b"").decode()
+            if trip not in trips or not isinstance(seen, int):
+                continue
+            route, service, calls = trips[trip]
+            on = naim_day(service, calls[0][4], calls[-1][4], now, days) if inside(lat, lon) else None
+            place = on and naim_place(calls, lat, lon, now - on[1])
+            if not place:
+                continue
+            (day, midnight), (k, metres) = on, place
+            first, sep, rest = trip.partition("_")
+            call = {"StopPointRef": calls[k][1], "Order": str(calls[k][0])}
+            if metres is not None:
+                call["DistanceFromStop"] = str(metres)
+            out.append({"RecordedAtTime": datetime.datetime.fromtimestamp(seen, ISRAEL).isoformat(), "MonitoringRef": calls[k][1],
+                        "MonitoredVehicleJourney": {
+                            "LineRef": str(NAIM_OFFSET + route),
+                            # The trip as the planner has it (otp/prepare.py's naim_feed()).
+                            "FramedVehicleJourneyRef": {"DataFrameRef": day.isoformat(), "DatedVehicleJourneyRef": (
+                                str(NAIM_OFFSET + int(first)) + sep + rest if first.isdigit() else "%d_%s" % (NAIM_OFFSET, trip))},
+                            "OriginAimedDepartureTime": datetime.datetime.fromtimestamp(midnight + calls[0][4], ISRAEL).isoformat(),
+                            "VehicleRef": label,
+                            "VehicleLocation": {"Latitude": str(round(lat, 6)), "Longitude": str(round(lon, 6))},
+                            "MonitoredCall": call}})
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError, OSError, struct.error):
+            continue
+    return out
+
+
+def naim_lookup(host, until):
+    """host's addresses (getaddrinfo's), looked up on a thread of its own and given up at until; one lookup at a time, so
+    a resolver that hangs holds one thread and nothing piles up behind it."""
+    if not naim_lookups.acquire(blocking=False):
+        raise OSError("the city's name: a lookup still under way")
+    got, done = {}, threading.Event()
+
+    def look():
+        try:
+            got["addresses"] = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        except OSError as e:
+            got["error"] = e
+        finally:
+            naim_lookups.release()
+            done.set()
+    threading.Thread(target=look, daemon=True).start()
+    if not done.wait(max(0.0, until - time.monotonic())):
+        raise OSError("the city's name: lookup too slow")
+    if "error" in got:
+        raise got["error"]
+    return got["addresses"]
+
+
+def naim_public(address):
+    try:
+        return ipaddress.ip_address(address).is_global
+    except ValueError:
+        return False
+
+
+def naim_fetch(until, url=None, lookup=naim_lookup, public=naim_public, context=None):
+    """The city's feed by until (time.monotonic()) at the latest, else an OSError: https on port 443, its host's every
+    address public, the connection made to an address so checked, no redirect, NAIM_LIVE_MOST bytes at most. Every wait
+    is no longer than what is left, and a watchdog cuts the connection at until, whatever is being read then (the
+    handshake, the status line, the headers, the body); the socket is closed whatever happens."""
+    url = url or NAIM_LIVE_URL
+
+    def left():
+        remaining = until - time.monotonic()
+        if remaining <= 0:
+            raise OSError("too slow")
+        return remaining
+    u = urllib.parse.urlsplit(url)
+    try:
+        port = u.port
+    except ValueError:
+        port = -1
+    if u.scheme != "https" or not u.hostname or port not in (None, 443) or u.username or u.password:
+        raise OSError("not the city's feed: %r" % url[:200])
+    path = (u.path or "/") + ("?" + u.query if u.query else "")
+    if any(c in path for c in " \r\n"):
+        raise OSError("not a plain path")
+    addresses = lookup(u.hostname, until)
+    if not addresses or not all(public(a[4][0]) for a in addresses):
+        raise OSError("%s is not only at public addresses" % u.hostname)
+    sock = None
+    for family, kind, proto, _, address in addresses:
+        try:
+            sock = socket.socket(family, kind, proto)
+            sock.settimeout(left())
+            sock.connect(address)
+            break
+        except OSError:
+            sock.close()
+            sock = None
+    if sock is None:
+        raise OSError("no connection to %s" % u.hostname)
+    # The watchdog shuts the connection down through a copy of its descriptor (TLS keeps the same one), unless the fetch
+    # has ended and closed it first: guard makes the two exclusive, so a descriptor reused since is never touched.
+    fd, guard, ended = sock.fileno(), threading.Lock(), []
+
+    def cut():
+        with guard:
+            if ended:
+                return
+            try:
+                copy = socket.fromfd(fd, sock.family, sock.type)
+            except OSError:
+                return
+            try:
+                copy.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            finally:
+                copy.close()
+    watchdog = threading.Timer(left(), cut)
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        sock.settimeout(left())
+        sock = (context or ssl.create_default_context()).wrap_socket(sock, server_hostname=u.hostname)
+        sock.settimeout(left())
+        sock.sendall(("GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: kav-server\r\nAccept-Encoding: identity\r\n"
+                      "Connection: close\r\n\r\n" % (path, u.hostname)).encode())
+        sock.settimeout(left())
+        r = http.client.HTTPResponse(sock, method="GET")
+        r.begin()
+        if r.status != 200:  # a redirect too: never followed
+            raise OSError("HTTP %d" % r.status)
+        parts, size = [], 0
+        while True:
+            sock.settimeout(left())
+            part = r.read1(1 << 16)
+            if not part:
+                left()
+                return b"".join(parts)
+            size += len(part)
+            if size > NAIM_LIVE_MOST:
+                raise OSError("weekend buses: over %d bytes" % NAIM_LIVE_MOST)
+            parts.append(part)
+    except (OSError, http.client.HTTPException, ValueError) as e:
+        if time.monotonic() >= until:
+            raise OSError("too slow") from e
+        raise e if isinstance(e, OSError) else OSError(repr(e)) from e
+    finally:
+        watchdog.cancel()
+        with guard:
+            ended.append(True)
+            sock.close()
+
+
+def naim_refresh(now=None, fetch=None):
+    """One fetch of the city's feed and the reading of it, within NAIM_LIVE_DEADLINE in all: the buses found are kept
+    whole for snapshots (naim_live["got"]); or an exception, and what was kept stays as it was."""
+    now = time.time() if now is None else now
+    until = time.monotonic() + NAIM_LIVE_DEADLINE
+    found = weekend_buses((fetch or naim_fetch)(until), now, until=until)
+    naim_live["got"] = (now, tuple(found))
+
+
+def keep_weekend_buses(sleep=time.sleep, rounds=None):
+    """The city's feed every NAIM_LIVE_EVERY while their timetable has a bus on the road (naim_refresh()), on this thread
+    alone: a slow or failing city holds no snapshot up. rounds: how many, for tests; for ever otherwise."""
+    while rounds is None or rounds > 0:
+        try:
+            if naim_running(time.time()):
+                naim_refresh()
+                naim_live["failed"] = None
+        except Exception as e:
+            if naim_live["failed"] != repr(e):
+                log("weekend buses failing:", repr(e))
+                naim_live["failed"] = repr(e)
+        rounds = None if rounds is None else rounds - 1
+        sleep(NAIM_LIVE_EVERY)
+
+
+def with_weekend_buses(doc, now=None):
+    """The ministry's snapshot (doc) with the weekend lines' buses the last fetch found (keep_weekend_buses()), when it was
+    within NAIM_LIVE_FRESH; as it was otherwise. It never fetches nor waits."""
+    now = time.time() if now is None else now
+    at, found = naim_live["got"]
+    if not found or not 0 <= now - at <= NAIM_LIVE_FRESH:
+        return doc
+    try:
+        delivery = doc["Siri"]["ServiceDelivery"]
+        parts = delivery.get("StopMonitoringDelivery") or []
+        delivery["StopMonitoringDelivery"] = ([parts] if isinstance(parts, dict) else list(parts)) + [{"MonitoredStopVisit": list(found)}]
+    except (KeyError, TypeError, AttributeError):
+        pass
+    return doc
+
 def parse_routes(text):
     """route id: [number, to, to city, from, from city, agency, type, MOT's own name], as Kav's timetable types them."""
     return {int(r["route_id"]): route_line(r["agency_id"], r["route_short_name"], r["route_long_name"], int(r["route_type"]))
             for r in csv.DictReader(io.StringIO(text))}
+
+
+def ministry_lines(text):
+    """route id: its line and direction in the ministry's own numbering ("15066-1"), from route_desc ("15066-1-#"), the
+    numbering of its count of Rav-Kav taps (keep_busy())."""
+    found = {}
+    for r in csv.DictReader(io.StringIO(text)):
+        line, _, rest = (r.get("route_desc") or "").partition("-")
+        direction = rest.partition("-")[0]
+        if line.isdigit() and direction.isdigit():
+            found[r["route_id"]] = "%s-%s" % (line, direction)
+    return found
 
 
 def route_line(agency, number, name, kind):
@@ -394,6 +770,14 @@ def decode(text):
         lat, lon = lat + steps[0], lon + steps[1]
         points.append((lat / 1e5, lon / 1e5))
     return points
+
+
+CONTINUED = bytes(range(95, 127))  # an encoded polyline's characters that carry on a number: the rest end one
+
+
+def points_in(text):
+    """How many points an encoded polyline holds (len(decode(text))), without decoding it: two numbers a point."""
+    return len(text.encode().translate(None, CONTINUED)) // 2
 
 
 def stretch(path, stops, start=0):
@@ -577,6 +961,244 @@ def keep_shapes():
             time.sleep(300)
 
 
+# What a route costs: the ministry's fares in its timetable (fare_attributes.txt, fare_rules.txt), added up as the price
+# control order has it (צו פיקוח על מחירי מצרכים ושירותים (מחירי נסיעה בקווי שירות באוטובוסים ומחירי נסיעה ברכבת מקומית),
+# תשפ"ב-2022, first schedule, items 2 and 4). A fare_rules row gives a ride's fare by the stops it's boarded and left at
+# (their zone_id, which is their code; a station's code where it has none) or by its whole route. The fare ids:
+FARE_BUS = {"201", "202", "204", "205", "221", "222", "224", "225"}  # by bus, light rail or cable car, up to 15, 40,
+# 120 and 225 km, the 22x to and from Eilat without VAT. Not 206 and 226, further than 225 km: the order prices a ride to
+# Eilat's area at up to 225 km's fare however far, and names further ones' without VAT, where the tables have both.
+FARE_RAIL = {"211", "212", "213", "214", "215"}  # by train, up to 15, 40, 75, 120 and 225 km
+FARE_NEAR = {"201", "221"}  # up to 15 km: the one fare that includes changing to more rides (item 4)
+TRANSFER_WINDOW = 90 * 60  # those rides are boarded within this of the fare's validation
+TRANSFER_SPARE = 5 * 60  # a change boarded this near the window's end may fall either side of it on the day
+NEAR_KM, NEAR_SPARE_KM = 15, 0.5  # the reach of the fare up to 15 km, and how far off it a distance worked out here may be
+# The kinds of line (route_line()'s) priced: buses, shuttles, light rail, the cable car and the Carmelit, which share
+# fares and changes; and trains.
+FARE_KINDS = {3: "bus", 711: "bus", 0: "bus", 5: "bus", 7: "bus", 2: "rail"}
+FARE_PAIR, FARE_IDS = 1_000_000, 32  # how fares_from() packs a pair of stop codes and its fare into one number
+fares_held = {"table": None}
+
+
+def distance_km(p, q):
+    """Kilometres between two places as the crow flies, on the earth's ellipsoid: the ministry's fare distances come out
+    within metres of it where its stops haven't moved since, a sphere's up to 0.3% off them."""
+    lat, e2 = math.radians((p[0] + q[0]) / 2), 0.00669437999014
+    w = 1 - e2 * math.sin(lat) ** 2
+    return math.hypot(6378.137 * (1 - e2) / w ** 1.5 * math.radians(q[0] - p[0]),
+                      6378.137 / math.sqrt(w) * math.cos(lat) * math.radians(q[1] - p[1]))
+
+
+def fares_from(archive):
+    """The fares in the ministry's timetable (a zip): {"ids": its fare ids in order, "price": agorot by fare id, "pairs":
+    every stop pair's, sorted, packed as (boarding code * FARE_PAIR + alighting code) * FARE_IDS + the fare's place in ids,
+    "routes": a whole route's by route id (None where two are named), "unsure": the stop codes whose places a pair's fare
+    puts more than NEAR_SPARE_KM the other side of NEAR_KM (a stop moved since), whose distances aren't trusted}."""
+    read = lambda name: csv.DictReader(io.TextIOWrapper(archive.open(name), encoding="utf-8-sig"))
+    price = {r["fare_id"]: round(float(r["price"]) * 100) for r in read("fare_attributes.txt") if r["currency_type"] == "ILS"}
+    ids = sorted(price)
+    if len(ids) > FARE_IDS:
+        raise ValueError("more fares than FARE_IDS: %d" % len(ids))
+    at = {f: i for i, f in enumerate(ids)}
+    place = {}
+    for r in read("stops.txt"):
+        code = r["zone_id"] or r["stop_code"]
+        if code.isdigit():
+            place[int(code)] = (float(r["stop_lat"]), float(r["stop_lon"]))
+    pairs, routes, unsure = [], {}, set()
+    for r in read("fare_rules.txt"):
+        fare, origin, to = r["fare_id"], r["origin_id"], r["destination_id"]
+        if fare not in at or r.get("contains_id"):
+            continue
+        if r["route_id"] and not origin and not to:
+            route = int(r["route_id"])
+            routes[route] = fare if routes.get(route, fare) == fare else None
+        elif not r["route_id"] and origin.isdigit() and to.isdigit() and int(origin) < FARE_PAIR and int(to) < FARE_PAIR:
+            origin, to = int(origin), int(to)
+            pairs.append((origin * FARE_PAIR + to) * FARE_IDS + at[fare])
+            if fare in FARE_BUS and origin in place and to in place:
+                km = distance_km(place[origin], place[to])
+                if (fare in FARE_NEAR) != (km <= NEAR_KM) and abs(km - NEAR_KM) > NEAR_SPARE_KM:
+                    unsure.update((origin, to))
+    pairs.sort()
+    return {"ids": ids, "price": price, "pairs": array.array("q", pairs), "routes": routes, "unsure": frozenset(unsure)}
+
+
+def load_fares():
+    return fares_from(zipfile.ZipFile(Remote(GTFS_URL, chunk=4 << 20)))
+
+
+def keep_fares():
+    while True:
+        try:
+            table = load_fares()
+            fares_held["table"] = table
+            log("fares loaded:", len(table["pairs"]), "stop pairs,", len(table["routes"]), "routes")
+            time.sleep(24 * 3600)
+        except Exception as e:
+            log("fares failing:", e)
+            time.sleep(300)
+
+
+def pair_fare(table, origin, to):
+    """The fare id the ministry gives a ride from one stop code to another, None for none, "?" where it gives two."""
+    if origin >= FARE_PAIR or to >= FARE_PAIR:
+        return None
+    key, pairs = origin * FARE_PAIR + to, table["pairs"]
+    i = bisect.bisect_left(pairs, key * FARE_IDS)
+    named = set()
+    while i < len(pairs) and pairs[i] // FARE_IDS == key:
+        named.add(table["ids"][pairs[i] % FARE_IDS])
+        i += 1
+    return None if not named else named.pop() if len(named) == 1 else "?"
+
+
+def within_reach(table, a, b):
+    """Whether two stops, as [code, name, lat, lon, ...] (plan_answer's), are within the reach of the fare up to 15 km of
+    each other: by the ministry's fare between them, else as the crow flies, with NEAR_SPARE_KM either side of NEAR_KM,
+    or a stop that moved, unknown (None)."""
+    if a[0] == b[0]:
+        return True
+    for x, y in ((a, b), (b, a)):
+        fare = pair_fare(table, int(x[0]), int(y[0]))
+        if fare in FARE_BUS:
+            return fare in FARE_NEAR
+    if int(a[0]) in table["unsure"] or int(b[0]) in table["unsure"] or None in (a[2], a[3], b[2], b[3]):
+        return None
+    km = distance_km(a[2:4], b[2:4])
+    return True if km <= NEAR_KM - NEAR_SPARE_KM else False if km > NEAR_KM + NEAR_SPARE_KM else None
+
+
+def ride_fare(table, kind, route, board, alight):
+    """A ride's fare id: the ministry's for its stops, else its route's. None where it has none, or the two disagree,
+    or its route's up to 15 km is for a ride further than that."""
+    if kind == "rail":
+        # A station's other code (LiveFeed.SAME) where the tables name the station by that one.
+        named = {pair_fare(table, int(a), int(b)) for a in same_station(board[0]) for b in same_station(alight[0])} - {None}
+        return named.pop() if len(named) == 1 and named <= FARE_RAIL else None
+    pair = pair_fare(table, int(board[0]), int(alight[0]))
+    if pair is not None and pair not in FARE_BUS:
+        return None
+    if route not in table["routes"]:
+        return pair
+    own = table["routes"][route]
+    if own not in FARE_BUS or pair not in (None, own) or own in FARE_NEAR and within_reach(table, board, alight) is False:
+        return None
+    return own
+
+
+def same_station(code):
+    """A stop code and the station's other one, where it has two (LiveFeed.SAME)."""
+    return [code] + ([LiveFeed.SAME[code]] if code in LiveFeed.SAME else [])
+
+
+# A day pass in agorot up to 15, 40, 75, 120 and 225 km (item 2's table): by bus, light rail and cable car alone
+# ("bus"), or with trains too ("rail"). The farthest ride of the day sets which (the transport authority's
+# pti.org.il/derekh-shava), and an app's day starts at APP_DAY_FROM (section 1, "יום").
+DAY_PASS = {"bus": (1750, 2900, 3750, 3750, 6050), "rail": (2300, 3250, 4200, 4700, 8050)}
+APP_DAY_FROM = 4 * 3600
+FARE_BANDS = {"201": (0,), "221": (0,), "211": (0,), "202": (1,), "222": (1,), "212": (1,), "213": (2,), "214": (3,),
+              "204": (2, 3), "224": (2, 3), "205": (4,), "225": (4,), "215": (4,)}  # each fare's in DAY_PASS
+# The discounts the app's fare profiles take off single fares but not off day passes (section 7: youth, students, the
+# disabled and those on a National Insurance allowance); a senior citizen's 50% is off every kind of pass too.
+SINGLES_ONLY_OFF = (50, 33)
+
+
+def cheapest(units, days, off=0):
+    """The least an app charges for paid rides [(kind, band in DAY_PASS, agorot)] with off percent off single fares, the
+    most efficient combination (item 6): their single fares, or a day pass and the single fares of those it doesn't
+    cover."""
+    single = lambda agorot: (agorot * (100 - off) + 50) // 100  # as FareProfile.price() rounds
+    best = single(sum(a for _, _, a in units))
+    for covers, prices in days.items():
+        for band, day in enumerate(prices):
+            best = min(best, day + single(sum(a for kind, b, a in units if b > band or kind == "rail" and covers == "bus")))
+    return best
+
+
+def app_fare(table, paid, boarded):
+    """{"fare": what a rider paying in an app pays for these paid rides [(kind, fare id, boarding stop, alighting stop)],
+    the least of their single fares and a day pass with the rest, and "singles": their single fares, which a Rav-Kav's
+    stored value pays, where that is more}. A trip alone in its day: the app counts in the month's other rides too.
+    None where that least isn't sure: a ride between 75 km and a day pass's band either side of it, a trip to or from
+    Eilat (its day passes up to 15 km come without VAT) or boarded on two of an app's days that a pass would make
+    cheaper, or one a fare profile's discount off single fares alone (SINGLES_ONLY_OFF) wouldn't price as FareProfile
+    does, the least of its discounted single fares and fare."""
+    singles = sum(table["price"][fare] for _, fare, _, _ in paid)
+    eilat = any(fare.startswith("22") for _, fare, _, _ in paid)
+    days = {k: tuple(p * 100 // 118 for p in v) for k, v in DAY_PASS.items()} if eilat else DAY_PASS
+    found = set()
+    for bands in itertools.product(*(day_bands(fare, board, alight) for _, fare, board, alight in paid)):
+        units = [(kind, band, table["price"][fare]) for (kind, fare, _, _), band in zip(paid, bands)]
+        least = cheapest(units, days)
+        if any(cheapest(units, days, off) != min((singles * (100 - off) + 50) // 100, least) for off in SINGLES_ONLY_OFF):
+            return None
+        found.add(least)
+    split = len({datetime.datetime.fromtimestamp(t - APP_DAY_FROM, ISRAEL).date() for t in boarded}) > 1
+    if len(found) != 1 or min(found) < singles and (eilat or split):
+        return None
+    least = found.pop()
+    return {"fare": least, **({"singles": singles} if least < singles else {})}
+
+
+def day_bands(fare, board, alight):
+    """The bands in DAY_PASS a ride at a fare may be in: up to 120 km's bus fare is up to 75 km's or more by its
+    distance, both within NEAR_SPARE_KM of 75 km."""
+    bands = FARE_BANDS[fare]
+    if len(bands) > 1 and None not in (board[2], board[3], alight[2], alight[3]):
+        km = distance_km(board[2:4], alight[2:4])
+        bands = (2,) if km <= 75 - NEAR_SPARE_KM else (3,) if km > 75 + NEAR_SPARE_KM else bands
+    return bands
+
+
+def fare_of(it, lines, stops, table=None):
+    """A route's regular fare in agorot ({"fare": ..., "singles": ...} as app_fare() has them): each ride's own fare
+    (ride_fare()), but for a ride by bus, light rail or cable car boarded within TRANSFER_WINDOW of the validation of a
+    fare up to 15 km and leaving the rider within its reach of where that was boarded, which the fare includes; a train
+    is a fare of its own, and ends that (item 4); and paying in an app, a day pass where that is less (app_fare()).
+    Trains changed between at a station are one, from the first station to the last, as a ticket is. None where any of
+    it isn't sure: a ride on a line or of a kind with no fare (a share taxi, a weekend line), a change boarded within
+    TRANSFER_SPARE of the window's end or a distance too near NEAR_KM to tell, a ride the window would include that is
+    itself further than 15 km, trains changed between at two stations, a leg by taxi or bike."""
+    table = table or fares_held["table"]
+    if not table or not any(l["k"] == "r" for l in it["legs"]) or any(l["k"] not in ("r", "w") for l in it["legs"]):
+        return None
+    rides = []  # [kind, route, boarding stop, alighting stop, when boarded]
+    for ride in (l for l in it["legs"] if l["k"] == "r"):
+        line = ride["line"]
+        kind = FARE_KINDS.get((lines.get(line) or [None] * 7)[6])
+        board, alight = stops.get(ride["stops"][0]) or [""], stops.get(ride["stops"][-1]) or [""]
+        if kind is None or not line.isdigit() or int(line) >= NAIM_OFFSET or not (str(board[0]).isdigit() and str(alight[0]).isdigit()):
+            return None
+        if kind == "rail" and rides and rides[-1][0] == "rail":
+            if board[0] not in same_station(rides[-1][3][0]):
+                return None
+            rides[-1][3] = alight
+            continue
+        rides.append([kind, int(line), board, alight, ride["dep"]])
+    paid, start = [], None  # start: the boarding stop and time of the fare up to 15 km paid last
+    for kind, route, board, alight, dep in rides:
+        fare = ride_fare(table, kind, route, board, alight)
+        if fare is None:
+            return None
+        if kind == "bus" and start is not None:
+            late = dep - start[1]
+            in_time = True if late <= TRANSFER_WINDOW - TRANSFER_SPARE else False if late > TRANSFER_WINDOW + TRANSFER_SPARE else None
+            near = within_reach(table, start[0], alight) if in_time is not False else False
+            if in_time and near and fare in FARE_NEAR:
+                continue
+            if in_time is not False and near is not False:
+                return None
+        paid.append((kind, fare, board, alight))
+        start = (board, dep) if kind == "bus" and fare in FARE_NEAR else None
+    return app_fare(table, paid, [l["dep"] for l in it["legs"] if l["k"] == "r"])
+
+
+def fare_field(it, lines, stops):
+    """A route's "fare" (and "singles") in the answer (fare_of()); none where it isn't sure."""
+    return fare_of(it, lines, stops) or {}
+
+
 def lines_of(routes):
     known = catalog["lines"]
     out = {str(r): known[r] for r in set(routes) if r in known}
@@ -628,6 +1250,7 @@ def train_lists(now, ask_planner=None):
                 query = "MonitoringRef=%s&StopVisitDetailLevel=normal&PreviewInterval=PT90M" % ",".join(trains_held["codes"])
                 trains_held.update(doc=ask(URL, query, 15), at=now, failed=None)
                 note_listed(trains_held["doc"], now)
+                stations.feed(trains_held["doc"], "trains", trains_held["codes"], now)
         except Exception as e:
             if trains_held["failed"] != repr(e):
                 log("train lists failing:", repr(e))
@@ -658,10 +1281,12 @@ def tram_lists(now, ask_planner=None):
             trams_held.update(codes=codes, codes_at=now)
         if trams_held["codes"] and spend():
             query = "MonitoringRef=%s&StopVisitDetailLevel=normal&PreviewInterval=PT90M" % ",".join(trams_held["codes"])
-            rows = arrivals(ask(URL, query, 15))
+            doc = ask(URL, query, 15)
+            rows = arrivals(doc)
             with stops_lock:
                 note_trams(rows, now)
             trams_held["failed"] = None
+            stations.feed(doc, "trams", trams_held["codes"], now)
     except Exception as e:
         if trams_held["failed"] != repr(e):
             log("tram lists failing:", repr(e))
@@ -1003,18 +1628,30 @@ def railway_specials(rows):
     platforms = railway_held["platforms"] if time.time() - railway_held["at"] <= RAILWAY_KEEP else {}
     out = []
     for r in rows:
-        kind = (catalog["lines"].get(r[1]) or [None] * 7)[6]
-        if kind != 2 and int(r[0]) in RAILWAY_IDS:
-            _, _, rest = str(r[2]).partition("_")
-            first, _, number = rest.partition("_")
-            route = RAIL_OFFSET + int(number) if number.isdigit() and 0 < int(number) < NAIM_OFFSET - RAIL_OFFSET else None
-            special = route is not None and (catalog["lines"].get(route) or [None] * 7)[6] == 2
-            if special or kind is not None and route is not None and (number, str(r[0])) in platforms:
-                r = [r[0], route, "%d_%s_%s" % (route, first, number), number] + list(r[4:])
-            elif kind is not None:
-                continue
+        _, _, rest = str(r[2]).partition("_")
+        first, _, number = rest.partition("_")
+        route = railway_route(r[1], number, r[0], platforms)
+        if route is None:
+            continue
+        if route != r[1]:
+            r = [r[0], route, "%d_%s_%s" % (route, first, number), number] + list(r[4:])
         out.append(r)
     return out
+
+
+def railway_route(route, number, code, platforms):
+    """The route a vehicle listed at a stop under that route and number is, by railway_specials()'s rule: at a railway
+    station, under a route that isn't the catalog's train, the railway-only line RAIL_OFFSET + number where the catalog
+    has it, or where the railway's own timetable has that train at the station; else, under a route the catalog has
+    as something else, None (left out). Any other stays as it is."""
+    kind = (catalog["lines"].get(route) or [None] * 7)[6]
+    if kind == 2 or int(code) not in RAILWAY_IDS:
+        return route
+    special = RAIL_OFFSET + int(number) if number.isdigit() and 0 < int(number) < NAIM_OFFSET - RAIL_OFFSET else None
+    if special is not None and ((catalog["lines"].get(special) or [None] * 7)[6] == 2
+                                or kind is not None and (number, str(code)) in platforms):
+        return special
+    return None if kind is not None else route
 
 
 def left_station(code, route, first, now):
@@ -1160,7 +1797,7 @@ def take_snapshot():
         if not url:
             continue
         try:
-            doc = ask(url, "MonitoringRef=AllActiveTripsFilter&StopVisitDetailLevel=normal", 60)
+            doc = with_weekend_buses(ask(url, "MonitoringRef=AllActiveTripsFilter&StopVisitDetailLevel=normal", 60))
             at, rows = visits(doc)
         except Exception as e:
             errors.append(f"{source}: {e}")
@@ -1195,8 +1832,11 @@ class Recorder:
     def __init__(self, folder):
         self.folder = folder
         self.trips = {}
-        self.reached = {}  # when each bus first named the stop it names now; not known for one first seen there
+        # when each bus first named the stop it names now; not known for one first seen there, unless the server before
+        # this one knew it (keep())
+        self.reached = {}
         self.naming = {}  # since when each bus has named the stop it names now, as far as heard: reached, or first seen
+        self.warm, self.kept_at = None, 0  # what the server before this one kept (unkept()), read at the first report
         self.behind = {}  # how many reports running each bus has sent from behind where it was
         # metres along its route (DistanceFromStop) where each bus was when first heard naming the stop it names now,
         # and where it is now
@@ -1231,6 +1871,8 @@ class Recorder:
                 self.failed = repr(e)
 
     def _feed(self, doc, clock):
+        if self.warm is None:
+            self.warm = self.unkept(clock)
         delivery = doc["Siri"]["ServiceDelivery"]
         monitored = delivery.get("StopMonitoringDelivery") or []
         if isinstance(monitored, dict):
@@ -1294,6 +1936,17 @@ class Recorder:
                     self.along[key] = (metres if was is None or last is None or order != last[0][0] else was[0], metres)
                 if last is None or order != last[0][0]:
                     self.naming[key] = int(min(seen, clock))
+                # Just started, this very bus naming the same stop at the same place on its route as when the server before
+                # this one last heard it, and not long enough ago to have been forgotten there: what that one knew. Else
+                # one that went by just before the restart is due now on its board till its next stop.
+                was = self.warm.pop(key, None) if last is None else None
+                if was is not None and was[:2] == [order, now[2]] and 0 <= seen - was[2] <= self.FORGET:
+                    if was[3] is not None:
+                        self.reached[key] = was[3]
+                    if was[4] is not None:
+                        self.naming[key] = was[4]
+                    if metres is not None and was[5] is not None:
+                        self.along[key] = (was[5], metres)
                 if last is None or order == last[0][0]:
                     continue
                 self.reached[key] = seen
@@ -1318,6 +1971,39 @@ class Recorder:
                 del kept[key]
         if rows:
             self.write(rows)
+        if clock - self.kept_at >= self.KEEP_EVERY:
+            self.keep(clock)
+
+    # A bus at its stop over DWELL_MOST at a restart named it before the last keep(): every minute.
+    KEEP_EVERY = 60
+    KEPT = "recorder.json"  # under HISTORY
+
+    def keep(self, clock):
+        """What the Recorder knows of each bus it follows, for the server after it (unkept()): [route, first departure,
+        vehicle, the stop's place on the route, its code, the last report's time, reached, naming, metres along]."""
+        buses = [[*key, state[0], state[2], state[1], self.reached.get(key), self.naming.get(key),
+                  (self.along.get(key) or (None,))[0]] for key, (state, _, _) in self.trips.items()]
+        path = os.path.join(self.folder, self.KEPT)
+        os.makedirs(self.folder, exist_ok=True)
+        with open(path + ".part", "w", encoding="utf-8") as f:
+            json.dump({"at": int(clock), "buses": buses}, f, separators=(",", ":"))
+        os.replace(path + ".part", path)
+        self.kept_at = clock
+
+    def unkept(self, now):
+        """keep()'s file as the server before this one left it, by bus: [the stop's place, its code, the last report's
+        time, reached, naming, metres along]. Only a bus all of whose values are of the kinds keep() writes, its times
+        within FORGET of now and reached not after its last report: any other would break the boards, and be kept again."""
+        whole = lambda x: isinstance(x, int) and not isinstance(x, bool)
+        when = lambda x: whole(x) and now - self.FORGET <= x <= now + AHEAD
+        try:
+            with open(os.path.join(self.folder, self.KEPT), encoding="utf-8") as f:
+                return {tuple(b[:3]): b[3:] for b in json.load(f)["buses"] if isinstance(b, list) and len(b) == 9
+                        and all(isinstance(x, str) for x in b[:3] + b[4:5]) and whole(b[3]) and b[3] >= 0 and when(b[5])
+                        and (b[6] is None or when(b[6]) and b[6] <= b[5]) and when(b[7])
+                        and (b[8] is None or whole(b[8]) and b[8] >= 0)}
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
 
     MOVED_FAR = 100  # metres a bus goes for it to count as moving
     TRACK_KEEP = 360  # seconds of each bus's places kept (track)
@@ -1384,6 +2070,234 @@ class Recorder:
 
 ISRAEL = zoneinfo.ZoneInfo("Asia/Jerusalem")  # a bus's day, whatever the server's clock
 recorder = Recorder(HISTORY)
+
+
+class Stations:
+    """When each train and tram reaches each station, from the stations' lists (train_lists(), tram_lists()), for
+    judging trips by what really ran: the snapshot's reports name some of a run's stations, never its first or last
+    (13 Nov: the last of 0 of 177 trains' runs, 2 of 197 trams'). A station's list has a train with the time it expects
+    it there until about then, and drops it. A train the list had live (not at the timetable's time alone), last
+    expected within NEAR, then left out of HOLD lists in a row, each answering every station asked in its place,
+    reached the station then, or by the first of those lists if sooner (13 Nov, against the trains' own reports: within
+    a minute 84% of times so, 66% at the list's time). One that comes back was still coming (13 Nov: back after 1, 3, 4
+    and 8 lists). These are times INFERRED from a list, not seen: one whose list kept its time while it ran late is
+    dropped at that time, early (13 Nov: train 6516 at Bnei Brak 271 s early). Each row keeps its last sighting and the
+    list's last time beside it for a reader to bound it. Not a run's first station: a tram's list has it when it comes
+    in, minutes before it sets out. A train listed under a route that isn't the catalog's train is the route
+    railway_route() says, as on the boards; nothing is written before the catalog has its lines.
+
+    The work is a worker thread's, behind a queue of QUEUE answers that never waits: the poll thread publishing the
+    snapshot riders get only hands an answer over, and one that finds the queue full is dropped (dropped). The queue
+    holds answers by reference (13 Nov afternoon, parsed: a train answer 0.3-0.5 MB, a tram one 0.7-1.1 MB). A worker
+    found stopped is started again with the next answer, and logged (restarts). A row is kept as written only once it
+    is on disk; a write that fails is cut back to where the file was and tried again with the next answer, up to MOST
+    rows (the oldest beyond are given up, lost). A file whose last row a stopped process left cut short has it taken
+    away before the next is written (cut). At most MOST trains are kept as written, the oldest forgotten beyond that
+    (forgot): one forgotten could be written again. One file a day, <day>.rail in HISTORY/rail, its
+    own folder, compressed when the day is over and kept KEEP_DAYS: route, journey ref, day, first departure, the
+    station's place on the route, its code, when, seconds since the last sighting, the list's last time. Not .tsv: the
+    arrival model takes a day's every .tsv as its passings. After a restart the rows already in the files of the last
+    WRITTEN_KEEP are not written again; trains the server before had in hand (left out but not yet HOLD lists) are not
+    written at all."""
+
+    NEAR, HOLD = 300, 5
+    WRITTEN_KEEP = 3 * 3600  # a train written at a station isn't written there again for this long
+    QUEUE = 8
+    MOST = 20000  # at most this many trains held in each state, and rows waiting for the disk
+    FOLDER = "rail"
+
+    def __init__(self, folder):
+        self.folder = os.path.join(folder, self.FOLDER) if folder else ""
+        self.queue = queue.Queue(self.QUEUE)
+        self.worker = None
+        self.dropped = self.lost = self.restarts = self.cut = self.forgot = 0
+        # by list kind: (code, route, first departure) -> (ref, day, order, expected, last listed, live)
+        self.listed = {}
+        # by list kind: those left out lately -> [as last listed, lists in a row without it, the first's time]
+        self.gone = {}
+        self.written = None  # (code, route, first departure) -> when written; read from the files at the first answer
+        self.unwritten = []  # rows not on disk yet
+        self.day, self.failed = None, None
+
+    def feed(self, doc, kind, codes, clock=None):
+        """Hands an answer to the stations asked (codes, in order) to the worker, never waiting."""
+        if not self.folder:
+            return
+        if self.worker is None or not self.worker.is_alive():
+            if self.worker is not None:
+                self.restarts += 1
+                log("station passings: the worker had stopped, started again (%d)" % self.restarts)
+            self.worker = threading.Thread(target=self.work, daemon=True)
+            self.worker.start()
+        try:
+            self.queue.put_nowait((doc, kind, tuple(codes), time.time() if clock is None else clock))
+        except queue.Full:
+            self.dropped += 1
+
+    def work(self):
+        while True:
+            answer = self.queue.get()
+            try:
+                self.take(*answer)
+                self.failed = None
+            except BaseException as e:  # whatever it is, the worker goes on with the next answer
+                if self.failed != repr(e):
+                    log("station passings failing:", repr(e))
+                    self.failed = repr(e)
+            finally:
+                self.queue.task_done()
+
+    def take(self, doc, kind, codes, clock):
+        if self.written is None:
+            today = datetime.datetime.fromtimestamp(clock, ISRAEL).strftime("%Y-%m-%d")
+            self.tidy(today)
+            self.written, self.day = self.kept(clock), today
+        delivery = doc["Siri"]["ServiceDelivery"]
+        monitored = delivery.get("StopMonitoringDelivery") or []
+        if isinstance(monitored, dict):
+            monitored = [monitored]
+        # Every station asked answered, each in its place: else a train not in it may still be coming.
+        true = lambda x: str(x.get("Status", "true")).lower() == "true"
+        placed = lambda: all(str(v.get("MonitoringRef", code)) == code
+                             for p, code in zip(monitored, codes) for v in p.get("MonitoredStopVisit") or [])
+        if not true(delivery) or len(monitored) != len(codes) or not all(true(p) for p in monitored) \
+                or not catalog["lines"] or not placed():
+            return
+        platforms = railway_held["platforms"] if time.time() - railway_held["at"] <= RAILWAY_KEEP else {}
+        old, gone, now = self.listed.get(kind) or {}, self.gone.setdefault(kind, {}), {}
+        for part in monitored:
+            for v in part.get("MonitoredStopVisit") or []:
+                try:
+                    j = v["MonitoredVehicleJourney"]
+                    call = j["MonitoredCall"]
+                    frame = j.get("FramedVehicleJourneyRef") or {}
+                    number = str(frame.get("DatedVehicleJourneyRef", ""))
+                    route = int(j["LineRef"])
+                    if kind == "trains":
+                        route = railway_route(route, number, call["StopPointRef"], platforms)
+                    if route is None:
+                        continue
+                    key = (str(call["StopPointRef"]), str(route), j["OriginAimedDepartureTime"])
+                except (KeyError, TypeError, ValueError, AttributeError):
+                    continue
+                back = gone.pop(key, None)
+                try:
+                    now[key] = (number, frame.get("DataFrameRef", ""), int(call["Order"]),
+                                epoch(call["ExpectedArrivalTime"]), int(clock), not call.get("AimedArrivalTime"))
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    if key in old or back:  # still listed, its time unreadable this once
+                        now[key] = old.get(key) or back[0]
+        if len(now) > self.MOST:
+            return
+        for key, last in old.items():
+            if key not in now and last[5] and last[2] > 1 and last[3] - last[4] <= self.NEAR and len(gone) < self.MOST:
+                gone[key] = [last, 0, int(clock)]
+        waiting = {(r[5], r[0], r[3]) for r in self.unwritten}
+        for key, held in list(gone.items()):
+            held[1] += 1
+            if held[1] >= self.HOLD:
+                del gone[key]
+                ref, day, order, due, seen, _ = held[0]
+                if key not in self.written and key not in waiting:
+                    at = min(max(due, seen), held[2])
+                    self.unwritten.append((key[1], ref, day, key[2], order, key[0], at, at - seen, due))
+        self.listed[kind] = now
+        for key in [k for k, at in self.written.items() if clock - at > self.WRITTEN_KEEP]:
+            del self.written[key]
+        if len(self.unwritten) > self.MOST:
+            self.lost += len(self.unwritten) - self.MOST
+            del self.unwritten[:len(self.unwritten) - self.MOST]
+        if self.unwritten:
+            self.append(self.unwritten)
+            for r in self.unwritten:
+                self.written[(r[5], r[0], r[3])] = clock
+            self.unwritten = []
+            while len(self.written) > self.MOST:  # the oldest first: kept in the order written
+                del self.written[next(iter(self.written))]
+                self.forgot += 1
+
+    def append(self, rows):
+        """The rows at the end of their day's file, all or none: on a failure each file is cut back to where it was. A
+        row's day only goes forward, as the Recorder's: one reached before midnight but written after goes in the new
+        day's file, the day before being put away."""
+        days = {}
+        for r in rows:
+            day = max(datetime.datetime.fromtimestamp(r[6], ISRAEL).strftime("%Y-%m-%d"), self.day)
+            days.setdefault(day, []).append("\t".join(str(x) for x in r) + "\n")
+        done = []
+        try:
+            os.makedirs(self.folder, exist_ok=True)
+            for day in sorted(days):
+                path = os.path.join(self.folder, day + ".rail")
+                done.append((path, self.whole(path) if os.path.exists(path) else None))
+                with open(path, "ab") as f:
+                    f.write("".join(days[day]).encode())
+        except BaseException:
+            for path, size in done:
+                try:
+                    if size is None:
+                        os.remove(path)
+                    else:
+                        os.truncate(path, size)
+                except OSError:
+                    pass
+            raise
+        if max(days) > self.day:
+            self.day = max(days)
+            self.tidy(self.day)
+
+    def whole(self, path):
+        """The file's size, a last row left cut short (a process stopped while writing it) taken away first."""
+        with open(path, "rb+") as f:
+            size = f.seek(0, 2)
+            if size:
+                f.seek(max(0, size - 4096))
+                tail = f.read()
+                if not tail.endswith(b"\n"):
+                    size = size - len(tail) + tail.rfind(b"\n") + 1
+                    f.truncate(size)
+                    self.cut += 1
+                    log("station passings: a row cut short at the end of %s taken away" % os.path.basename(path))
+        return size
+
+    def kept(self, clock):
+        """(code, route, first departure) -> when, of the rows of the last WRITTEN_KEEP in the files (a restart)."""
+        out = {}
+        for back in (1, 0):
+            day = datetime.datetime.fromtimestamp(clock - back * 86400, ISRAEL).strftime("%Y-%m-%d")
+            for name, opener in ((day + ".rail.gz", gzip.open), (day + ".rail", open)):
+                path = os.path.join(self.folder, name)
+                if not os.path.exists(path):
+                    continue
+                with opener(path, "rt", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        p = line.rstrip("\n").split("\t")
+                        if len(p) >= 7 and p[6].isdigit() and clock - int(p[6]) <= self.WRITTEN_KEEP \
+                                and len(out) < self.MOST:
+                            out[(p[5], p[0], p[3])] = int(p[6])
+        return out
+
+    def tidy(self, today):
+        """In its own folder: days that are over compressed (a day put away before keeps its rows), those over KEEP_DAYS
+        old taken away."""
+        oldest = (datetime.date.fromisoformat(today) - datetime.timedelta(days=KEEP_DAYS)).isoformat()
+        for name in sorted(os.listdir(self.folder)) if os.path.isdir(self.folder) else ():
+            day, _, rest = name.partition(".")
+            path = os.path.join(self.folder, name)
+            if day < oldest and rest in ("rail", "rail.gz"):
+                os.remove(path)
+            elif rest == "rail" and day < today:
+                with open(path + ".gz.part", "wb") as out:
+                    if os.path.exists(path + ".gz"):
+                        with open(path + ".gz", "rb") as old:
+                            shutil.copyfileobj(old, out)
+                    with open(path, "rb") as f, gzip.open(out, "wb") as g:
+                        shutil.copyfileobj(f, g)
+                os.replace(path + ".gz.part", path + ".gz")
+                os.remove(path)
+
+
+stations = Stations(HISTORY)
 
 
 def pb_varint(n):
@@ -1473,7 +2387,7 @@ class Predictions:
 
     def at_stop(self, route, first, code, now):
         """When the bus gets to that stop, or None. A stop it passes twice: the next time."""
-        times = [eta for _, c, eta in self.ahead(route, first, now) if c == code]
+        times = [eta for _, c, eta in self.ahead(route, first, now) if str(c) == str(code)]  # text or numbers (PREDICTOR.md)
         return min(times) if times else None
 
 
@@ -1717,7 +2631,7 @@ def with_starting(rows, codes, now, ask=None, fresh=None, buses=None):
     out = list(rows)
     buses = buses_of(fresh, now) if buses is None else buses
     for code, trips in starting_at([str(int(c)) for c in codes], now, ask).items():
-        for route, first, at, place, number, boarded, _ in trips:
+        for route, first, at, place, number, boarded, expected in trips:
             line = catalog["lines"].get(route)
             if line is None or not boarded or (code, route, first) in have:
                 continue
@@ -1734,8 +2648,11 @@ def with_starting(rows, codes, now, ask=None, fresh=None, buses=None):
             bus = buses.get((route, first))
             here = at_stop(bus, code)
             waits = not here and line[6] in BUSES and waiting(bus, place)
-            if not ((first >= now - since or unlisted) and now - 60 <= at <= now + ahead or here and at >= now - late
-                    or waits and now - late <= at <= now + ahead):
+            # A weekend line's bus on its way (the city's feed, weekend_buses()) is due when the planner's live updates
+            # have it there, with its place.
+            coming = route >= NAIM_OFFSET and bus is not None and not here and not waits
+            if not ((first >= now - since or unlisted) and now - 60 <= (expected if coming else at) <= now + ahead
+                    or here and at >= now - late or waits and now - late <= at <= now + ahead):
                 continue
             start = datetime.datetime.fromtimestamp(first, ISRAEL).isoformat()
             if here or waits:
@@ -1747,6 +2664,9 @@ def with_starting(rows, codes, now, ask=None, fresh=None, buses=None):
             elif line[6] == 0 and bus is not None and first <= now:
                 vehicle, lat, lon, seen, bearing, speed = bus
                 out.append([int(code), route, vehicle, line[0], first, 0, at, lat, lon, seen, bearing, speed, place, ""])
+            elif coming:
+                vehicle, lat, lon, seen, bearing, speed = bus
+                out.append([int(code), route, vehicle, line[0], first, at, expected, lat, lon, seen, bearing, speed, place, ""])
             else:
                 out.append([int(code), route, "%d_%s_" % (route, start), line[0], first, at, at, None, None, 0, None, None, place, ""])
             have.add((code, route, first))
@@ -2038,6 +2958,21 @@ def standing(rows, now, trips=None, moved=None, heard=None):
     return out
 
 
+def one_run_a_bus(rows):
+    """The rows but one bus's other runs of a line at a stop: the ministry can keep a bus logged into a run it has left
+    while it reports on the next, with its place on both, and the board showed one bus twice (line 59 as "5, 9
+    min", the 9 gone as the bus came). The bus's run is the one with its latest report, else the later one.
+    A row with no place or no vehicle named is a run of its own."""
+    own = {}
+    for r in rows:
+        vehicle = str(r[2]).split("_", 2)[-1]
+        if r[7] is not None and vehicle not in ("", "0"):
+            key = (r[0], r[1], vehicle)
+            if key not in own or (r[9] or 0, r[4]) > (own[key][9] or 0, own[key][4]):
+                own[key] = r
+    return [r for r in rows if r[7] is None or own.get((r[0], r[1], str(r[2]).split("_", 2)[-1]), r) is r]
+
+
 # A bus gone quiet: its GPS frozen (the very same place with fresh times) for FROZEN past its trip's first stop, or still at
 # its trip's first stop NOT_SET_OUT after the trip's time, alone on its trip. Its trip then comes by the timetable:
 # timetabled while the timetable's time at the stop is ahead, not at all once it has gone by. quiet() does the same with
@@ -2107,9 +3042,10 @@ FOLLOWED_AHEAD = 600
 SHAPE_TWICE = 150  # metres within which a road passing a place twice leaves where along it the place is unknown
 
 
-def along_road(route, lat, lon):
+def along_road(route, lat, lon, furthest=False):
     """Where a place is along its route's road (catalog["shapes"]): (metres along it, metres off it). None without a
-    road, or where another stretch of it, apart along it from the nearest, passes within SHAPE_TWICE of the place too."""
+    road, or where another stretch of it, apart along it from the nearest, passes within SHAPE_TWICE of the place too.
+    furthest: the metres along it of its furthest stretch within SHAPE_TWICE of the place instead, None with none."""
     text = catalog["shapes"].get(route)
     points = road(text) if text else ()
     k = 111_320 * math.cos(math.radians(lat))
@@ -2124,6 +3060,8 @@ def along_road(route, lat, lon):
     if not hits:
         return None
     off, at = min(hits)
+    if furthest:
+        return max(s for d, s in hits if d <= SHAPE_TWICE) if off <= SHAPE_TWICE else None
     if any(d <= SHAPE_TWICE and abs(s - at) > 2 * SHAPE_TWICE for d, s in hits):
         return None
     return at, off
@@ -2146,11 +3084,16 @@ def passed_on_road(route, code, bus, now, track=None):
     went = [p for p in track.get(tuple(str(bus[0]).split("_", 2))) or () if now - p[0] <= ROAD_RECENT]
     stops = planner_stops["where"].get(str(code)) or ()
     here = along_road(route, bus[1], bus[2])
-    then = along_road(route, went[0][1], went[0][2]) if went else None
-    there = [along_road(route, lat, lon) for lat, lon in stops]
+    # Its oldest place within ROAD_RECENT whose place along the road is known: one on a stretch winding round a stop isn't
+    # (line 277 at 645: with the oldest place taken whatever it was, the row passed came back).
+    then = next((a for a in (along_road(route, lat, lon) for _, lat, lon in went) if a is not None), None)
+    # A stop its road winds round or comes back past, whose place along it isn't known: past the last stretch of the road
+    # near it (line 277 at Weizmann/Givat Shaul: within 110 m of the stop 323 m before it, the bus never counted).
+    there = [s[0] if s is not None else along_road(route, lat, lon, furthest=True)
+             for s, (lat, lon) in zip((along_road(route, lat, lon) for lat, lon in stops), stops)]
     if here is None or then is None or not there or None in there or here[1] > ROAD_NEAR:
         return False
-    return here[0] - then[0] >= ROAD_PROGRESS and here[0] - max(s[0] for s in there) >= ROAD_PAST
+    return here[0] - then[0] >= ROAD_PROGRESS and here[0] - max(there) >= ROAD_PAST
 
 
 def gone_by(rows, now, trips=None, reached=None, buses=None, along=None, naming=None, track=None):
@@ -2316,7 +3259,7 @@ def since_kav(row, now, trips=None, reached=None):
         return 0
     order, _, code = state[0]
     ahead = predictions.ahead(row[1], row[4], now)
-    places = [place for place, c, _ in ahead if c == row[0]]
+    places = [place for place, c, _ in ahead if str(c) == str(row[0])]
     for place, c, eta in ahead:
         # The place and the code both: the ministry now and then numbers a run's stops unlike the timetable.
         if place == order and str(c) == str(code) and places and place < min(places):
@@ -2769,7 +3712,8 @@ def poll():
 
 
 follows = {}
-follow_locks = {}
+follow_locks = {}  # route: [its lock, the requests holding or waiting for it]; gone when there are none (route_lock())
+follow_locks_lock = threading.Lock()
 budget = {"tokens": float(FOLLOW_BURST), "at": time.time()}
 budget_lock = threading.Lock()
 pool = ThreadPoolExecutor(8)
@@ -2786,9 +3730,30 @@ def spend():
         return True
 
 
+@contextmanager
+def route_lock(route):
+    """The route's own lock, so its vehicles are asked for once at a time: kept while a request holds or waits for it, and
+    dropped by the last, so any number of routes asked for over time leave none behind."""
+    with follow_locks_lock:
+        held = follow_locks.setdefault(route, [threading.Lock(), 0])
+        held[1] += 1
+    try:
+        with held[0]:
+            yield
+    finally:
+        with follow_locks_lock:
+            held[1] -= 1
+            if not held[1]:
+                del follow_locks[route]
+
+
 def follow(route):
     """The route's vehicles straight from the ministry, at most once per FOLLOW_TTL for everyone."""
-    with follow_locks.setdefault(route, threading.Lock()):
+    # A route neither the timetable (once it's loaded) nor the snapshot has, the ministry has nothing on: nothing asked or kept.
+    snapshot = state["snapshot"]
+    if catalog["lines"] and route not in catalog["lines"] and (snapshot is None or route not in snapshot.routes):
+        return []
+    with route_lock(route):
         hit = follows.get(route)
         if hit and time.time() - hit[0] < FOLLOW_TTL:
             return hit[1]
@@ -2853,9 +3818,14 @@ def arrivals(doc):
                         lat = lon = None
                 bearing = whole(j.get("Bearing"), 360) if lat is not None else None
                 platform = str(call.get("ArrivalPlatformName") or call.get("DeparturePlatformName") or "").strip()
+                # The number shown and found in the app's timetable by: the ministry's, but where it gives none, or the
+                # word null (Superbus's 171), the line's own; a train's is its number, kept.
+                number = str(j.get("PublishedLineName") or "")
+                if number in ("", "null", "None"):
+                    number = (catalog["lines"].get(int(j["LineRef"])) or [""])[0] or ""
                 row = [
                     stop, int(j["LineRef"]), f'{j["LineRef"]}_{first}_{j.get("VehicleRef", "")}',
-                    str(j.get("PublishedLineName", "")), epoch(first),
+                    number, epoch(first),
                     epoch(call["AimedArrivalTime"]) if call.get("AimedArrivalTime") else 0,
                     epoch(call["ExpectedArrivalTime"]) if call.get("ExpectedArrivalTime") else 0,
                     lat, lon, recorded if lat is not None else 0,
@@ -2958,9 +3928,11 @@ def noticed():
 
 FOLLOW = re.compile(r"^/live/v1/follow/([0-9]{1,9}(?:,[0-9]{1,9}){0,%d})$" % (MAX_FOLLOW - 1))
 # From, to, when (epoch seconds, then d to leave then, n to leave now, a to arrive by or l for the last way there that
-# night), the route types allowed (all if none), and up to three places to go by on the way.
+# night), the route types allowed (all if none), up to three places to go by on the way, and the rider's settings
+# (asked_as()).
 PLAN = re.compile(r"^/live/v1/plan/(\d\d\.\d{1,6}),(\d\d\.\d{1,6}),(\d\d\.\d{1,6}),(\d\d\.\d{1,6})/(\d{10})([adnl])"
-                  r"(?:/([0-7](?:,[0-7]){0,7}))?(?:/via/(\d\d\.\d{1,6},\d\d\.\d{1,6}(?:,\d{1,3})?(?:;\d\d\.\d{1,6},\d\d\.\d{1,6}(?:,\d{1,3})?){0,2}))?$")
+                  r"(?:/([0-7](?:,[0-7]){0,7}))?(?:/via/(\d\d\.\d{1,6},\d\d\.\d{1,6}(?:,\d{1,3})?(?:;\d\d\.\d{1,6},\d\d\.\d{1,6}(?:,\d{1,3})?){0,2}))?"
+                  r"(?:/as/([0-9A-Za-z]{1,8}))?$")
 MODES = {0: "TRAM", 1: "SUBWAY", 2: "RAIL", 3: "BUS", 4: "FERRY", 5: "CABLE_CAR", 6: "GONDOLA", 7: "FUNICULAR"}
 BIKES_ON = (0, 2)  # light rail and trains, which take a bike along
 # The answer's sections by the app's ids: the routes list, the timetable card, walking or cycling all the way, transit
@@ -2979,9 +3951,77 @@ FIRST_LEAN = 60
 # At night buses come early more often still: a route whose first ride sets out from NIGHT_LEAN_FROM o'clock to MORNING
 # sets out up to NIGHT_LEAN earlier in all, never before the time asked.
 NIGHT_LEAN, NIGHT_LEAN_FROM = 150, 21
+# By day a route sets out up to DAY_LEAN earlier in all, never before the time asked: on a weekday's leave-now lists the
+# rider following the plan found the first bus gone on 18% of routes, most of them by less than two minutes.
+DAY_LEAN = 120
 # From one train to another, at least this long, the walk to the other platform included: three minutes to change
 # platforms at any station.
 TRAIN_CHANGE = 180
+# The rider's planner settings, the plan path's /as/<letters>: one letter each for the walking pace (s slow, f fast),
+# walking (l less, m "I don't mind walking"), changes (f fewer) and the time at the stop (t tight, r relaxed). Any other
+# letter, one left out, or none at all is the usual (n), and a trip with only the usual is planned as without them.
+RIDER_LETTERS, USUAL = ("sf", "lm", "f", "tr"), "nnnn"
+# Walking pace, m/s. Slow is about the 15th percentile of older pedestrians at crossings (0.97, Knoblauch and others
+# 1996), fast a brisk adult's (comfortable pace 1.27 to 1.46 by age and sex, Bohannon 1997). Both are on
+# OpenTripPlanner's 0.05 m/s steps, so it walks them as asked and walk_at_pace() has nothing to retime.
+PACE = {"s": 1.0, "f": 1.6}
+# Walking: how much a second on foot costs the list (ROUTE_COST, rank()), times the first; the list's longest walks
+# times the second (WALK_MOST, WALK_LAST, LIST_END_WALK, LIST_CHANGE_WALK). Less is the rider who minds walking twice as
+# much (LIST_MINDED). The planner is asked as usual: its walk reluctance doubled or halved too took 0.35 s more a search
+# at the median and 1.4 s at the 95th percentile (less walking, 14 Nov), for the same first card in 85 to 97% of
+# searches, and every new reluctance is another transfer cache for it to fill.
+WALKING = {"n": (1, 1), "l": (2, 0.6), "m": (0.5, 1.5)}
+# Fewer changes: a change costs the list twice as much (LIST_MINDED). The planner is asked as usual: a transfer cost
+# there lost the usual's best route (Tel Aviv to Beersheba arriving by 09:55: 20 minutes later, the same three rides).
+# The time at the stop: the planner's slack before boarding and at a change (both count at a change), the least the
+# list leaves at a change (LEAST_CHANGE), and how far the first walk sets out earlier in all by day and at night
+# (DAY_LEAN, NIGHT_LEAN). Relaxed leaves LIST_TIGHT_SPARE at a change, under which a change is missed about twice as
+# often. Tight boards with no slack, so the rider is at the stop only FIRST_LEAN before Kav's time. The usual is
+# half a minute each, LEAST_CHANGE, DAY_LEAN and NIGHT_LEAN (spare()).
+SPARE = {"t": (0, 30, 30, FIRST_LEAN, FIRST_LEAN), "r": (90, 90, 180, DAY_LEAN, NIGHT_LEAN)}
+# A rider who weighs walking or changes their own way is led by a route walking at most this much more in all than the
+# usual's lead: 13 Nov, a rider who would walk "a quarter of an hour to a nearby stop to save a connecting line" (kept()).
+WALK_FURTHER = 900
+# And led later for less walking only by a route walking more than this less: Nazareth at rush hour, 7 minutes later for
+# 15 seconds less on foot (kept()). Nor by one walking more than this more: Dan to Jerusalem, 7 minutes sooner for 30
+# seconds more on foot, within the error of walk times.
+WALK_SAVED = 60
+# Tight: a route the chance tables give less than this chance of making every bus is tagged likely_missed.
+LIKELY_MISSED = 0.5
+riders = threading.local()  # the settings of the trip this thread plans (Handler.plan(), weighed_answers())
+
+
+def asked_as(letters):
+    """The settings a plan path's letters ask for, each the usual unless it is one of its own."""
+    letters = letters or ""
+    return "".join(letters[i] if i < len(letters) and letters[i] in known else "n" for i, known in enumerate(RIDER_LETTERS))
+
+
+def rider():
+    """The settings of the trip being planned: pace, walking, changes, time at the stop."""
+    return getattr(riders, "now", USUAL)
+
+
+def as_rider(settings, work, *args, **kwargs):
+    """work(*args, **kwargs) in this thread for a rider with these settings, then the thread's own again."""
+    held, riders.now = rider(), settings
+    try:
+        return work(*args, **kwargs)
+    finally:
+        riders.now = held
+
+
+def spare(i):
+    """The rider's SPARE[i]: the usual's as the constants are now."""
+    s = rider()[3]
+    return SPARE[s][i] if s != "n" else (30, 30, LEAST_CHANGE, DAY_LEAN, NIGHT_LEAN)[i]
+
+
+def walk_reach(metres):
+    """One of the list's longest walks, for the rider's walking."""
+    return metres if rider()[1] == "n" else round(metres * WALKING[rider()[1]][1])
+
+
 DIRECT_MOST = 3600  # walking or cycling all the way is offered for an hour at most
 BIKE_SOONER = 300  # how much sooner than every route listed a bike along on the train gets there, to be offered
 # The routes list: no walk longer than 1.5 km in one go, three routes at
@@ -2998,6 +4038,9 @@ TAXI_PICKUP, TAXI_SLOWER, TAXI_EXTRA = 240, 1.076, 163
 # A taxi to a station: its drives there take ten minutes at most, get there two minutes before the train, and
 # are shown when they arrive no more than two minutes after the quickest route in the list.
 TAXI_DRIVE_MOST, TAXI_AT_STATION, TAXI_LATER = 600, 120, 120
+# Asked only with BY_TAXI=on. The planner drives to every stop within seven minutes for it, which takes it longer
+# than the routes list's own question: 1.7 of the 10 processor-seconds a trip leaving now cost it.
+BY_TAXI = os.environ.get("BY_TAXI", "off").lower() in ("on", "1", "yes", "true")
 PLAN_QUERY = """
 query($o: PlanLabeledLocationInput!, $d: PlanLabeledLocationInput!, $t: PlanDateTimeInput!, $modes: PlanModesInput,
       $prefs: PlanPreferencesInput, $via: [PlanViaLocationInput!], $window: Duration) {
@@ -3255,8 +4298,11 @@ def plan_variables(frm, to, when, arrive, modes, kind="main", via=(), window=Non
     if via:
         # The places on the way, which the trip is planned by a part at a time (through()).
         out["via"] = [list(p) for p in via]
+    me = rider()
     if kind in ("walk", "cycle"):
         out["modes"] = {"directOnly": True, "direct": ["WALK" if kind == "walk" else "BICYCLE"]}
+        if kind == "walk" and me[0] != "n":
+            out["prefs"] = {"street": {"walk": {"speed": PACE[me[0]]}}}
         return out
     out["modes"] = {"transitOnly": True}
     allowed = sorted(set(modes)) if modes else []
@@ -3282,8 +4328,11 @@ def plan_variables(frm, to, when, arrive, modes, kind="main", via=(), window=Non
         # Half a minute at the stop before the first bus and a minute at a change, half from boarding and half from the
         # change, where router-config.json's minute before every bus planned each route a minute later than it runs.
         rules = out.setdefault("prefs", {}).setdefault("transit", {})
-        rules.setdefault("board", {})["slack"] = "PT30S"
-        rules.setdefault("transfer", {})["slack"] = "PT30S"
+        rules.setdefault("board", {})["slack"] = "PT%dS" % spare(0)
+        rules.setdefault("transfer", {})["slack"] = "PT%dS" % spare(1)
+    if kind in ("main", "all", "by_taxi") and me[0] != "n":
+        # The rider's pace. Walking is weighed in the list alone (WALKING).
+        out.setdefault("prefs", {}).setdefault("street", {}).setdefault("walk", {})["speed"] = PACE[me[0]]
     if rail is not None and kind == "main":
         # Every mode the planner may take must be named once any is given a cost of its own.
         named = out["modes"].setdefault("transit", {}).get("transit") or [{"mode": m} for m in ALL_MODES]
@@ -3549,6 +4598,12 @@ def ask_planner(variables, wait=25):
 # transit-only search. A bus a minute slower than the timetable, as a live one often is, then goes while a later one
 # stays. Walking all the way is offered on its own.
 WALK_FILTER = "transit-vs-walk-filter"
+# Its filters that keep the cheapest few of the routes sharing most of their way (router-config.json's itineraryFilters
+# leaves them at OpenTripPlanner's own: one of those 85% alike, three of those 68% alike): cheapest by the planner's
+# cost, where a change costs far less than the recipe has it (ROUTE_COST). Afula to Tel Aviv, the 825 then the 608 went
+# for the 825, the 299 and the 24, eighteen minutes sooner on paper with a change more, and was the route that worked.
+# So the routes those filters alone name stay for the recipe to weigh (itineraries(alike), recipe_list()).
+SIMILAR_FILTER = "similar-legs-filter"
 
 
 def reporting_runs(now, trips=None):
@@ -3571,15 +4626,16 @@ def stops_once(calls):
     return out if len(out) > 1 else calls
 
 
-def itineraries(doc, stops, lines, agencies):
+def itineraries(doc, stops, lines, agencies, alike=False):
     """OpenTripPlanner's answer as Kav's routes, filling in the stops and lines they use. It lists the routes its filters
     would remove too, each with the filters' names (router-config.json): every one goes but those only the walking one
-    names. A train boarded at the station it sets out from is live once its run reports: the stations' lists give the
-    planner its times before it sets out."""
+    names. alike: those its similar-legs filters alone name instead (SIMILAR_FILTER). A train boarded at the station it
+    sets out from is live once its run reports: the stations' lists give the planner its times before it sets out."""
     found, reporting = [], None
     for edge in ((doc.get("data") or {}).get("planConnection") or {}).get("edges") or []:
         node = edge["node"]
-        if {n.get("tag") for n in node.get("systemNotices") or []} - {WALK_FILTER}:
+        named = {n.get("tag") for n in node.get("systemNotices") or []} - {WALK_FILTER}
+        if bool(named) != alike or not all(t.startswith(SIMILAR_FILTER) for t in named):
             continue
         legs, rides, inside, ends = [], 0, {}, {}
         for leg in node["legs"]:
@@ -3625,8 +4681,11 @@ def itineraries(doc, stops, lines, agencies):
                 reporting = reporting_runs(time.time()) if reporting is None else reporting
                 live = line.isdigit() and (int(line), first) in reporting
             # A line the planner has no road for comes as straight lines between its stops: its own road instead.
+            # A road of the planner's stays as it came: own_road() gives it back point for point, and decoding and
+            # encoding every ride of every route found was most of this function's time.
             placed = [(stops[c][2], stops[c][3]) for c in calls if stops[c][2] is not None and stops[c][3] is not None]
-            shape = encode(own_road(line, shape, placed)) if len(placed) >= 2 else shape
+            if len(placed) >= 2 and points_in(shape) <= len(placed) + 1:
+                shape = encode(own_road(line, shape, placed))
             legs.append({"k": "r", "line": line, "trip": local_id(leg["trip"]["gtfsId"]).split("~")[0], "dep": dep, "arr": arr,
                          "sdep": sdep, "sarr": sarr, "live": live, "first": first,
                          "stops": stops_once(calls), "shape": shape, "next": nxt, "head": leg.get("headsign") or "",
@@ -3674,14 +4733,15 @@ def lean_first(legs, lean=FIRST_LEAN):
 
 
 def lean_at_night(it, when):
-    """A route whose first ride sets out at night, set out up to NIGHT_LEAN earlier in all (FIRST_LEAN of it already
-    taken in itineraries()), never before when."""
+    """A route set out up to NIGHT_LEAN earlier in all when its first ride sets out at night, DAY_LEAN by day (FIRST_LEAN
+    of it already taken in itineraries()), never before when: one FIRST_LEAN took to before when sets out at when, as
+    the rider can't sooner (9.5% of a weekday's leave-now routes said to leave up to a minute before the time asked)."""
     first = next((i for i, l in enumerate(it["legs"]) if l["k"] == "r"), None)
     if not first:
         return
-    if MORNING <= datetime.datetime.fromtimestamp(it["legs"][first]["dep"], ISRAEL).hour < NIGHT_LEAN_FROM:
-        return
-    lean_first(it["legs"], max(0, min(NIGHT_LEAN - FIRST_LEAN, it["dep"] - when)))
+    day = MORNING <= datetime.datetime.fromtimestamp(it["legs"][first]["dep"], ISRAEL).hour < NIGHT_LEAN_FROM
+    lean_first(it["legs"], max(0, min(spare(3 if day else 4) - FIRST_LEAN, it["dep"] - when)))
+    lean_first(it["legs"], min(0, it["legs"][0]["dep"] - when))
     it["dep"] = it["legs"][0]["dep"]
 
 
@@ -3697,7 +4757,7 @@ def from_the_door(legs, ends):
         leg, inside = legs[i], ends.get(i, (0, 0))[side]
         if leg["k"] != "w" or not inside or not (i < rides[0] if side == 0 else i > rides[-1]):
             continue
-        street = round((leg["m"] - inside) / PLANNER_WALK_SPEED)
+        street = round((leg["m"] - inside) / PACE.get(rider()[0], PLANNER_WALK_SPEED))
         if side == 0:
             leg["dep"] = max(leg["dep"], leg["arr"] - street)
         else:
@@ -3709,7 +4769,10 @@ def walk_at_pace(legs, inside=None):
     """Walks at WALK_SPEED, a little longer than OpenTripPlanner's: the way to the first ride sets out
     that much earlier, and after a ride, the rest gets there that much later. inside: each walk's metres inside a
     station, by its place in legs, which a walk from one ride to another doesn't make longer: the time there is the
-    station's own, and a longer change could lose a route that makes it."""
+    station's own, and a longer change could lose a route that makes it. At the rider's own pace (PACE) the planner
+    walks as asked: nothing to retime."""
+    if rider()[0] != "n":
+        return
     rides = [i for i, l in enumerate(legs) if l["k"] == "r"]
 
     def longer(i, leg):
@@ -3741,7 +4804,7 @@ def changes_kept(legs, lines=None):
     rode = None
     for i, leg in enumerate(legs):
         if leg["k"] == "r":
-            if rode is not None and leg["dep"] - legs[i - 1]["arr"] < LEAST_CHANGE:
+            if rode is not None and leg["dep"] - legs[i - 1]["arr"] < spare(2):
                 return False
             if rode is not None and train(rode) and train(leg) and leg["dep"] - rode["arr"] < TRAIN_CHANGE:
                 return False
@@ -3759,7 +4822,7 @@ ALTERNATIVE_TIMES = """r%d: stop(id: "1:%s") { stoptimesForPatterns(startTime: %
   omitNonPickups: true) { pattern { id } stoptimes { serviceDay scheduledDeparture realtimeDeparture realtime stopPosition headsign
   trip { gtfsId wheelchairAccessible departureStoptime { scheduledDeparture } } } } }"""
 ALTERNATIVE_TRIP = """t%d: trip(id: "1:%s") { stoptimesForDate(serviceDate: "%s") { stop { gtfsId } serviceDay scheduledArrival
-  realtimeArrival realtimeDeparture } }"""
+  realtimeArrival realtimeDeparture dropoffType } }"""
 # A route's first ride's departures between the time asked about and five minutes before its own: the card lists a
 # line's departures from then, catchable or not.
 EARLIER_TIMES = """b%d: stop(id: "1:%s") { stoptimesForPatterns(startTime: %d, timeRange: %d, numberOfDepartures: 4,
@@ -3788,21 +4851,28 @@ def ask_graphql(query):
 ALTERNATIVE_PARTS = 4  # questions the alternatives' parts are asked in at once: the planner answers each part in turn
 
 
-def ask_in_parts(ask, parts):
-    """The planner's answers to a question made of named parts, asked as up to ALTERNATIVE_PARTS questions at once."""
+def ask_in_parts(ask, parts, until=None):
+    """The planner's answers to a question made of named parts, asked as up to ALTERNATIVE_PARTS questions at once.
+    until: the time to have them by, a TimeoutError past it (the questions still out are not waited for)."""
+    if until is not None and time.time() >= until:
+        raise TimeoutError("no time left for the other lines")
     groups = [parts[i::ALTERNATIVE_PARTS] for i in range(min(ALTERNATIVE_PARTS, len(parts)))]
-    with ThreadPoolExecutor(len(groups) or 1) as asking:
+    asking = ThreadPoolExecutor(len(groups) or 1)
+    try:
         found = {}
-        for got in asking.map(lambda group: ask("{" + " ".join(group) + "}"), groups):
+        for got in asking.map(lambda group: ask("{" + " ".join(group) + "}"), groups,
+                              timeout=None if until is None else max(0.0, until - time.time())):
             found.update(got or {})
+    finally:
+        asking.shutdown(wait=False)
     return found
 
 
-def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
+def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None, until=None):
     """The other lines each ride could be taken on: every line from the same stop to the same stop,
     with its next departures from five minutes before the chosen one, and when it gets there; for a route's first ride,
     also each line's departures there from since (the time asked about) on ("before"). Two questions to the planner for
-    all the routes together; a route keeps none when they fail."""
+    all the routes together; a route keeps none when they fail, or when they haven't come by until (PLAN_BY)."""
     rides = [leg for it in routes for leg in it["legs"] if leg["k"] == "r" and len(leg["stops"]) >= 2]
     boards = sorted({leg["stops"][0] for leg in rides})
     if not boards:
@@ -3824,7 +4894,7 @@ def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
                              [ALTERNATIVE_TIMES % (k, leg["stops"][0], leg["dep"] - 300, ALTERNATIVE_SPAN + 360)
                               for k, leg in enumerate(rides)] +
                              [EARLIER_TIMES % (k, leg["stops"][0], since - 60, leg["dep"] - 300 - (since - 60))
-                              for k, leg in earlier.items()])
+                              for k, leg in earlier.items()], until)
     except Exception as e:
         log("alternatives failed:", repr(e))
         return
@@ -3905,6 +4975,8 @@ def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
             calls = order[at:order.index(alight, at + 1) + 1]
             # The road it takes there, its stops placed from the start of its run so one it passes twice is placed right.
             run = [(x["lat"], x["lon"]) for x in p["pattern"]["stops"][:at + len(calls)]]
+            r = p["pattern"]["route"]
+            route = local_id(r["gtfsId"])
             path = own_road(route, (p["pattern"].get("patternGeometry") or {}).get("points"), run, at)
             if len(path) < 2:
                 path = stretch([], run, at)
@@ -3912,8 +4984,6 @@ def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
                 sid = local_id(x["gtfsId"])
                 if sid in calls:
                     stops[sid] = [x.get("code") or "", x.get("name") or "", x.get("lat"), x.get("lon"), x.get("platformCode") or ""]
-            r = p["pattern"]["route"]
-            route = local_id(r["gtfsId"])
             agency = local_id(r["agency"]["gtfsId"])
             agencies[agency] = r["agency"]["name"]
             lines[route] = catalog["lines"].get(int(route)) if route.isdigit() and int(route) in catalog["lines"] else \
@@ -3935,7 +5005,7 @@ def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
         return
     keys = list(wanted)
     try:
-        found = ask_in_parts(ask, [ALTERNATIVE_TRIP % (i, t, d) for i, (t, d) in enumerate(keys)])
+        found = ask_in_parts(ask, [ALTERNATIVE_TRIP % (i, t, d) for i, (t, d) in enumerate(keys)], until)
     except Exception as e:
         log("alternatives failed:", repr(e))
         found = {}
@@ -3949,23 +5019,29 @@ def alternatives(routes, stops, lines, agencies, ask=ask_graphql, since=None):
                 continue
             on = min(passes, key=lambda n: abs(times[n]["serviceDay"] + (times[n].get("realtimeDeparture") or 0) - alt["dep"]))
             off = next((n for n in range(on + 1, len(ids)) if ids[n] == alight), None)
-            if off is not None:
+            # Only where it lets riders off: lines between cities often only take riders on at their first stops in a
+            # city (the 836 to Tiberias was offered from Azrieli to Big Glilot).
+            if off is not None and times[off].get("dropoffType") != "NONE":
                 alt["arr"] = times[off]["serviceDay"] + times[off]["realtimeArrival"]
     # The latest each ride may get there and still make the ride after it, the way between as long as the route's own:
     # the rest of the route waits for no option (else a card can offer three buses to Friday's last train, two of them
     # getting there over ten minutes after it leaves).
+    # It leaves the change LEAST_CHANGE, and from a train to a train TRAIN_CHANGE, as the route's own does (changes_kept()).
+    train = lambda leg: (lines.get(leg.get("line")) or [None] * 7)[6] == 2
     deadline = {}
     for it in routes:
         legs = it["legs"]
         for i, leg in enumerate(legs):
             j = next((j for j in range(i + 1, len(legs)) if legs[j]["k"] == "r"), None)
             if leg["k"] == "r" and j is not None:
-                deadline[id(leg)] = legs[j]["dep"] - sum(l["arr"] - l["dep"] for l in legs[i + 1:j])
+                deadline[id(leg)] = (legs[j]["dep"] - sum(l["arr"] - l["dep"] for l in legs[i + 1:j]) - spare(2),
+                                     legs[j]["dep"] - TRAIN_CHANGE if train(legs[j]) else None)
     # One that never says when it gets there, or gets there before it leaves, isn't offered, nor one that isn't the same
     # choice as the ride (crossed()), nor one too late for the next ride; the rest as the card lists them, by when they leave.
     for leg in rides:
+        late, by_train = deadline.get(id(leg), (None, None))
         leg["alts"] = sorted((a for a in leg["alts"] if a["arr"] is not None and a["arr"] > a["dep"] and not crossed(a, leg)
-                              and a["arr"] <= deadline.get(id(leg), a["arr"])),
+                              and (late is None or a["arr"] <= late) and (by_train is None or not train(a) or a["arr"] <= by_train)),
                              key=lambda a: a["dep"])
 
 
@@ -4046,7 +5122,12 @@ def tag(routes, arrive=False):
 
     every = range(len(routes))
     one("early_arrival", list(every), lambda i: (routes[i]["arr"], routes[i]["rides"], routes[i]["walk"], -routes[i]["dep"]))
-    one("direct", [i for i in every if routes[i]["rides"] == 1], lambda i: (routes[i]["arr"], routes[i]["walk"]))
+    # A fact about a route, so every route without a change says it, beside one with a change: said of the best one
+    # alone, the others read as if they had one. Among routes without a change alone it tells nothing apart.
+    if any(r["rides"] > 1 for r in routes):
+        for i in every:
+            if routes[i]["rides"] == 1:
+                found[i].append("direct")
     one("least_walking", list(every), lambda i: (routes[i]["walk_m"], routes[i]["arr"]))
     fewest = min(r["rides"] for r in routes)
     if fewest > 1:
@@ -4117,16 +5198,18 @@ LIST_TIGHT, LIST_TIGHT_SPARE = 8, 180
 
 
 def rank(it):
-    """Where a route goes in the list, leaving at a time: lowest first."""
-    return it["arr"] + RANK_CHANGE * max(it["rides"] - 1, 0) + RANK_WALK * it["walk"]
+    """Where a route goes in the list, leaving at a time: lowest first. A change and a second on foot count as much more
+    as the rider's settings have them (rider_cost())."""
+    change, walk = RANK_CHANGE * (LIST_MINDED if rider()[2] == "f" else 1), RANK_WALK * WALKING[rider()[1]][0]
+    return it["arr"] + change * max(it["rides"] - 1, 0) + walk * it["walk"]
 
 
 def route_cost(it, when, lines, arrive=False, weights=None):
     """ROUTE_COST of a route asked about at when, in minutes: riding, 0.85 for each minute waiting at a change, 3.25 for
     each minute on foot and 0.5 for each minute from when to setting out, plus 21.5 a change, less 22 with a train and 20
     with the light rail. Arriving by when (the last way there too), the wait counted is from getting there to when.
-    weights: another rider's, where not ROUTE_COST (recipe_list())."""
-    w = weights or ROUTE_COST
+    weights: another rider's, where not the rider's own (rider_cost(), recipe_list())."""
+    w = weights or rider_cost()
     legs = it["legs"]
     rides = [n for n, l in enumerate(legs) if l["k"] == "r"]
     if not rides:
@@ -4140,19 +5223,1161 @@ def route_cost(it, when, lines, arrive=False, weights=None):
         w["change"] * (len(rides) - 1) + (w["train"] if 2 in kinds else 0) + (w["light_rail"] if 0 in kinds else 0)
 
 
-def led(picks, when, lines):
-    """The recipe's list in the order shown: by ROUTE_COST, and when the cheapest has a tight change (LIST_TIGHT_SPARE),
-    the cheapest route with room at its changes first, if it costs at most LIST_TIGHT more and gets there at most
-    LIST_TIGHT minutes after it."""
-    cost = lambda i: route_cost(i, when, lines)
+def rider_cost():
+    """ROUTE_COST for the rider: a minute on foot times their walking's (WALKING), a change twice as much for fewer
+    changes (LIST_MINDED). ROUTE_COST itself for the usual."""
+    me = rider()
+    if me[1:3] == "nn":
+        return ROUTE_COST
+    return dict(ROUTE_COST, walk=ROUTE_COST["walk"] * WALKING[me[1]][0],
+                change=ROUTE_COST["change"] * (LIST_MINDED if me[2] == "f" else 1))
+
+
+# Each route of the list also gets how much later than planned it really gets there on average, from how far off
+# Kav's times run (CHANCE_TABLES: live-error.json by minutes ahead, timetable-error.json by minutes along the trip,
+# each by kind of line, fitted on past days' passings): the chance the rider makes each bus, a missed one replaced by
+# the next run of its line or another line the card offers (CHANCE_MISSED with none known). led() then gives each
+# place in the list to the route likeliest to get there soonest, ROUTE_COST and CHANCE_WEIGHT minutes for each
+# expected minute late, among those planned to get there within CHANCE_REACH of the route it would have put there; the
+# routes listed stay the same. Without the tables, by ROUTE_COST alone.
+CHANCE_TABLES = os.environ.get("CHANCE_TABLES") or (os.path.join(REALTIME, "chance") if REALTIME else "")
+CHANCE_WEIGHT, CHANCE_MISSED, CHANCE_GRACE, CHANCE_REACH = 1.0, 1800, 30, 300
+# The tables in use, read whole into a dict of their own and put here in one go: a request takes them once (led())
+# and has them whole whatever happens meanwhile. chance_failed: why they couldn't be read, not tried again till the
+# next rebuild.
+chance, chance_failed = None, None
+
+
+def chance_tables():
+    """The two tables: timetable-error.json from CHANCE_TABLES (keep_chance() rebuilds it), live-error.json from ETA's
+    folder where kav-eta writes one, else from CHANCE_TABLES. None without both."""
+    global chance, chance_failed
+    tables = chance
+    if tables is None and CHANCE_TABLES and chance_failed is None:
+        try:
+            live = os.path.join(os.path.dirname(ETA), "live-error.json") if ETA else ""
+            got = {}
+            for name, where in (("live", live if live and os.path.exists(live) else os.path.join(CHANCE_TABLES, "live-error.json")),
+                                ("timetable", os.path.join(CHANCE_TABLES, "timetable-error.json"))):
+                with open(where) as f:
+                    got[name] = json.load(f)
+            chance = tables = got
+        except (OSError, ValueError) as e:
+            chance_failed = repr(e)
+            log("chance tables failing:", chance_failed)
+    return tables
+
+
+def chance_rebuilt():
+    """After a rebuild: the next request reads the tables again; one ordering meanwhile keeps those it took."""
+    global chance, chance_failed
+    chance, chance_failed = None, None
+
+
+# The timetable table, rebuilt each night (keep_chance()): how far off otp/predict.py's times ran on the CHANCE_SCORED
+# weekdays before today, each timed as predict.py times it from the CHANCE_BACK days before it (CHANCE_SHARE of the
+# runs setting out within CHANCE_WINDOW, CHANCE_LEAST of them at least), by how far along the trip the stop is
+# (CHANCE_EDGES minutes) and kind of line, CHANCE_PROBS of each. A CHANCE_SAMPLE-th of the lines, by their id, keeps it
+# to tens of megabytes; it runs in a process of its own at the lowest priority from CHANCE_HOUR o'clock, as it takes
+# minutes the requests mustn't wait for.
+CHANCE_SCORED, CHANCE_BACK, CHANCE_SAMPLE, CHANCE_HOUR = 4, 14, 16, 4
+CHANCE_WINDOW, CHANCE_SHARE, CHANCE_LEAST = 2700, 0.4, 3
+CHANCE_EDGES, CHANCE_PROBS = [0, 5, 10, 20, 30, 45, 60, 90], [(i + 0.5) / 50 for i in range(50)]
+
+
+def chance_kind(number):
+    """One or two digits: a city line; three or more: a longer one."""
+    return "long" if len("".join(ch for ch in (number or "") if ch.isdigit())) >= 3 else "short"
+
+
+def chance_sampled(route):
+    return zlib.crc32(str(route).encode()) % CHANCE_SAMPLE == 0
+
+
+def chance_quantiles(values, probs):
+    """values' quantiles (sorted values), as numpy.quantile's default (linear) has them, to the nearest second."""
+    n, out = len(values), []
+    for p in probs:
+        h = (n - 1) * p
+        lo = int(h)
+        hi, t = min(lo + 1, n - 1), h - lo
+        a, b = values[lo], values[hi]
+        out.append(int(round(b - (b - a) * (1 - t) if t >= 0.5 else a + (b - a) * t)))
+    return out
+
+
+def chance_day(folder, day, wanted):
+    """{(route, stop code): (seconds of the day each run set out, seconds it took to that stop)} of the wanted lines'
+    runs of that day in its own file, each run's stop once (its first passing)."""
+    path = os.path.join(folder, day + ".tsv.gz")
+    if not os.path.exists(path):
+        path = path[:-3]
+        if not os.path.exists(path):
+            return {}
+    runs, keep, starts = {}, {}, {}
+    with (gzip.open if path.endswith(".gz") else open)(path, "rt", encoding="utf-8") as f:
+        for line in f:
+            route = line[:line.find("\t")]
+            if route not in keep:
+                keep[route] = wanted(route)
+            if not keep[route]:
+                continue
+            p = line.rstrip("\n").split("\t")
+            if len(p) != 7 or not p[5] or p[2] != day:
+                continue
+            start = p[3]
+            if start not in starts:
+                starts[start] = (int(datetime.datetime.fromisoformat(start).timestamp()), int(start[11:13]) * 3600
+                                 + int(start[14:16]) * 60 + int(start[17:19]) + (86400 if start[:10] != day else 0))
+            first, at = starts[start]
+            key, took = (route, p[5]), int(p[6]) - first
+            got = runs.setdefault(key, {})
+            if first not in got or took < got[first][1]:
+                got[first] = (at, took)
+    return {key: tuple(array.array("l", x) for x in zip(*sorted(got.values()))) for key, got in runs.items()}
+
+
+def timetable_chance(folder, scored, kinds, wanted=chance_sampled, skip=()):
+    """The timetable table (CHANCE_EDGES, CHANCE_PROBS) from HISTORY's files: each scored day's passings against
+    predict.py's time for them from the CHANCE_BACK days before it, weekdays, but those in skip."""
+    days = {}
+
+    def day_of(d):
+        if d not in days:
+            days[d] = chance_day(folder, d, wanted)
+        return days[d]
+    errors, scored = {}, sorted(scored)
+    for n, test in enumerate(scored):
+        t = datetime.date.fromisoformat(test)
+        before = [(t - datetime.timedelta(days=b)).isoformat() for b in range(CHANCE_BACK, 0, -1)]
+        before = [d for d in before if chance_weekday(d) and d not in skip]
+        parts = {}
+        for d in before:
+            for key, got in day_of(d).items():
+                parts.setdefault(key, []).append(got)
+        for key, (at, took) in day_of(test).items():
+            if key not in parts:
+                continue
+            sample = sorted(zip(itertools.chain(*(p[0] for p in parts[key])), itertools.chain(*(p[1] for p in parts[key]))))
+            starts = [x[0] for x in sample]
+            for start, real in zip(at, took):
+                lo, hi = bisect.bisect_left(starts, start - CHANCE_WINDOW), bisect.bisect_right(starts, start + CHANCE_WINDOW)
+                if hi - lo < CHANCE_LEAST:
+                    continue
+                taken = sorted(x[1] for x in sample[lo:hi])
+                predicted = taken[int(CHANCE_SHARE * (len(taken) - 1) + 0.5)]
+                edge = max(e for e in CHANCE_EDGES if e * 60 <= max(predicted, 0))
+                errors.setdefault((kinds.get(key[0], "short"), edge), []).append(real - predicted)
+        # A day no later scored day reads again goes.
+        if n + 1 < len(scored):
+            oldest = (datetime.date.fromisoformat(scored[n + 1]) - datetime.timedelta(days=CHANCE_BACK)).isoformat()
+            for d in [d for d in days if d < oldest]:
+                del days[d]
+    return {"edges": CHANCE_EDGES, "probs": CHANCE_PROBS, "scored": sorted(scored), "per_stop": {},
+            "table": {"%s|%d" % key: {"n": len(errs), "q": chance_quantiles(sorted(errs), CHANCE_PROBS)}
+                      for key, errs in sorted(errors.items())}}
+
+
+def chance_weekday(day):
+    return datetime.date.fromisoformat(day).weekday() in (6, 0, 1, 2, 3)  # Sunday to Thursday
+
+
+def chance_rebuild(kinds, today=None, folder=HISTORY, out=CHANCE_TABLES):
+    """CHANCE_TABLES/timetable-error.json from the CHANCE_SCORED weekdays before today that HISTORY has."""
+    today = today or datetime.datetime.now(ISRAEL).date()
+    scored = []
+    for back in range(1, 15):
+        day = (today - datetime.timedelta(days=back)).isoformat()
+        if chance_weekday(day) and os.path.exists(os.path.join(folder, day + ".tsv.gz")):
+            scored.append(day)
+        if len(scored) == CHANCE_SCORED:
+            break
+    table = timetable_chance(folder, scored, kinds)
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "timetable-error.json.part"), "w") as f:
+        json.dump(table, f)
+    os.replace(os.path.join(out, "timetable-error.json.part"), os.path.join(out, "timetable-error.json"))
+    return table
+
+
+def keep_chance():
+    """The timetable table rebuilt each night from CHANCE_HOUR o'clock (chance_rebuild()), in a process of its own at
+    the lowest priority; the order reads it again once it's there."""
+    path = os.path.join(CHANCE_TABLES, "timetable-error.json")
+    while True:
+        old = not os.path.exists(path) or time.time() - os.path.getmtime(path) > 20 * 3600
+        if old and datetime.datetime.now(ISRAEL).hour == CHANCE_HOUR and catalog["lines"]:
+            kinds = {str(route): chance_kind(line[0]) for route, line in catalog["lines"].items()}
+            try:
+                started = time.time()
+                done = subprocess.run([sys.executable, os.path.abspath(__file__), "chance-tables"], capture_output=True,
+                                      input=json.dumps(kinds).encode(), timeout=3600)
+                if done.returncode:
+                    log("chance tables not rebuilt:", done.stderr.decode()[-300:])
+                else:
+                    chance_rebuilt()
+                    log("chance tables rebuilt in %d s" % (time.time() - started), done.stdout.decode().strip())
+            except (OSError, subprocess.SubprocessError) as e:
+                log("chance tables not rebuilt:", repr(e))
+        time.sleep(600)
+
+
+# What kind of bus each live bus is, for the card of a bus (Handler.bus()), from the Ministry of Transport's file of the
+# operators' buses (data.gov.il, dataset bus_fleet, renewed daily): its size (a bus, articulated, a midibus or a
+# minibus), seats, year and what it runs on, by its plate, which the ministry's live feed gives as each bus's VehicleRef
+# (14 Nov 2026, 18:31: 1,570 of the 1,615 buses on the road were in it). The file has no make, model or accessibility.
+# Each morning from FLEET_HOUR a process of its own asks the portal once whether the file changed and only then fetches it
+# FLEET_PAGE rows at a time with a pause between (fleet_file()); an answer that isn't what it should be, or a file of far
+# fewer buses, leaves fleet.json as it was. Plates stay on the server: an answer tells only the kind of bus asked about.
+FLEET = os.environ.get("FLEET") or (os.path.join(REALTIME, "fleet") if REALTIME else "")
+# The only place asked: https, no redirect (naim_fetch()). Tests set one that asks no one.
+FLEET_API = os.environ.get("FLEET_API") or "https://data.gov.il/api/3/action/"
+FLEET_DATASET = "bus_fleet"
+FLEET_FIELDS = ("bus_license_id", "BusSize_nm", "SeatsNum", "production_year", "PropulsionType_nm")
+FLEET_HOUR = 7
+# Rows a request (5,000 were about 245 KB on 14 Nov 2026; naim_fetch() takes 1 MiB at most), rows in all at most (15,406 on 14 Nov 2026),
+# seconds between requests and for each.
+FLEET_PAGE, FLEET_ROWS, FLEET_PAUSE, FLEET_WAIT = 5000, 40_000, 1.5, 60
+# The file's words for a size and a fuel; others ("לא ידוע", none) aren't said.
+FLEET_SIZES = {"אוטובוס": "bus", "מפרקי 3 דלתות": "articulated", "מפרקי 4 דלתות": "articulated", "מפרקי 5 דלתות": "articulated",
+               "מידיבוס": "midibus", "מיניבוס": "minibus"}
+FLEET_POWER = {"דיזל": "diesel", "חשמל": "electric", "גז טבעי דחוס": "gas"}
+FLEET_SHRINK = 0.5  # a file of under this share of the buses before doesn't replace it
+FLEET_STALE = 14  # days after the file was last checked that it's used: a bus's kind seldom changes, new buses aren't in it
+FLEET_MEMORY, FLEET_CPU, FLEET_TIMEOUT = 256 << 20, 300, 900
+
+
+def fleet_get(action, params, fetch=None):
+    """One answer of the portal's API (its result), from data.gov.il alone, within FLEET_WAIT seconds; else an exception."""
+    url = FLEET_API + action + "?" + urllib.parse.urlencode(params)
+    try:
+        doc = json.loads((fetch or naim_fetch)(time.monotonic() + FLEET_WAIT, url=url))
+    except OSError as e:
+        raise OSError("data.gov.il: %s" % e) from e
+    if not isinstance(doc, dict) or doc.get("success") is not True or not isinstance(doc.get("result"), dict):
+        raise ValueError("data.gov.il: not an answer")
+    return doc["result"]
+
+
+def fleet_file(fetch, kept, wait=time.sleep):
+    """The file of the operators' buses unless it is still the one kept (kept: its "source"): (source, {plate: [size, seats,
+    year, power]}, "" or 0 where it doesn't say), or None when unchanged. A bus it says nothing of isn't kept. One request
+    at a time, a pause before each but the first; any answer that isn't what it should be raises."""
+    asked = []
+
+    def get(action, params):
+        if asked:
+            wait(FLEET_PAUSE)
+        asked.append(action)
+        return fleet_get(action, params, fetch)
+    files = [(str(r.get("last_modified") or ""), r["id"]) for r in get("package_show", {"id": FLEET_DATASET}).get("resources") or []
+             if r.get("datastore_active") is True and isinstance(r.get("id"), str)]
+    if len(files) != 1:
+        raise ValueError("data.gov.il: %d files of buses" % len(files))
+    modified, resource_id = files[0]
+    source = {"resource": resource_id, "modified": modified}
+    if kept == source:
+        return None
+    buses, read, total = {}, 0, None
+    while total is None or read < total:
+        page = get("datastore_search", {"resource_id": resource_id, "fields": ",".join(FLEET_FIELDS), "sort": "_id",
+                                        "limit": FLEET_PAGE, "offset": read, "records_format": "lists"})
+        if [f.get("id") for f in page["fields"]] != list(FLEET_FIELDS):
+            raise ValueError("data.gov.il: other fields than asked")
+        total = page["total"]
+        if not isinstance(total, int) or total > FLEET_ROWS:
+            raise ValueError("data.gov.il: %r buses" % (total,))
+        rows = page["records"]
+        if not rows and read < total:
+            raise ValueError("data.gov.il: %d rows of %d" % (read, total))
+        for plate, size, seats, year, power in rows:
+            if type(plate) not in (int, float) or plate <= 0 or any(x is not None and type(x) not in (int, float) for x in (seats, year)):
+                raise ValueError("data.gov.il: a row that isn't a bus")
+            bus = [FLEET_SIZES.get(size, ""), int(seats) if seats and 0 < seats < 200 else 0,
+                   int(year) if year and 1980 <= year <= 2100 else 0, FLEET_POWER.get(power, "")]
+            if any(bus):
+                buses[str(int(plate))] = bus
+        read += len(rows)
+    return source, buses
+
+
+def fleet_rebuild(today=None, out=None, fetch=None, wait=time.sleep):
+    """keep_fleet()'s morning: unless checked today, the portal asked for a new file, written as fleet.json with the day
+    it was checked; a failing portal, or a file of far fewer buses than before, leaves the last. Returns (why the portal
+    or the file failed, else None; the table kept)."""
+    today = (today or datetime.datetime.now(ISRAEL).date()).isoformat()
+    out = out or FLEET
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, "fleet.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            kept = json.load(f)
+    except (OSError, ValueError):
+        kept = None
+    if isinstance(kept, dict) and kept.get("made") == today:
+        return None, kept
+    try:
+        got = fleet_file(fetch, kept.get("source") if isinstance(kept, dict) else None, wait)
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
+        return repr(e)[:300], kept
+    if got is None:
+        table = dict(kept, made=today)
+    else:
+        source, buses = got
+        before = len(kept["buses"]) if isinstance(kept, dict) else 0
+        if len(buses) < FLEET_SHRINK * before:
+            return "%d buses, far fewer than %d before" % (len(buses), before), kept
+        table = {"made": today, "modified": source["modified"], "source": source, "buses": buses}
+    with open(path + ".part", "w", encoding="utf-8") as f:
+        json.dump(table, f, separators=(",", ":"))
+    os.replace(path + ".part", path)
+    return None, table
+
+
+# fleet.json as last read whole (fleet_now()), and when it was written then.
+fleet_table, fleet_at = None, None
+
+
+def fleet_now():
+    """FLEET/fleet.json, read again when it changes; a file that isn't whole leaves the last that was."""
+    global fleet_table, fleet_at
+    path = os.path.join(FLEET, "fleet.json") if FLEET else ""
+    stamp = (path, os.path.getmtime(path)) if path and os.path.exists(path) else None
+    if stamp != fleet_at:
+        try:
+            if stamp is not None:
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+                datetime.date.fromisoformat(doc["made"])
+                if not isinstance(doc["buses"], dict):
+                    raise ValueError("not the fleet")
+                fleet_table = doc
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log("fleet failing:", repr(e))
+        fleet_at = stamp
+    return fleet_table
+
+
+def keep_fleet():
+    """fleet_rebuild() each day from FLEET_HOUR o'clock, in a process of its own within its bounds, like keep_lateness();
+    tried again an hour later while it wasn't checked today."""
+    tried = 0
+    while True:
+        now = datetime.datetime.now(ISRAEL)
+        if now.hour >= FLEET_HOUR and (fleet_now() or {}).get("made") != now.date().isoformat() and time.time() - tried >= 3600:
+            tried = time.time()
+            try:
+                done = subprocess.run([sys.executable, os.path.abspath(__file__), "fleet"], capture_output=True, timeout=FLEET_TIMEOUT)
+                if done.returncode:
+                    log("fleet not checked:", done.stderr.decode()[-300:])
+                else:
+                    log("fleet checked in %d s" % (time.time() - tried), done.stdout.decode().strip())
+            except (OSError, subprocess.SubprocessError) as e:
+                log("fleet not checked:", repr(e))
+        time.sleep(600)
+
+
+# How late each line's buses really run against the ministry's timetable, for a line's page (Handler.late()), from the
+# passings kept (HISTORY) and the timetable kav-live had that day. trip-patterns.json holds only today and tomorrow, so
+# each day's trips are put aside while it is today (LATENESS/timetable/<day>.json.gz). A day is judged once what it is
+# judged from is there for good (lateness_inputs()): its own passings and the next day's, which hold its runs after
+# midnight, both put away. Its figures (LATENESS/days/<day>.tsv.gz) are kept with a record of those files
+# (<day>.json), and judged again whenever one of them changes. A run is its route and first departure, never its journey
+# ref (some operators send 0 for every one), the departure as an instant: the hour the clocks go back holds two. At
+# each stop a report named where the timetable has that stop: how much later than the timetable the run got there. A stop
+# spaced between two reports, or named at another place than the timetable's, is left out, and so is a run's first stop
+# (a bus can name it long before setting out). Each morning the LATENESS_DAYS days before are put together by band
+# (lateness_band()): the median lateness and the share of passings on time (from LATENESS_EARLY seconds early to
+# LATENESS_LATE late), a band only with LATENESS_RUNS runs on LATENESS_LEAST days behind it (lateness.json), a day that
+# can't be read left out and judged again. Figures made over LATENESS_STALE days ago aren't given. Trains aren't judged
+# here.
+LATENESS = os.environ.get("LATENESS") or (os.path.join(REALTIME, "lateness") if REALTIME else "")
+# 60 runs: figured apart from the odd and the even days of three weeks, a band's share on time then comes out within a
+# tenth of itself 98 times in 100 (with 30, 91).
+LATENESS_DAYS, LATENESS_HOUR, LATENESS_RUNS, LATENESS_LEAST = 21, 5, 60, 3
+LATENESS_EARLY, LATENESS_LATE = 60, 300
+LATENESS_BIN, LATENESS_LOW, LATENESS_HIGH = 30, -1800, 5400  # each passing's lateness kept in 30 s steps, within these
+# Three days: against a table made that morning, one made 3 days before shows a line 2 or more minutes off in 1 band in
+# 200 and never 2 off in "N of 10" (13 Nov 2026), less than the figures' own spread from one half of the days to the
+# other; and two mornings in a row may fail.
+LATENESS_STALE = 3
+# The job's own bounds (lateness_limits()): address space, processor seconds and the time it is given, in a server whose
+# 1 GB the requests need (about 400 MB of it in use). On the real history a morning took 196 MB of address space and
+# 30 s judging one day, 202 MB and 346 s judging twenty at once.
+LATENESS_MEMORY, LATENESS_CPU, LATENESS_TIMEOUT = 384 << 20, 900, 1800
+LATENESS_ROW = re.compile(r"[0-9]{1,9}\t[a-z]{1,10}\t[0-9]{4}-[0-9]{2}-[0-9]{2}\t[0-9]{1,9}\t[0-9]{1,9}\t[0-9]{1,9}\t"
+                          r"(?:[0-9]{1,4}:[0-9]{1,9}(?:,[0-9]{1,4}:[0-9]{1,9})*)?")
+
+
+def lateness_band(day, into):
+    """The band of a trip of that day setting out into seconds after its midnight: Sunday to Thursday, morning (6 to 9),
+    midday (9 to 14), evening (14 to 19) or night (19 to 6, after midnight too); friday; saturday."""
+    weekday = datetime.date.fromisoformat(day).weekday()
+    if weekday in (4, 5):
+        return "friday" if weekday == 4 else "saturday"
+    hour = into // 3600
+    return "morning" if 6 <= hour < 9 else "midday" if 9 <= hour < 14 else "evening" if 14 <= hour < 19 else "night"
+
+
+def lateness_timetable(doc, day):
+    """The day's trips in trip-patterns.json (otp/prepare.py), by route and first departure (seconds after its
+    midnight): [its pattern, its clocks] in the patterns and offsets of their own; None when it hasn't that day."""
+    if day not in doc.get("days", ()) or "timed" not in doc:
+        return None
+    patterns, offsets, trips = {}, {}, {}
+    for route, starts in doc["trips"].items():
+        timed = doc["timed"].get(route, {})
+        for into, n in starts.items():
+            n, m = (x.get(day) if isinstance(x, dict) else x for x in (n, timed.get(into)))
+            if n is not None and m is not None:
+                trips.setdefault(route, {})[into] = [patterns.setdefault(n, len(patterns)), offsets.setdefault(m, len(offsets))]
+    return {"day": day, "patterns": [doc["patterns"][n] for n in patterns], "offsets": [doc["offsets"][m] for m in offsets],
+            "trips": trips}
+
+
+def lateness_keep_timetable(today, realtime=REALTIME, out=LATENESS):
+    """Today's trips put aside from the timetable kav-live reads, once (lateness_timetable()); whether they're there."""
+    path = os.path.join(out, "timetable", today + ".json.gz")
+    if os.path.exists(path):
+        return True
+    try:
+        with open(os.path.join(realtime, "trip-patterns.json"), encoding="utf-8") as f:
+            got = lateness_timetable(json.load(f), today)
+    except (OSError, ValueError):
+        return False
+    if got is None:
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with gzip.open(path + ".part", "wt", encoding="utf-8") as f:
+        json.dump(got, f, separators=(",", ":"))
+    os.replace(path + ".part", path)
+    return True
+
+
+def lateness_trips(out, day):
+    """The day's trips put aside: {(route, first departure): (its stops' codes, the timetable's seconds to each)}."""
+    with gzip.open(os.path.join(out, "timetable", day + ".json.gz"), "rt", encoding="utf-8") as f:
+        doc = json.load(f)
+    patterns = [p.split(",") for p in doc["patterns"]]
+    offsets = [array.array("l", (int(x) for x in o.split(","))) for o in doc["offsets"]]
+    return {(route, int(into)): (patterns[n], offsets[m]) for route, starts in doc["trips"].items()
+            for into, (n, m) in starts.items()}
+
+
+def lateness_inputs(day, folder=HISTORY, out=LATENESS, names=None):
+    """The files a day is judged from, each [name, size, time written], once they are there for good; else None. That
+    is: its trips put aside, its own passings put away (.tsv.gz), and the next day's put away too or never to come, a
+    later day's file being there (the recorder only ever writes forward; next is then None). names: HISTORY's files."""
+    following = (datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat()
+    names = os.listdir(folder) if names is None else names
+
+    def stat(path):
+        s = os.stat(path)
+        return [os.path.basename(path), s.st_size, s.st_mtime_ns]
+    own, trips = os.path.join(folder, day + ".tsv.gz"), os.path.join(out, "timetable", day + ".json.gz")
+    if day + ".tsv" in names or following + ".tsv" in names or not os.path.exists(own) or not os.path.exists(trips):
+        return None
+    if following + ".tsv.gz" in names:
+        after = stat(os.path.join(folder, following + ".tsv.gz"))
+    elif any(n[:10] > following and n[10:] in (".tsv", ".tsv.gz") for n in names):
+        after = None
+    else:
+        return None
+    return {"history": stat(own), "next": after, "timetable": stat(trips)}
+
+
+def lateness_judge(day, kinds, folder=HISTORY, out=LATENESS):
+    """LATENESS/days/<day>.tsv.gz: by route and band (lateness_band()), the day, the runs and passings judged, those on
+    time, and how many passings were how late (LATENESS_BIN steps from LATENESS_LOW). kinds: {route: kind}, the
+    catalog's; a train's route is left out."""
+    trips = lateness_trips(out, day)
+    following = (datetime.date.fromisoformat(day) + datetime.timedelta(days=1)).isoformat()
+    starts, judged, sums = {}, {}, {}
+    bins = (LATENESS_HIGH - LATENESS_LOW) // LATENESS_BIN
+    for d in (day, following):
+        path = os.path.join(folder, d + ".tsv.gz")
+        if not os.path.exists(path):
+            continue
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            for line in f:
+                p = line.rstrip("\n").split("\t")
+                try:
+                    when, place = int(p[6]), int(p[4])
+                except (IndexError, ValueError):
+                    continue
+                route, start = p[0], p[3]
+                if start not in starts:
+                    try:
+                        t = datetime.datetime.fromisoformat(start)
+                        into = t.hour * 3600 + t.minute * 60 + t.second
+                        into = into if start[:10] == day else into + 86400 if start[:10] == following else None
+                        starts[start] = None if into is None else (into, int(t.timestamp()))
+                    except ValueError:
+                        starts[start] = None
+                got = starts[start]
+                if got is None or kinds.get(route) == 2:
+                    continue
+                key = (route, got[0], got[1])
+                trip = trips.get(key[:2])
+                if trip is None:
+                    continue
+                codes, clocks = trip
+                mask = judged.get(key, 0)
+                if place < 2 or place > len(codes) or codes[place - 1] != p[5] or len(clocks) != len(codes) or mask >> place & 1:
+                    continue
+                judged[key] = mask | 1 << place
+                late = when - got[1] - clocks[place - 1]
+                band = (route, lateness_band(day, got[0]))
+                s = sums.get(band)
+                if s is None:
+                    s = sums[band] = [0, 0, 0, array.array("l", [0]) * bins]
+                s[1] += 1
+                s[2] += -LATENESS_EARLY <= late <= LATENESS_LATE
+                s[3][(min(max(late, LATENESS_LOW), LATENESS_HIGH - 1) - LATENESS_LOW) // LATENESS_BIN] += 1
+    for route, into, _ in judged:
+        sums[(route, lateness_band(day, into))][0] += 1
+    path = os.path.join(out, "days", day + ".tsv.gz")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with gzip.open(path + ".part", "wt", encoding="utf-8") as f:
+        for (route, band), s in sorted(sums.items()):
+            f.write("%s\t%s\t%s\t%d\t%d\t%d\t%s\n" % (route, band, day, *s[:3], ",".join(
+                "%d:%d" % (i, n) for i, n in enumerate(s[3]) if n)))
+    os.replace(path + ".part", path)
+    return sums
+
+
+def lateness_figures(rows):
+    """One band's figures from its days' rows of lateness_judge(): [median lateness (s), passings on time (per
+    thousand), runs, days], or None with under LATENESS_RUNS runs on LATENESS_LEAST days."""
+    runs = passings = on = 0
+    days, counts = set(), {}
+    for p in rows:
+        runs, passings, on = runs + int(p[3]), passings + int(p[4]), on + int(p[5])
+        if int(p[3]):
+            days.add(p[2])
+        for part in p[6].split(",") if p[6] else ():
+            i, n = part.split(":")
+            counts[int(i)] = counts.get(int(i), 0) + int(n)
+    if runs < LATENESS_RUNS or len(days) < LATENESS_LEAST or not passings:
+        return None
+    below = 0
+    for i in sorted(counts):
+        below += counts[i]
+        if 2 * below > passings:
+            break
+    return [LATENESS_LOW + i * LATENESS_BIN + LATENESS_BIN // 2, round(1000 * on / passings), runs, len(days)]
+
+
+def lateness_day_ok(path, day):
+    """Whether a day's file reads whole as lateness_judge() writes it: every row of that day, in order."""
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            last = None
+            for line in f:
+                line = line.rstrip("\n")
+                if not LATENESS_ROW.fullmatch(line):
+                    return False
+                p = line.split("\t", 3)
+                if p[2] != day or last is not None and (p[0], p[1]) <= last:
+                    return False
+                last = (p[0], p[1])
+        return True
+    except (OSError, EOFError, ValueError, zlib.error):
+        return False
+
+
+def lateness_tables(today, out=LATENESS):
+    """lateness.json's figures from the days judged among the LATENESS_DAYS before today: by route, each band's
+    (lateness_figures()) and all of them together ("all"), one route at a time. A day's file that doesn't read whole is
+    left out ("skipped") and goes, with its record, to be judged again."""
+    wanted = [(today - datetime.timedelta(days=back)).isoformat() for back in range(LATENESS_DAYS, 0, -1)]
+    days, skipped = [], []
+    for d in wanted:
+        path = os.path.join(out, "days", d + ".tsv.gz")
+        if not os.path.exists(path):
+            continue
+        if lateness_day_ok(path, d):
+            days.append(d)
+        else:
+            log("lateness: day %s left out, its file doesn't read" % d)
+            skipped.append(d)
+            for name in (d + ".tsv.gz", d + ".json"):
+                if os.path.exists(os.path.join(out, "days", name)):
+                    os.remove(os.path.join(out, "days", name))
+    routes = {}
+    with ExitStack() as stack:
+        files = [stack.enter_context(gzip.open(os.path.join(out, "days", d + ".tsv.gz"), "rt", encoding="utf-8")) for d in days]
+        rows = (line.rstrip("\n").split("\t") for line in heapq.merge(*files, key=lambda line: line.split("\t", 2)[:2]))
+        for route, mine in itertools.groupby(rows, key=lambda p: p[0]):
+            mine = list(mine)
+            got = {band: lateness_figures(list(part)) for band, part in itertools.groupby(mine, key=lambda p: p[1])}
+            got["all"] = lateness_figures(mine)
+            got = {band: figures for band, figures in got.items() if figures}
+            if got:
+                routes[route] = got
+    return {"made": today.isoformat(), "from": days[0] if days else None, "to": days[-1] if days else None, "days": days,
+            "skipped": skipped, "early": LATENESS_EARLY, "late": LATENESS_LATE, "least": [LATENESS_RUNS, LATENESS_LEAST],
+            "routes": routes}
+
+
+def lateness_rebuild(kinds, today=None, folder=HISTORY, out=LATENESS, realtime=REALTIME):
+    """keep_lateness()'s morning: today's trips put aside; each day of the LATENESS_DAYS before whose files are there for
+    good (lateness_inputs()) judged, unless judged from those very files already (its record); one that can't be judged
+    is left out and kept as failed till they change; days older than that dropped; lateness.json written. Returns
+    (whether today's trips are put aside, the days judged, the days that failed, the figures)."""
+    today = today or datetime.datetime.now(ISRAEL).date()
+    kept, judged, failed = lateness_keep_timetable(today.isoformat(), realtime, out), [], []
+    names = os.listdir(folder) if os.path.isdir(folder) else []
+    os.makedirs(os.path.join(out, "days"), exist_ok=True)
+    for back in range(LATENESS_DAYS, 1, -1):
+        day = (today - datetime.timedelta(days=back)).isoformat()
+        inputs = lateness_inputs(day, folder, out, names)
+        if inputs is None:
+            continue
+        record, path = os.path.join(out, "days", day + ".json"), os.path.join(out, "days", day + ".tsv.gz")
+        try:
+            with open(record, encoding="utf-8") as f:
+                was = json.load(f)
+        except (OSError, ValueError):
+            was = None
+        if isinstance(was, dict) and was.get("inputs") == inputs and (was.get("failed") or os.path.exists(path)):
+            continue
+        try:
+            lateness_judge(day, kinds, folder, out)
+            done = {"inputs": inputs}
+            judged.append(day)
+        except (EOFError, ValueError, KeyError, IndexError, TypeError, zlib.error, gzip.BadGzipFile) as e:
+            # What the day's own files hold. Running short of memory or disk isn't: that ends the whole run, before any
+            # figures are written, and the next run tries again.
+            log("lateness: day %s not judged: %r" % (day, e))
+            done = {"inputs": inputs, "failed": repr(e)[:300]}
+            failed.append(day)
+            if os.path.exists(path):
+                os.remove(path)
+        with open(record + ".part", "w", encoding="utf-8") as f:
+            json.dump(done, f)
+        os.replace(record + ".part", record)
+    oldest = (today - datetime.timedelta(days=LATENESS_DAYS)).isoformat()
+    for part in ("timetable", "days"):
+        if os.path.isdir(os.path.join(out, part)):
+            for name in os.listdir(os.path.join(out, part)):
+                if name[:10] < oldest:
+                    os.remove(os.path.join(out, part, name))
+    table = lateness_tables(today, out)
+    with open(os.path.join(out, "lateness.json.part"), "w") as f:
+        json.dump(table, f, separators=(",", ":"))
+    os.replace(os.path.join(out, "lateness.json.part"), os.path.join(out, "lateness.json"))
+    return kept, judged, failed, table
+
+
+def lateness_limits(memory=LATENESS_MEMORY, cpu=LATENESS_CPU):
+    """The job's own bounds, set in its own process before it reads anything: memory bytes of address space at most (a
+    MemoryError ends it, and the figures already there stay), cpu seconds of processor, and the processor only when
+    nothing else wants it (SCHED_IDLE): the server's requests always come first."""
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 30))
+    os.nice(19)
+    try:
+        os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
+    except (AttributeError, OSError):
+        pass
+
+
+# lateness.json as last read whole (lateness_now()), and when it was written then.
+lateness, lateness_at = None, None
+
+
+def lateness_now():
+    """LATENESS/lateness.json, read again when it changes; a file that isn't whole figures leaves the last that were.
+    None without any."""
+    global lateness, lateness_at
+    path = os.path.join(LATENESS, "lateness.json") if LATENESS else ""
+    stamp = (path, os.path.getmtime(path)) if path and os.path.exists(path) else None
+    if stamp != lateness_at:
+        try:
+            if stamp is not None:
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+                datetime.date.fromisoformat(doc["made"])
+                if not isinstance(doc["routes"], dict) or not isinstance(doc["days"], list):
+                    raise ValueError("not lateness figures")
+                lateness = doc
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log("lateness failing:", repr(e))
+        lateness_at = stamp
+    return lateness
+
+
+def keep_lateness():
+    """lateness_rebuild() each day from LATENESS_HOUR o'clock, in a process of its own with bounds of its own
+    (lateness_limits()), like keep_chance(); tried again an hour later while today's trips aren't put aside or the
+    figures aren't today's."""
+    tried = 0
+    while True:
+        now = datetime.datetime.now(ISRAEL)
+        today = now.date().isoformat()
+        done_today = os.path.exists(os.path.join(LATENESS, "timetable", today + ".json.gz")) and \
+            (lateness_now() or {}).get("made") == today
+        if now.hour >= LATENESS_HOUR and catalog["lines"] and not done_today and time.time() - tried >= 3600:
+            tried = time.time()
+            kinds = {str(route): line[6] for route, line in catalog["lines"].items()}
+            try:
+                done = subprocess.run([sys.executable, os.path.abspath(__file__), "lateness"], capture_output=True,
+                                      input=json.dumps(kinds).encode(), timeout=LATENESS_TIMEOUT)
+                if done.returncode:
+                    log("lateness not rebuilt:", done.stderr.decode()[-300:])
+                else:
+                    log("lateness rebuilt in %d s" % (time.time() - tried), done.stdout.decode().strip())
+            except (OSError, subprocess.SubprocessError) as e:
+                log("lateness not rebuilt:", repr(e))
+        time.sleep(600)
+
+
+# How busy each line usually is at each hour of the week, for "How busy" (Handler.busy()), from the Ministry of
+# Transport's count of Rav-Kav taps by line, direction and hour of each day (data.gov.il, dataset tikufim-2021, a month
+# at a time). A tap is a boarding, not a rider on board: against the ministry's on-board survey of Gush Dan (2023-25) taps
+# per trip came to about 0.76 of the riders seen boarding, and a trip's fullest point carried about 0.62 of its boardings.
+# So an hour is told against the same kind of day's busiest hours on the line, by taps per trip on the road then: one of
+# its busiest (among that day's BUSY_TOP highest, and BUSY_HIGH of its three highest or more), one of its quieter (under
+# BUSY_LOW of them), else about average; never how full. Each morning from BUSY_HOUR a process of its own, within the lateness job's bounds, asks the portal once whether
+# the file changed, and only then fetches its newest month BUSY_PAGE rows at a time with a pause between (busy_month());
+# the trips come from the timetables the lateness job saves (busy_trips()). Shabbat starts and ends an hour earlier on
+# winter time, so a Friday or Saturday counts only on the clock (summer or winter time) of the saved timetables of its kind
+# (busy_clocks()): in October 2026, four summer Fridays against winter timetables made 21 lines' Fridays mostly "quieter".
+# The levels are told again each morning from the month kept (taps.json); an answer that isn't what it should be, or
+# levels for far fewer routes, leave the last.
+BUSY = os.environ.get("BUSY") or (os.path.join(REALTIME, "busy") if REALTIME else "")
+# The only place asked: https, no redirect (naim_fetch()). Tests set one that asks no one.
+BUSY_API = os.environ.get("BUSY_API") or "https://data.gov.il/api/3/action/"
+BUSY_DATASET = "tikufim-2021"
+BUSY_FIELDS = ("OfficeLineId", "Direction", "hour_a") + tuple("D%d" % d for d in range(1, 32))
+BUSY_HOUR = 6
+# Rows a request (5,000 were 557 to 652 KB in October 2026; naim_fetch() takes 1 MiB at most), rows a month at most
+# (October 2026: 67,500), seconds between requests and for each.
+BUSY_PAGE, BUSY_ROWS, BUSY_PAUSE, BUSY_WAIT = 5000, 150_000, 1.5, 60
+BUSY_KINDS = ("weekday", "friday", "saturday")
+# A day counts when the country's taps reach this share of its kind's median that month (27 Oct 2026, a cut service, had
+# 58%); a kind needs this many such days.
+BUSY_NORMAL, BUSY_DAYS = 0.7, {"weekday": 8, "friday": 3, "saturday": 3}
+# An hour is told with 20 taps a day or more and a trip or more on the road: at 20 to 40 taps the two halves of October (odd
+# and even days) gave taps per trip a median 9% apart on weekdays, 22% on Fridays and 26% on Saturdays, the whole month
+# about half that; under 10, 25 to 90%. A kind of day needs 4 such hours to compare.
+BUSY_TAPS, BUSY_TRIPS, BUSY_CELLS = 20, 1, 4
+BUSY_HIGH, BUSY_LOW = 0.8, 0.5
+# Busiest is among a day's 4 highest hours, and never more than a third of the hours it tells: in October 2026, against the
+# week's highest, 41 lines' weekdays were mostly "quieter" under a Friday peak, and on flat lines nearly every hour was
+# "busiest" (175 lines with 8 hours or more said it for half of them or more).
+BUSY_TOP = 4
+BUSY_MOST = 1_000_000  # taps of a line in an hour of a day at most, and its ids; a count past it fails the month
+# A line whose busiest hours have under 15 taps a trip is quiet whenever it can be told: buses with under 15 taps a trip had
+# a median 7 on board at their fullest in the survey (16 at the 90th percentile).
+BUSY_QUIET = 15
+BUSY_SHRINK = 0.5  # levels for under this share of the routes before don't replace them
+BUSY_STALE = 75  # days after the month's last that its levels are given: one month missed, not two
+BUSY_MEMORY, BUSY_CPU, BUSY_TIMEOUT = LATENESS_MEMORY, LATENESS_CPU, LATENESS_TIMEOUT
+busy_held = {"lines": {}}  # each route's line in the ministry's numbering (ministry_lines()), from load_lines()
+
+
+def busy_kind(day):
+    return "friday" if day.weekday() == 4 else "saturday" if day.weekday() == 5 else "weekday"
+
+
+def busy_clock(day):
+    """Israel's clock that day, "+0300" on summer time, "+0200" on winter time (at noon: the change is at night)."""
+    return datetime.datetime.combine(day, datetime.time(12), ISRAEL).strftime("%z")
+
+
+def busy_clocks(folder):
+    """The clock of the saved timetables of Fridays and of Saturdays: their latest saved day's ({kind: clock}, a kind
+    with no saved day left out)."""
+    clocks = {}
+    names = sorted(os.listdir(folder)) if folder and os.path.isdir(folder) else []
+    for name in names:
+        if name.endswith(".json.gz"):
+            day = datetime.date.fromisoformat(name[:10])
+            if busy_kind(day) != "weekday":
+                clocks[busy_kind(day)] = busy_clock(day)
+    return clocks
+
+
+def busy_days(totals, year, month, normal=BUSY_NORMAL):
+    """The month's days that count, by kind: a day whose taps all over the country (totals {day: taps}) are under normal of
+    its kind's median that month is left out (a holiday, a strike, a cut service)."""
+    by = {kind: [] for kind in BUSY_KINDS}
+    for d in range(1, calendar.monthrange(year, month)[1] + 1):
+        by[busy_kind(datetime.date(year, month, d))].append(d)
+    days = {}
+    for kind, ds in by.items():
+        middle = statistics.median(totals.get(d, 0) for d in ds) if ds else 0
+        days[kind] = [d for d in ds if totals.get(d, 0) >= normal * middle]
+    return days
+
+
+def busy_trips(folder, lines, clocks=None):
+    """Trips on the road by line (lines: {route: its line}), kind and hour, the mean over the saved timetables' days of
+    each kind (LATENESS/timetable, lateness_keep_timetable()): each trip counted in each hour for the share of its run
+    inside it, a tap being made while it runs; a Friday or Saturday only on its kind's clock in clocks, when given.
+    (trips {line: {kind: [24]}}, days {kind: how many})."""
+    trips, days = {}, {kind: 0 for kind in BUSY_KINDS}
+    names = sorted(os.listdir(folder)) if folder and os.path.isdir(folder) else []
+    for name in names:
+        if not name.endswith(".json.gz"):
+            continue
+        day = datetime.date.fromisoformat(name[:10])
+        if clocks is not None and busy_kind(day) in clocks and busy_clock(day) != clocks[busy_kind(day)]:
+            continue
+        days[busy_kind(day)] += 1
+        with gzip.open(os.path.join(folder, name), "rt", encoding="utf-8") as f:
+            doc = json.load(f)
+        lengths = [int(o.rsplit(",", 1)[-1]) for o in doc["offsets"]]
+        for route, runs in doc["trips"].items():
+            line = lines.get(route)
+            if line is None:
+                continue
+            mine = trips.setdefault(line, {kind: [0.0] * 24 for kind in BUSY_KINDS})
+            for into, (_, offset) in runs.items():
+                start = int(into)
+                end = start + max(lengths[offset], 60)
+                at = start
+                while at < end:
+                    edge = (at // 3600 + 1) * 3600
+                    on = day + datetime.timedelta(days=at // 86400)
+                    mine[busy_kind(on)][at % 86400 // 3600] += (min(edge, end) - at) / (end - start)
+                    at = edge
+    for mine in trips.values():
+        for kind in BUSY_KINDS:
+            mine[kind] = [x / days[kind] if days[kind] else 0.0 for x in mine[kind]]
+    return trips, days
+
+
+def busy_levels(taps, trips):
+    """Each line's levels by kind of day, an hour a character, against that kind's own hours: "3" one of its busiest
+    (among its BUSY_TOP highest, at most a third of the hours told, and BUSY_HIGH of its three highest or more), "2" about
+    average, "1" one of its quieter (under BUSY_LOW of them), "q" a day whose three highest are under BUSY_QUIET taps a
+    trip, "0" too little to say; a kind with under BUSY_CELLS hours to compare left out, a line with none left out too.
+    taps, trips: {line: {kind: [24]}}, means a day."""
+    out = {}
+    for line, mine in taps.items():
+        running = trips.get(line) or {}
+        levels = {}
+        for kind in BUSY_KINDS:
+            counts, on = mine.get(kind) or [0.0] * 24, running.get(kind) or [0.0] * 24
+            cells = {hour: count / on[hour] for hour, count in enumerate(counts) if on[hour] >= BUSY_TRIPS and count >= BUSY_TAPS}
+            if len(cells) < BUSY_CELLS:
+                continue
+            ranked = sorted(cells.values(), reverse=True)
+            top = statistics.mean(ranked[:3])
+            least = ranked[min(BUSY_TOP, max(1, len(cells) // 3)) - 1]  # the lowest taps a trip that may be busiest
+            chars = ["0"] * 24
+            for hour, each in cells.items():
+                chars[hour] = ("q" if top < BUSY_QUIET else "3" if each >= BUSY_HIGH * top and each >= least
+                               else "1" if each < BUSY_LOW * top else "2")
+            levels[kind] = "".join(chars)
+        if levels:
+            out[line] = levels
+    return out
+
+
+def busy_get(action, params, fetch=None):
+    """One answer of the portal's API (its result), from data.gov.il alone, within BUSY_WAIT seconds; else an exception."""
+    url = BUSY_API + action + "?" + urllib.parse.urlencode(params)
+    try:
+        doc = json.loads((fetch or naim_fetch)(time.monotonic() + BUSY_WAIT, url=url))
+    except OSError as e:
+        raise OSError("data.gov.il: %s" % e) from e
+    if not isinstance(doc, dict) or doc.get("success") is not True or not isinstance(doc.get("result"), dict):
+        raise ValueError("data.gov.il: not an answer")
+    return doc["result"]
+
+
+def busy_month(fetch, kept, wait=time.sleep):
+    """The newest month of the count of taps, unless the file is still the one kept (kept: its "source"): (source, month,
+    days that count by kind, taps {line: {kind: [24 means a day]}}), or None when unchanged; Fridays and Saturdays by their
+    clock ("friday+0300", "friday+0200"...). One request at a time, a pause before each but the first; any answer that
+    isn't what it should be raises, and nothing is kept of it."""
+    asked = []
+
+    def get(action, params):
+        if asked:
+            wait(BUSY_PAUSE)
+        asked.append(action)
+        return busy_get(action, params, fetch)
+    files = []
+    for r in get("package_show", {"id": BUSY_DATASET}).get("resources") or []:
+        year = re.search(r"\b(20[0-9]{2})\b", str(r.get("name") or ""))
+        if r.get("datastore_active") is True and year and isinstance(r.get("id"), str):
+            files.append((int(year.group(1)), r["id"], str(r.get("last_modified") or "")))
+    if not files:
+        raise ValueError("data.gov.il: no year's file of taps")
+    _, resource_id, modified = max(files)
+    source = {"resource": resource_id, "modified": modified}
+    if kept == source:
+        return None
+    newest = get("datastore_search", {"resource_id": resource_id, "limit": 1, "fields": "year_key,month_key",
+                                      "sort": "year_key desc,month_key desc", "records_format": "lists"})
+    year, month = (int(x) for x in newest["records"][0])
+    if not 2020 <= year <= 2100 or not 1 <= month <= 12:
+        raise ValueError("data.gov.il: no such month %r" % ((year, month),))
+    length = calendar.monthrange(year, month)[1]
+    totals, counts, read, total = {}, {}, 0, None
+    while total is None or read < total:
+        page = get("datastore_search", {"resource_id": resource_id, "filters": json.dumps({"year_key": year, "month_key": month}),
+                                        "fields": ",".join(BUSY_FIELDS), "sort": "_id", "limit": BUSY_PAGE, "offset": read,
+                                        "records_format": "lists"})
+        if [f.get("id") for f in page["fields"]] != list(BUSY_FIELDS):
+            raise ValueError("data.gov.il: other fields than asked")
+        total = page["total"]
+        if not isinstance(total, int) or total > BUSY_ROWS:
+            raise ValueError("data.gov.il: %r rows in a month" % (total,))
+        rows = page["records"]
+        if not rows and read < total:
+            raise ValueError("data.gov.il: %d rows of %d" % (read, total))
+        for row in rows:
+            if len(row) != len(BUSY_FIELDS) or not all(x is None or type(x) in (int, float) and low <= x <= BUSY_MOST
+                                                        for low, part in ((-1, row[:3]), (0, row[3:])) for x in part):
+                raise ValueError("data.gov.il: a row that isn't counts")
+            line, direction, hour = (int(x) if x is not None else -1 for x in row[:3])
+            days = [int(x or 0) for x in row[3:3 + length]]
+            for d, n in enumerate(days, 1):
+                totals[d] = totals.get(d, 0) + n
+            if line > 0 and direction >= 0 and 0 <= hour <= 23:
+                mine = counts.setdefault("%d-%d" % (line, direction), {})
+                mine[hour] = [a + b for a, b in zip(mine.get(hour, [0] * length), days)]
+        read += len(rows)
+    days = busy_days(totals, year, month)
+    for kind in ("friday", "saturday"):
+        for d in days.pop(kind):
+            days.setdefault(kind + busy_clock(datetime.date(year, month, d)), []).append(d)
+    taps = {}
+    for line, hours in counts.items():
+        taps[line] = {key: [round(sum(hours[h][d - 1] for d in ds) / len(ds), 1) if h in hours else 0.0 for h in range(24)]
+                      for key, ds in days.items() if len(ds) >= BUSY_DAYS[key[:-5] if key[-5:-4] == "+" else key]}
+    return source, "%04d-%02d" % (year, month), days, taps
+
+
+def busy_checked(out=None):
+    """The day the portal was last asked successfully (checked.json), or None."""
+    try:
+        with open(os.path.join(out or BUSY, "checked.json"), encoding="utf-8") as f:
+            return json.load(f)["day"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def busy_write(path, doc):
+    """doc written whole as path, through a file of its own beside it (two writers never share one), then put in place."""
+    part = "%s.%d.%s.part" % (path, os.getpid(), secrets.token_hex(4))
+    try:
+        with open(part, "x", encoding="utf-8") as f:
+            json.dump(doc, f, separators=(",", ":"))
+        os.replace(part, path)
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
+
+
+def busy_rebuild(lines, today=None, out=None, timetables=None, fetch=None, wait=time.sleep):
+    """keep_busy()'s morning: the portal asked (unless already today) for a new month of taps, kept as taps.json; the
+    levels told from the month kept and the saved trips, written as busy.json unless for far fewer routes than before.
+    Returns (why the portal or the levels failed, else None; the table written, else None)."""
+    today = today or datetime.datetime.now(ISRAEL).date()
+    out = out or BUSY
+    timetables = timetables if timetables is not None else os.path.join(LATENESS, "timetable") if LATENESS else ""
+    os.makedirs(out, exist_ok=True)
+    try:
+        with open(os.path.join(out, "taps.json"), encoding="utf-8") as f:
+            kept = json.load(f)
+    except (OSError, ValueError):
+        kept = None
+    problem = None
+    if busy_checked(out) != today.isoformat():
+        try:
+            got = busy_month(fetch, kept.get("source") if isinstance(kept, dict) else None, wait)
+            if got is not None:
+                source, month, days, taps = got
+                year, number = (int(x) for x in month.split("-"))
+                kept = {"source": source, "month": month, "from": month + "-01",
+                        "to": "%s-%02d" % (month, calendar.monthrange(year, number)[1]), "days": days, "taps": taps}
+                busy_write(os.path.join(out, "taps.json"), kept)
+            busy_write(os.path.join(out, "checked.json"), {"day": today.isoformat()})
+        except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
+            problem = repr(e)[:300]
+    if not isinstance(kept, dict):
+        return problem, None
+    # Fridays and Saturdays on the saved timetables' clock alone; a kind of day with under BUSY_DAYS such days has no
+    # means kept, so it isn't told that month.
+    clocks = busy_clocks(timetables)
+    trips, _ = busy_trips(timetables, lines, clocks)
+    keys = dict({"weekday": "weekday"}, **{kind: kind + clock for kind, clock in clocks.items()})
+    taps = {line: {kind: mine[key] for kind, key in keys.items() if key in mine} for line, mine in kept["taps"].items()}
+    levels = busy_levels(taps, trips)
+    routes = {route: levels[line] for route, line in sorted(lines.items()) if line in levels}
+    try:
+        with open(os.path.join(out, "busy.json"), encoding="utf-8") as f:
+            before = len(json.load(f)["routes"])
+    except (OSError, ValueError, KeyError, TypeError):
+        before = 0
+    if len(routes) < BUSY_SHRINK * before:
+        return (problem + "; " if problem else "") + "levels for %d routes, far fewer routes than %d before" % (len(routes), before), None
+    told = {kind: len(kept["days"].get(key, ())) for kind, key in keys.items()}
+    table = {"made": today.isoformat(), "month": kept["month"], "from": kept["from"], "to": kept["to"], "clocks": clocks,
+             "days": {kind: n for kind, n in told.items() if n >= BUSY_DAYS[kind]},
+             "least": {"taps": BUSY_TAPS, "trips": BUSY_TRIPS, "hours": BUSY_CELLS, "quiet": BUSY_QUIET}, "routes": routes}
+    busy_write(os.path.join(out, "busy.json"), table)
+    return problem, table
+
+
+# busy.json as last read whole (busy_now()), and when it was written then.
+busy_table, busy_at = None, None
+
+
+def busy_now():
+    """BUSY/busy.json, read again when it changes; a file that isn't whole levels leaves the last that were."""
+    global busy_table, busy_at
+    path = os.path.join(BUSY, "busy.json") if BUSY else ""
+    stamp = (path, os.path.getmtime(path)) if path and os.path.exists(path) else None
+    if stamp != busy_at:
+        try:
+            if stamp is not None:
+                with open(path, encoding="utf-8") as f:
+                    doc = json.load(f)
+                datetime.date.fromisoformat(doc["to"])
+                if not isinstance(doc["routes"], dict):
+                    raise ValueError("not busy levels")
+                busy_table = doc
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log("crowding levels failing:", repr(e))
+        busy_at = stamp
+    return busy_table
+
+
+def keep_busy():
+    """busy_rebuild() each day from BUSY_HOUR o'clock, in a process of its own within its bounds, like keep_lateness();
+    tried again an hour later while the portal wasn't asked successfully today."""
+    tried = 0
+    while True:
+        now = datetime.datetime.now(ISRAEL)
+        today = now.date().isoformat()
+        done_today = busy_checked() == today and (busy_now() or {}).get("made") == today
+        if now.hour >= BUSY_HOUR and busy_held["lines"] and not done_today and time.time() - tried >= 3600:
+            tried = time.time()
+            try:
+                done = subprocess.run([sys.executable, os.path.abspath(__file__), "busy"], capture_output=True,
+                                      input=json.dumps(busy_held["lines"]).encode(), timeout=BUSY_TIMEOUT)
+                if done.returncode:
+                    log("crowding levels not rebuilt:", done.stderr.decode()[-300:])
+                else:
+                    log("crowding levels rebuilt in %d s" % (time.time() - tried), done.stdout.decode().strip())
+            except (OSError, subprocess.SubprocessError) as e:
+                log("crowding levels not rebuilt:", repr(e))
+        time.sleep(600)
+
+
+ON_TIME = {"n": 0, "q": [0]}
+
+
+def chance_errors(tables, leg, at, code, line, now):
+    """How far off (real minus Kav's, seconds) Kav's time at of this ride at that stop runs: samples, sorted."""
+    digits = "".join(ch for ch in (line[0] or "") if ch.isdigit())
+    kind = "long" if len(digits) >= 3 else "short"
+    edge = lambda edges, minutes: max(e for e in edges if e <= max(minutes, 0))
+    live, tt = tables["live"], tables["timetable"]
+    if leg.get("live") or line[6] in (0, 1, 2, 5, 6, 7):
+        return live["table"].get("%s|%d" % (kind, edge(live["edges"], (at - now) / 60)), ON_TIME)["q"]
+    own = tt["per_stop"].get("%s|%s" % (leg["line"], code))
+    return own or tt["table"].get("%s|%d" % (kind, edge(tt["edges"], (at - (leg.get("first") or at)) / 60)), ON_TIME)["q"]
+
+
+def expected_late(it, stops, lines, now, tables, held=False):
+    """How much later than planned the route really gets there on average: each bus made with the chance it comes no
+    earlier than the rider (at the first stop when the walk there ends, never setting out before now; at a change when
+    the bus before gets there, plus the walk, the two buses' errors apart), a missed one costing the next run of its
+    line or of another line the card offers for the ride, and the last bus's own lateness. held: the chance the rider
+    makes every bus instead."""
+    legs = it["legs"]
+    rides = [n for n, l in enumerate(legs) if l["k"] == "r"]
+    if not rides:
+        return 1.0 if held else 0.0
+    code = lambda sid: str((stops.get(sid) or [""])[0])
+    reach, late, before = 1.0, 0.0, [0]
+    for k, n in enumerate(rides):
+        leg = legs[n]
+        line = lines.get(leg["line"]) or [""] * 7
+        board = chance_errors(tables, leg, leg["dep"], code(leg["stops"][0]), line, now)
+        if k == 0:
+            spare = leg["dep"] - (legs[n - 1]["arr"] + max(0, now - legs[0]["dep"]) if n else leg["dep"])
+        else:
+            spare = leg["dep"] - legs[rides[k - 1]]["arr"] - sum(
+                x["arr"] - x["dep"] for x in legs[rides[k - 1] + 1:n] if x["k"] != "r")
+        made = sum(len(board) - bisect.bisect_left(board, a - spare - CHANCE_GRACE) for a in before) / (len(board) * len(before))
+        later = [x[0] for x in leg.get("next") or [] if x[0] > leg["dep"]] + [
+            a["dep"] for a in leg.get("alts") or [] if a["dep"] > leg["dep"]]
+        late += reach * (1 - made) * ((min(later) - leg["dep"]) if later else CHANCE_MISSED)
+        reach *= made
+        before = chance_errors(tables, leg, leg["arr"], code(leg["stops"][-1]), line, now)
+    return reach if held else late + sum(before) / len(before)
+
+
+def led(picks, when, lines, stops=None):
+    """The recipe's list in the order shown: by ROUTE_COST, with the chance tables (and stops) CHANCE_WEIGHT minutes more
+    for each expected minute late (expected_late()), but each place only among the routes left planned to get there
+    no more than CHANCE_REACH after the cheapest of them by ROUTE_COST alone; and when the first has a tight change
+    (LIST_TIGHT_SPARE), the cheapest route with room at its changes first, if it costs at most LIST_TIGHT more and gets
+    there at most LIST_TIGHT minutes after it. Should the chance fail, by ROUTE_COST alone."""
+    plain = lambda i: route_cost(i, when, lines)
+    picks, cost = sorted(picks, key=plain), plain
+    tables = chance_tables() if stops is not None else None
+    if tables:
+        try:
+            held = {id(i): plain(i) + CHANCE_WEIGHT * expected_late(i, stops, lines, when, tables) / 60 for i in picks}
+            out, left = [], picks
+            while left:
+                best = min((i for i in left if i["arr"] <= left[0]["arr"] + CHANCE_REACH), key=lambda i: held[id(i)])
+                out.append(best)
+                left = [i for i in left if i is not best]
+            picks, cost = out, lambda i: held[id(i)]
+        except Exception as e:
+            log("chance order failing:", repr(e))
     tight = lambda i: facts(i)["slack"] is not None and facts(i)["slack"] < LIST_TIGHT_SPARE
-    picks = sorted(picks, key=cost)
     if picks and tight(picks[0]):
         roomy = [i for i in picks[1:] if not tight(i) and cost(i) <= cost(picks[0]) + LIST_TIGHT and
                  i["arr"] <= picks[0]["arr"] + LIST_TIGHT * 60]
         if roomy:
             return roomy[:1] + [i for i in picks if i is not roomy[0]]
     return picks
+
+
+def kept(lead, usual, own, arrive=False):
+    """Whether a rider whose walking and changes are own's (rider()'s letters) may be led by lead where the usual answer
+    from the same planner answers leads with usual: it is usual; or it gets there at most LIST_TIGHT minutes after it
+    (arriving by a time, sets out at most that much before it), walks at most WALK_FURTHER more in all (with less
+    walking, at most WALK_SAVED more), and is no later unless it saves what the setting is for: a ride for fewer
+    changes and "I don't mind walking", over WALK_SAVED of walking for less walking. Walk further to change less, not
+    much further and not much later."""
+    if usual is None or lead is usual:
+        return True
+    walk = lambda i: sum(l["arr"] - l["dep"] for l in i["legs"] if l["k"] == "w")
+    rides = lambda i: sum(l["k"] == "r" for l in i["legs"])
+    later = usual["dep"] - lead["dep"] if arrive else lead["arr"] - usual["arr"]
+    if later > LIST_TIGHT * 60 or walk(lead) > walk(usual) + (WALK_SAVED if own[1] == "l" else WALK_FURTHER):
+        return False
+    return later <= 0 or ((own[2] == "f" or own[1] == "m") and rides(lead) < rides(usual)) or \
+        (own[1] == "l" and walk(lead) < walk(usual) - WALK_SAVED)
+
+
+def rider_route(pool, shown, when, lines, stops):
+    """The route the rider would lead with from the recipe's pool (rider_cost()) when the list shown has none of its line
+    sequence: within their walks (walks_ok()), getting there within the recipe's reach of the list's soonest
+    (LIST_REACH, LIST_REACH_SHARE), and cheaper for them than every route shown. None when there is none."""
+    if not shown:
+        return None
+    cost = lambda i: route_cost(i, when, lines)
+    seen = {signature(s, lines, stops) for s in shown} | {signature(s, lines, stops, False) for s in shown}
+    reach = min(i["arr"] for i in shown) + max(LIST_REACH, LIST_REACH_SHARE * min(i["arr"] - i["dep"] for i in shown))
+    got = [i for i in pool if i["rides"] and walks_ok(i) and i["arr"] <= reach and signature(i, lines, stops) not in seen
+           and signature(i, lines, stops, False) not in seen]
+    best = min(got, key=cost, default=None)
+    return best if best is not None and cost(best) < min(cost(s) for s in shown) else None
 
 
 def told_apart(routes, lines, stops, first):
@@ -4168,16 +6393,19 @@ def told_apart(routes, lines, stops, first):
     return [it for it in routes if not blind(it) or best[bare(it)] is it]
 
 
+def walks_ok(it):
+    """Whether a route rides up to LIST_RIDES times and walks no longer than the list's walks (walk_reach())."""
+    legs = it["legs"]
+    at = [n for n, l in enumerate(legs) if l["k"] == "r"]
+    return 0 < len(at) <= LIST_RIDES and all(
+        (l.get("m") or 0) <= walk_reach(LIST_END_WALK if n < at[0] or n > at[-1] else LIST_CHANGE_WALK)
+        for n, l in enumerate(legs) if l["k"] == "w")
+
+
 def recipe_list(pool, when, lines, stops):
     """The routes of pool the recipe lists (ROUTE_COST and the rules beside it), cheapest first, then the soonest when
     it joins, then the route with fewer rides and the one walking less of the riders who mind those more (LIST_MINDED):
     each a route no listed one shares a line sequence or a card with."""
-    def walks_ok(it):
-        legs = it["legs"]
-        at = [n for n, l in enumerate(legs) if l["k"] == "r"]
-        return 0 < len(at) <= LIST_RIDES and all(
-            (l.get("m") or 0) <= (LIST_END_WALK if n < at[0] or n > at[-1] else LIST_CHANGE_WALK)
-            for n, l in enumerate(legs) if l["k"] == "w")
     pool = [i for i in pool if i["rides"]]
     pool = [i for i in pool if walks_ok(i)] or pool
     cost = lambda i: route_cost(i, when, lines)
@@ -4222,7 +6450,7 @@ def recipe_list(pool, when, lines, stops):
     reach = min(i["arr"] for i in shown) + max(LIST_REACH, LIST_REACH_SHARE * min(i["arr"] - i["dep"] for i in shown))
     for minded, less in (("change", lambda i: i["rides"] < min(s["rides"] for s in shown)),
                          ("walk", lambda i: i["walk"] <= min(s["walk"] for s in shown) - LIST_LESS_WALK)):
-        theirs = lambda i: route_cost(i, when, lines, weights=dict(ROUTE_COST, **{minded: ROUTE_COST[minded] * LIST_MINDED}))
+        theirs = lambda i: route_cost(i, when, lines, weights=dict(rider_cost(), **{minded: rider_cost()[minded] * LIST_MINDED}))
         wanted = [i for i in pool if i["arr"] <= reach and less(i) and new(i)]
         if wanted and theirs(min(wanted, key=theirs)) <= min(theirs(s) for s in shown):
             shown.append(min(wanted, key=theirs))
@@ -4235,8 +6463,9 @@ def recipe_list(pool, when, lines, stops):
 # answer comes, the same again without the first line of each of that answer's WEIGHED_BANS best routes, all at
 # once, each over WEIGHED_WINDOW. Their routes join the others found (plan_answer()), asked beside the routes list's
 # own questions and taken if they come within WEIGHED_BY seconds of the trip being asked for. Asked any later, they
-# would keep long trips' answers waiting to the cap.
-WEIGHED, WEIGHED_WALK, WEIGHED_RAIL, WEIGHED_BANS, WEIGHED_BY = True, 5, 0.6, 3, 6
+# would keep long trips' answers waiting to the cap. Two bans: each is a ninth of what a trip costs the planner, and
+# a third one's routes changed one list in thirty, none of them for the worse on the buses' real passings.
+WEIGHED, WEIGHED_WALK, WEIGHED_RAIL, WEIGHED_BANS, WEIGHED_BY = True, 5, 0.6, 2, 6
 WEIGHED_WINDOW = "PT40M"
 # Beside them, the routes list's own question with WEIGHED_SLACK at every change instead of half a minute: the
 # connections with time to spare, which the planner drops beside a tight one setting out later or arriving sooner.
@@ -4297,6 +6526,12 @@ def shown_order(it):
     return rank(it) + (SHOWN_CHANGE - RANK_CHANGE) * max(it["rides"] - 1, 0)
 
 
+def catchable(it, now):
+    """Whether a route can still be taken from now: it sets out from now on, the minute of FIRST_LEAN before it allowed
+    for a walk first; a ride first (from a station's platform) gone by then is gone."""
+    return it["dep"] >= now - (FIRST_LEAN if it["legs"] and it["legs"][0]["k"] != "r" else 0)
+
+
 def choose(found, when, arrive, lines, stops, most=MOST_SHOWN, last=None, fill=False, now=None):
     """The few routes worth showing: the earliest arrival, the best without a change,
     the least walking, then the best of the rest by the list's own order (rank()), none the same as another; three at
@@ -4308,16 +6543,18 @@ def choose(found, when, arrive, lines, stops, most=MOST_SHOWN, last=None, fill=F
     by a time, when it was asked."""
     transit = [i for i in found if i["rides"]]
     if arrive and now is not None:
-        # The planner counts back from the arrival only: the routes that set out over a minute before it was asked go,
-        # while one is still to come (asked to be at Haifa Hadar by 16:34, it can give routes that left at 13:04).
-        transit = [i for i in transit if i["dep"] >= now - 60] or transit
+        # The planner counts back from the arrival only: the routes that set out over a minute before it was asked go
+        # (asked to be at Haifa Hadar by 16:34, it can give routes that left at 13:04). With none still to come, none,
+        # while the time to be there is ahead (plan_answer() asks for the soonest from now); a time already gone by, or
+        # the last way tonight, keeps them as they were.
+        transit = [i for i in transit if catchable(i, now)] or (transit if last is not None or when <= now else [])
     if not transit:
-        return found[:1]
-    short = [i for i in transit if longest_walk(i) <= WALK_MOST]
+        return [i for i in found if not i["rides"]][:1]
+    short = [i for i in transit if longest_walk(i) <= walk_reach(WALK_MOST)]
     if last is not None and short and max(i["dep"] for i in short) < last:
         # The last way tonight, when every route without a long walk has gone: those setting out from then on with a
         # walk up to WALK_LAST.
-        short += [i for i in transit if WALK_MOST < longest_walk(i) <= WALK_LAST and i["dep"] >= last]
+        short += [i for i in transit if walk_reach(WALK_MOST) < longest_walk(i) <= walk_reach(WALK_LAST) and i["dep"] >= last]
     transit = short or transit
     if last is not None:
         # And it leaves out the routes that set out more than a minute before it was asked while one is still to come.
@@ -4364,26 +6601,39 @@ def choose(found, when, arrive, lines, stops, most=MOST_SHOWN, last=None, fill=F
 
 def merged(picks, lines, stops, arrive=False):
     """Routes whose every ride can be taken on the same lines, once each ride's other lines are known, as one: they
-    show in one card, the lines side by side. The card is the one setting out first (last, arriving by a time),
-    leading with the first bus of any of its lines. One that gets there sooner, setting out later, is a card of its own
-    (crossed())."""
-    out, seen = [], {}
+    show in one card, the lines side by side. So are routes boarding and leaving every ride at the same stops where one's
+    lines are all among the other's at each ride (15 November 2026: 9 / 304 / 73א beside 9 / 73א, the same stops). The
+    card is the one setting out first (last, arriving by a time), leading with the first bus of any of its lines. One
+    that gets there sooner, setting out later, is a card of its own (crossed())."""
+    out, cards = [], []
     first = lambda it: next((l["dep"] for l in it["legs"] if l["k"] == "r"), it["dep"])
     for it in picks:
-        key = []
+        key, ends = [], []
         for l in it["legs"]:
             if l["k"] != "r":
                 continue
             taken = {tuple((lines.get(x["line"]) or [""] * 7)[i] for i in (6, 0)) for x in [l] + l.get("alts", [])}
             key.append(frozenset(taken) if all(n for _, n in taken) else signature({"legs": [l]}, lines, stops))
-        key = tuple(key)
-        card = next((n for n in seen.get(key, []) if not crossed(it, out[n])), None)
+            ends.append((l["stops"][0], l["stops"][-1]) if l.get("stops") else None)
+        key, ends = tuple(key), tuple(ends)
+        card = next((n for n, (k, e) in enumerate(cards) if (k == key or e == ends and None not in ends and lines_within(k, key))
+                     and not crossed(it, out[n])), None)
         if card is None:
-            seen.setdefault(key, []).append(len(out))
+            cards.append((key, ends))
             out.append(it)
         elif (first(it) > first(out[card])) if arrive else (first(it) < first(out[card])):
             out[card] = it
+            cards[card] = (key, ends)
     return out
+
+
+def lines_within(a, b):
+    """Whether two routes' lines (merged()'s keys, a set of lines a ride) are one inside the other at every ride: every
+    ride's lines of one among the same ride's lines of the other, all the same way round. Never for a ride without a
+    numbered line (a train)."""
+    if len(a) != len(b) or not all(isinstance(x, frozenset) for x in a + b):
+        return False
+    return all(x <= y for x, y in zip(a, b)) or all(y <= x for x, y in zip(a, b))
 
 
 def longest_walk(it):
@@ -4523,7 +6773,8 @@ def ask_all(frm, to, when, arrive, modes, now, via=(), window=None, at=(None, No
         asked = {k: pool.submit(ask_planner, plan_variables(frm, to, when, arrive, modes, k, via, window, at=at)) for k in kinds}
         if now and not via:
             asked["taxi"] = pool.submit(ask_graphql, taxi_query(frm, to, when))
-            asked["by_taxi"] = pool.submit(ask_planner, plan_variables(frm, to, when, arrive, modes, "by_taxi"))
+            if BY_TAXI:
+                asked["by_taxi"] = pool.submit(ask_planner, plan_variables(frm, to, when, arrive, modes, "by_taxi"))
         doc = asked.pop("main").result()
         if on_main:
             on_main(doc)
@@ -4624,7 +6875,9 @@ def on_kavs_times(found, when, lines, ask):
                 x["dep"], x["arr"] = x["dep"] + t[1] - leg["arr"], x["arr"] + t[1] - leg["arr"]
             nxt = [[(timed(trip, leg["stops"][0], None, at) or [at])[0], trip] for at, trip in leg.get("next") or []]
             leg.update({"dep": t[0], "arr": t[1], "sdep": t[2], "sarr": t[3], "live": t[4], "next": nxt})
-        if legs[0]["dep"] + FIRST_LEAN < when or not changes_kept(legs, lines):
+        # A walk first is leaned FIRST_LEAN (lean_at_night() sets it out at when at the soonest); a ride first (from a
+        # station's platform) has no lean: gone by when, it's gone.
+        if legs[0]["dep"] + (FIRST_LEAN if legs[0]["k"] != "r" else 0) < when or not changes_kept(legs, lines):
             continue
         out.append(dict(it, legs=legs, dep=legs[0]["dep"], arr=legs[-1]["arr"]))
     return out
@@ -4632,7 +6885,7 @@ def on_kavs_times(found, when, lines, ask):
 
 def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again=None, last=None, morning=None,
                 earlier=None, reluctant=None, wider=None, official=None, direct=None, weighed=None, rested=None, off=None,
-                now=None):
+                now=None, until=None, soonest=None):
     """Kav's answer: the routes list from doc, OpenTripPlanner's answer for it; and from more, its answers for the
     other kinds of question (plan_kinds, and "taxi" for leaving now), the sections shown besides, each route
     marked with its section's id. again(routes) asks the routes list's question again without those routes. last: for
@@ -4643,10 +6896,24 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
     direct() asks it for routes with no change over DIRECT_WINDOW. weighed() gives the planner's answers weighing
     routes as the recipe does (weighed_answers()), whose routes join those found. rested(later) asks the routes list's
     question after the days off (rest_end()), later the next morning's, and says when they end and if on a Saturday.
-    off: rest_end() for the time asked, the days off the routes are tagged after."""
+    off: rest_end() for the time asked, the days off the routes are tagged after. until: when the other lines' questions
+    are given up (alternatives()). soonest() asks the routes list's question leaving from now (arriving by a time still
+    ahead that no route leaving from now gets there by), each route then tagged how many minutes late it gets there.
+    A rider's walking and changes are weighed last (answer_for()): the list is built as the usual's, from the same answers."""
+    own = rider()
+    return as_rider(own[0] + "nn" + own[3], answer_for, own, doc, when, arrive, ask, more, frm, to, again, last, morning,
+                    earlier, reluctant, wider, official, direct, weighed, rested, off, now, until, soonest)
+
+
+def answer_for(own, doc, when, arrive, ask, more, frm, to, again, last, morning, earlier, reluctant, wider, official,
+               direct, weighed, rested, off, now, until, soonest):
+    """plan_answer() for a rider whose walking and changes are own's, rider() having their pace and time at the stop and
+    the usual's walking and changes: the list is the usual's for the same planner answers, their own route joins it
+    (rider_route()), it is in their order, and its lead is one kept() lets lead where the usual leads."""
     more = more or {}
     stops, lines, agencies = {}, {}, {}
     found = itineraries(doc, stops, lines, agencies)
+    alike = itineraries(doc, stops, lines, agencies, True)  # for the recipe alone
     errors = [e["code"] for e in ((doc.get("data") or {}).get("planConnection") or {}).get("routingErrors") or []]
     picks = choose(found, when, arrive, lines, stops, last=last, now=now)
     # The last way tonight with no route found walking no more than WALK_MOST in one go: the last ones that do, from
@@ -4707,6 +6974,18 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
                 dawned = True
         except Exception as e:
             log("planner failed on the morning:", repr(e))
+    # Arriving by a time still ahead with no route leaving from now on that gets there by then (each the planner has set
+    # out already: asked at 05:36 for Navon to Tel Aviv by 06:36, it had only the 04:33 train): the soonest routes leaving from
+    # now instead, leaving at a time, each tagged how late it gets there (late_by); none at all rather than one gone.
+    upcoming, asked_by = arrive and last is None and now is not None and when > now, when
+    late_by = None
+    if upcoming and soonest is not None and not any(i["rides"] for i in picks):
+        try:
+            got = [i for i in itineraries(soonest(), stops, lines, agencies) if i["rides"]]
+            if got:
+                picks, arrive, dawned, late_by, when = choose(got, int(now), False, lines, stops), False, True, when, int(now)
+        except Exception as e:
+            log("planner failed on the soonest routes:", repr(e))
     # Shabbat or a holiday with nothing to ride: the first routes after it, leaving at a time, or the next morning's.
     after = None
     if rested is not None and not any(i["rides"] for i in picks):
@@ -4740,7 +7019,7 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
     if direct is not None and not arrive and picks and after is None and \
             not any(i["rides"] == 1 for i in picks + added):
         try:
-            got = [i for i in itineraries(direct(), stops, lines, agencies) if i["rides"] == 1 and longest_walk(i) <= WALK_MOST]
+            got = [i for i in itineraries(direct(), stops, lines, agencies) if i["rides"] == 1 and longest_walk(i) <= walk_reach(WALK_MOST)]
             soonest = min(picks, key=lambda i: (i["arr"], i["rides"]))
             reach = soonest["arr"] + LATEST_SHOWN * max(soonest["arr"] - soonest["dep"], 600)
             got = [i for i in got if i["arr"] <= reach]
@@ -4752,26 +7031,38 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
     # The planner's answers weighing routes as the recipe does: more of the routes the recipe would hold, below.
     if weighed is not None and not arrive and last is None and picks and not dawned:
         try:
-            found = found + [i for got in weighed() for i in itineraries(got, stops, lines, agencies)]
+            answers = weighed()
+            found = found + [i for got in answers for i in itineraries(got, stops, lines, agencies)]
+            alike += [i for got in answers for i in itineraries(got, stops, lines, agencies, True)]
         except Exception as e:
             log("planner failed on the weighed questions:", repr(e))
     # Leaving at a time, the recipe picks the list from everything found (not beside the next morning's, which
     # keep their own list).
     recipe = not arrive and last is None and not dawned and any(i["rides"] for i in found + also)
+    mine = None
     if recipe:
-        picks, added = recipe_list(found + also, when, lines, stops), []
+        picks, added = recipe_list(found + also + alike, when, lines, stops), []
+        if own[1:3] != "nn":
+            mine = as_rider(own, rider_route, found + also + alike, picks, when, lines, stops)
     best = (lambda i: (-i["dep"], i["arr"])) if arrive else (lambda i: (i["arr"], -i["dep"]))
     extra = []
+    # Arriving by a time ahead, nothing beside the list riding what has set out already either (a walk is retimed below).
+    still = (lambda its: [i for i in its if catchable(i, now)]) if upcoming else (lambda its: its)
     # Walking or cycling all the way, an hour at most.
     for kind in ("walk", "cycle"):
         got = itineraries(more.get(kind) or {}, stops, lines, agencies)[:1]
+        if got and arrive and got[0]["arr"] > when:
+            # Walked at WALK_SPEED, it sets out earlier to be there by when, not later (walk_at_pace()).
+            for leg in got[0]["legs"]:
+                leg["dep"], leg["arr"] = leg["dep"] + when - got[0]["arr"], leg["arr"] + when - got[0]["arr"]
+            got[0].update(dep=got[0]["legs"][0]["dep"], arr=got[0]["legs"][-1]["arr"])
         if got and got[0]["arr"] - got[0]["dep"] <= DIRECT_MOST:
             extra.append(dict(got[0], sec=WALK_BIKE))
     # The best way with a bike along on the train or light rail, unless cycling all the way takes less than half as long,
     # and only when it gets there BIKE_SOONER sooner than every route listed (leaves that much later, arriving by a time):
     # a bike for the walks to and from the stations alone isn't a way of its own (Be'er Sheva to HaHagana: the train
     # with 93 m cycled to it and 85 m from it, there two minutes after the train alone).
-    biked = [i for i in itineraries(more.get("bike") or {}, stops, lines, agencies)
+    biked = [i for i in still(itineraries(more.get("bike") or {}, stops, lines, agencies))
              if i["rides"] and any(l["k"] == "b" for l in i["legs"])]
     cycled = [i["arr"] - i["dep"] for i in extra if i["legs"][0]["k"] == "b"]
     sooner = lambda i: not picks or (i["dep"] >= max(p["dep"] for p in picks) + BIKE_SOONER if arrive
@@ -4779,20 +7070,36 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
     if biked and sooner(min(biked, key=best)) and (not cycled or min(biked, key=best)["arr"] - min(biked, key=best)["dep"] <= 2 * cycled[0]):
         extra.append(dict(min(biked, key=best), sec=BIKE_TRANSIT))
     # A route on East Jerusalem's operators, when it beats every route in the list.
-    east = [i for i in itineraries(more.get("all") or {}, stops, lines, agencies) if operators(i, lines) & set(EAST_JERUSALEM)]
+    east = [i for i in still(itineraries(more.get("all") or {}, stops, lines, agencies)) if operators(i, lines) & set(EAST_JERUSALEM)]
     if east and (not picks or best(min(east, key=best)) < min(best(p) for p in picks)):
         extra.append(dict(min(east, key=best), sec=EAST_JERUSALEM_ROUTES))
     # A taxi to the station, leaving now, when it gets there about as soon as the quickest route.
     taxied = [x for x in (by_taxi(i, when, frm) for i in itineraries(more.get("by_taxi") or {}, stops, lines, agencies)) if x]
     if taxied and picks and min(i["arr"] for i in taxied) <= min(p["arr"] for p in picks) + TAXI_LATER:
         extra.append(dict(min(taxied, key=best), sec=TAXI_TRANSIT))
+    # The rider's own route joins the list here, so its card has its other lines too (the same questions).
+    usual_cards = picks
+    if mine is not None:
+        picks = picks + [mine]
     if ask is not None:
-        alternatives(picks + added + [i for i in extra if i["rides"]], stops, lines, agencies, ask, None if arrive else when)
+        alternatives(picks + added + [i for i in extra if i["rides"]], stops, lines, agencies, ask, None if arrive else when, until)
+        if mine is not None:
+            usual_cards = merged(usual_cards, lines, stops, arrive)
         picks = merged(picks, lines, stops, arrive)
+        if mine is not None and any(all(p is not c for p in picks) for c in usual_cards):
+            # The rider's route took one of the usual's cards (its lines that card's other lines there): the card stays the
+            # usual's, so the usual's lead is always in the rider's list (below).
+            picks = list(usual_cards)
     if recipe:
-        picks = led(picks, when, lines)
+        picks = led(picks, when, lines, stops)
     else:
         picks.sort(key=(lambda i: route_cost(i, when, lines, arrive)) if arrive else shown_order)
+    usual_order = picks
+    if own[1:3] != "nn":
+        # In the rider's order; the usual's order kept for their lead (below).
+        usual_order = led(usual_cards, when, lines, stops) if mine is not None else list(picks)
+        picks = as_rider(own, led, picks, when, lines, stops) if recipe else \
+            as_rider(own, sorted, picks, key=(lambda i: route_cost(i, when, lines, arrive)) if arrive else shown_order)
     picks += added
     after = after or (off and (off[0], "after_shabbat" if off[1] else "after_holiday"))
     # A route whose first ride sets out after the days off is tagged so first, and those riding during them come before it.
@@ -4800,19 +7107,67 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
     if any(past):
         picks = [it for it, p in zip(picks, past) if not p] + [it for it, p in zip(picks, past) if p]
         past.sort()
+    if upcoming:
+        # A walk or a ride all the way by bike isn't timetabled: one set out before now (by the planner, or by the walking
+        # pace's correction above) sets out now and gets there that much later, a main one tagged how late.
+        for it in picks + extra:
+            if not it.get("rides") and it["legs"] and it["legs"][0]["dep"] < now:
+                by = math.ceil(now) - it["legs"][0]["dep"]
+                for leg in it["legs"]:
+                    leg["dep"], leg["arr"] = leg["dep"] + by, leg["arr"] + by
+                it.update(dep=it["legs"][0]["dep"], arr=it["legs"][-1]["arr"])
+                if any(it is p for p in picks):
+                    late_by = asked_by
     tags = tag([facts(it) for it in picks], arrive)
     tags = [([after[1]] + t)[:2] if p else t for t, p in zip(tags, past)]
+    if late_by is not None:
+        # How many minutes after the time asked it gets there (the app's "late:" tag: "12 min late").
+        tags = [(["late:%d" % -(-(it["arr"] - late_by) // 60)] + t)[:2] if it["arr"] > late_by else t for it, t in zip(picks, tags)]
     if not arrive:
         for it in picks:
             lean_at_night(it, when)
+        # The routes beside the list that ride (a bike along, East Jerusalem's) never set out before when either.
+        for it in extra:
+            if it["rides"] and it["legs"][0]["dep"] < when:
+                lean_first(it["legs"], it["legs"][0]["dep"] - when)
+                it["dep"] = it["legs"][0]["dep"]
+    if rider()[3] == "t" and picks:
+        # Tight: a route the chance tables give the rider under LIKELY_MISSED of making every bus on, as it sets out
+        # now, says so first.
+        try:
+            tables = chance_tables()
+            if tables:
+                missed = [expected_late(it, stops, lines, now or when, tables, held=True) < LIKELY_MISSED for it in picks]
+                tags = [(["likely_missed"] + t)[:2] if m else t for t, m in zip(tags, missed)]
+        except Exception as e:
+            log("chance of tight routes failing:", repr(e))
     extra += [x for x in (schedule(picks, lines), more.get("taxi") and taxi_card(more["taxi"], frm, to, when)) if x]
     shown = picks + extra
     used_stops = {s for it in shown for l in it["legs"] if l["k"] == "r" for leg in [l] + l.get("alts", []) for s in leg["stops"]}
     used_lines = {leg["line"] for it in shown for l in it["legs"] if l["k"] == "r" for leg in [l] + l.get("alts", [])}
+    if arrive and now is not None:
+        # Arriving by a time, none sets out in the minute before it was asked either (choose()'s for FIRST_LEAN). One
+        # setting out earlier still is there only when every route has gone (a time asked about that has passed): as it is.
+        for it in shown:
+            if it.get("rides") and now - 60 <= it["legs"][0]["dep"] < now:  # not the timetable or taxi card
+                lean_first(it["legs"], it["legs"][0]["dep"] - int(now))
+                it["dep"] = it["legs"][0]["dep"]
+    if own[1:3] != "nn" and picks:
+        # Last of all, the rider's lead: the first in their order kept() lets lead where the usual answer leads (the
+        # usual's lead is in the list, so one always is), among the routes riding before the days off when any does.
+        is_past = lambda it: after is not None and next((l["dep"] for l in it["legs"] if l["k"] == "r"), 0) >= after[0]
+        theirs = usual_order + added
+        usual = next((it for it in theirs if not is_past(it)), theirs[0] if theirs else None)
+        group = [it for it, p in zip(picks, past) if not p] or picks
+        lead = next((it for it in group if kept(it, usual, own, arrive)), usual)
+        if lead is not picks[0]:
+            k = next(n for n, it in enumerate(picks) if it is lead)
+            picks, tags = [picks[k]] + picks[:k] + picks[k + 1:], [tags[k]] + tags[:k] + tags[k + 1:]
     return {
-        "it": [{"dep": it["dep"], "arr": it["arr"], "tags": t, "legs": it["legs"], "access": accessible(it)} for it, t in zip(picks, tags)] +
-              [{"dep": it["dep"], "arr": it["arr"], "tags": [], "legs": it["legs"], "sec": it["sec"], "access": accessible(it)}
-               for it in extra],
+        "it": [{"dep": it["dep"], "arr": it["arr"], "tags": t, "legs": it["legs"], "access": accessible(it), **fare_field(it, lines, stops)}
+               for it, t in zip(picks, tags)] +
+              [{"dep": it["dep"], "arr": it["arr"], "tags": [], "legs": it["legs"], "sec": it["sec"], "access": accessible(it),
+                **fare_field(it, lines, stops)} for it in extra],
         "stops": {k: v for k, v in stops.items() if k in used_stops},
         "lines": {k: v for k, v in lines.items() if k in used_lines},
         "agencies": {str(lines[k][5]): agencies.get(str(lines[k][5]), "") for k in used_lines},
@@ -4823,6 +7178,9 @@ def plan_answer(doc, when, arrive, ask=None, more=None, frm=None, to=None, again
 AREA = re.compile(r"^/live/v1/area/(\d{1,2}\.\d{1,4}),(\d{1,2}\.\d{1,4}),(\d{1,2}\.\d{1,4}),(\d{1,2}\.\d{1,4})$")
 STOPS = re.compile(r"^/live/v1/stops/([0-9]{1,6}(?:,[0-9]{1,6}){0,%d})$" % (MAX_STOPS - 1))
 LINE = re.compile(r"^/live/v1/line/([^/]{1,40})$")
+LATE_MOST = 16  # routes asked about at once: a line's page asks for the few with its number and name
+LATE = re.compile(r"^/live/v1/late/([0-9]{1,9}(?:,[0-9]{1,9}){0,%d})$" % (LATE_MOST - 1))
+BUSY_PATH = re.compile(r"^/live/v1/busy/([0-9]{1,9}(?:,[0-9]{1,9}){0,%d})$" % (LATE_MOST - 1))
 SHAPE = re.compile(r"^/live/v1/shape/([0-9]{1,9})$")
 ALERTS = re.compile(r"^/live/v1/alerts/(he|en)$")
 # The app's own timetable for the seven days from today (rebuild.sh builds it each night, tools/export_web_bundle.py
@@ -4831,6 +7189,7 @@ ALERTS = re.compile(r"^/live/v1/alerts/(he|en)$")
 BUNDLE_FILE = re.compile(r"^/live/v1/bundle/(manifest\.json|manifest\.json\.sig|il\.kav\.gz)$")
 BUNDLE_TYPES = {"manifest.json": "application/json", "manifest.json.sig": "text/plain", "il.kav.gz": "application/gzip"}
 NUMBER = re.compile(r"^[0-9A-Za-z\u05d0-\u05ea]{1,8}$")
+BUS = re.compile(r"^/live/v1/bus/([0-9]{1,9})$")  # a bus by its plate, the last part of its vehicle id
 # Line and stop links lead browsers to the download page; short trip codes open the saved-trip page.
 LINK = re.compile(r"^/[tls](/.*)?$")
 # Kav's download page, which always offers the newest APK from GitHub.
@@ -5606,12 +7965,34 @@ ASSET_LINKS = json.dumps([{"relation": ["delegate_permission/common.handle_all_u
         "9D:18:3D:43:86:58:40:59:F5:33:76:98:7C:E0:A5:DE:49:60:CD:7A:9B:F4:49:5E:2C:F0:E1:20:F0:58:0F:44"]}}]).encode()
 
 
+# New trip links, all riders' together (the app's key is in every copy of the app, so it can't tell riders apart): a bucket
+# of links and one of bytes, each refilled at the first number an hour and holding at most the second. Every link counts,
+# the same trip shared again too. Production's busiest hour so far made 4 links of 0.21 MB in all.
+SHARE_RATE_LINKS = (60, 20)
+SHARE_RATE_BYTES = (8_000_000, 4_000_000)
+# The most links and bytes of file kept, each above what the buckets let in over a link's longest life (30 days), so a
+# flood holds new links back only while it lasts; and the part of the disk left free. Links already made open past them.
+SHARE_KEPT_LINKS, SHARE_KEPT_BYTES, SHARE_FREE = 50_000, 6 << 30, 0.05
+
+
+class NotKept(Exception):
+    """Why a new trip link wasn't made (SharedTrips.put), with the status the app is answered: 507 or 503."""
+
+    def __init__(self, status, why):
+        super().__init__(why)
+        self.status = status
+
+
 class SharedTrips:
     def __init__(self, path):
+        self.allowance = {"links": SHARE_RATE_LINKS[1], "bytes": SHARE_RATE_BYTES[1], "at": time.time()}
         self.path = path
         self.lock = threading.Lock()
 
     def connect(self):
+        if not os.path.exists(self.path):
+            # Readable by this server alone from its first byte, as accounts.Store keeps its own: riders' trips go in it.
+            os.close(os.open(self.path, os.O_WRONLY | os.O_CREAT, 0o600))
         db = sqlite3.connect(self.path, timeout=10)
         db.execute("PRAGMA auto_vacuum = FULL")
         db.execute("CREATE TABLE IF NOT EXISTS trips (code TEXT PRIMARY KEY, expires INTEGER NOT NULL, payload TEXT NOT NULL)")
@@ -5621,12 +8002,31 @@ class SharedTrips:
         db.execute("CREATE INDEX IF NOT EXISTS cards_expiry ON cards(expires)")
         return db
 
+    def room(self, db, size):
+        """Raises NotKept unless a new link of `size` bytes fits in the store, on its disk and in the allowance. The file
+        grows by more than the bytes kept (pages, indexes): a sixteenth and 32 KiB more are held for it, past the most
+        measured (11.8 KB on a 369 KB link)."""
+        disk = shutil.disk_usage(os.path.dirname(os.path.abspath(self.path)))
+        grows = size + size // 16 + 32768
+        if db.execute("SELECT COUNT(*) FROM trips").fetchone()[0] >= SHARE_KEPT_LINKS or \
+                os.path.getsize(self.path) + grows > SHARE_KEPT_BYTES or disk.free - grows < disk.total * SHARE_FREE:
+            raise NotKept(507, "no room for new trip links")
+        now = time.time()
+        grown = max(0, now - self.allowance["at"]) / 3600  # never less for a clock set back
+        links = min(SHARE_RATE_LINKS[1], self.allowance["links"] + grown * SHARE_RATE_LINKS[0])
+        held = min(SHARE_RATE_BYTES[1], self.allowance["bytes"] + grown * SHARE_RATE_BYTES[0])
+        self.allowance.update(links=links, bytes=held, at=now)
+        if links < 1 or held < size:
+            raise NotKept(503, "too many new trip links just now; try again in a few minutes")
+        self.allowance.update(links=links - 1, bytes=held - size)
+
     def put(self, trip, days, card=None, site=PUBLIC_URL):
         expires = int(time.time()) + days * 86400
         payload = json.dumps(trip, separators=(",", ":"))
         with self.lock, closing(self.connect()) as db, db:
             db.execute("DELETE FROM trips WHERE expires <= ?", (int(time.time()),))
             db.execute("DELETE FROM cards WHERE expires <= ?", (int(time.time()),))
+            self.room(db, len(payload) + len(card or b""))
             for _ in range(10):
                 code = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(7))
                 try:
@@ -5661,7 +8061,7 @@ shared_trips = SharedTrips(SHARED_TRIPS)
 SHORT_LINK = re.compile(r"^/[A-Za-z0-9]{7}$")
 SHARE_API = re.compile(r"^/api/share/([A-Za-z0-9]{7})$")
 SHARE_CARD = re.compile(r"^/t/([A-Za-z0-9]{7})\.jpg$")
-CARD_LIMIT = 300 * 1024  # bytes of a shared trip's card, a 1200 x 630 JPEG
+CARD_LIMIT = 200 * 1024  # bytes of a shared trip's card, a 1200 x 630 JPEG: the largest so far was 120 KB
 
 # What the trip page tells a chat it's linked in until the trip is known: replaced, each once, with a link's own.
 TRIP_TITLE = b"<title>A trip shared with you \xc2\xb7 Kav</title>"
@@ -5924,6 +8324,33 @@ def served(now, planner=planner_answers):
 
 
 working = threading.BoundedSemaphore(MAX_WORKING)
+share_reading = threading.BoundedSemaphore(32)  # upload bodies have their own bounded admission
+
+
+class Deadline(io.RawIOBase):
+    """A connection's reading for Handler: each request's headers and body within `within` seconds of the first byte read
+    for it, however slowly they trickle in (the socket's own timeout bounds only each wait)."""
+
+    def __init__(self, connection, within):
+        self.connection, self.within, self.until = connection, within, None
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        if self.until is None:
+            got = self.connection.recv_into(b)  # waiting for a request, as long as the socket's timeout
+            self.until = time.monotonic() + self.within
+            return got
+        left = self.until - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("request not in within %d seconds" % self.within)
+        wait = self.connection.gettimeout()
+        self.connection.settimeout(left if wait is None else min(wait, left))
+        try:
+            return self.connection.recv_into(b)
+        finally:
+            self.connection.settimeout(wait)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -5931,9 +8358,20 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"
     timeout = 30
+    REQUEST_BY = 30  # seconds a request's headers and body may take from its first byte; timeout is each wait's
 
     def log_message(self, *args):
         pass
+
+    def setup(self):
+        super().setup()
+        self.rfile.close()
+        self.reading = Deadline(self.connection, self.REQUEST_BY)
+        self.rfile = io.BufferedReader(self.reading)
+
+    def handle_one_request(self):
+        self.reading.until = None  # the next request's own REQUEST_BY, from its first byte
+        super().handle_one_request()
 
     def auth(self, path):
         """Signing a phone in (a username and password, or an invite) and out, on a server with accounts."""
@@ -5970,10 +8408,12 @@ class Handler(BaseHTTPRequestHandler):
 
     TRANSLATE_MOST = 20  # texts in one request
     TRANSLATE_LONGEST = 4000  # characters of one, a notice's whole text
+    TRANSLATE_BY = 12  # seconds from the request by which its English is done, or it's answered busy: the app waits 15
 
     def translate(self):
         """A notice the phone has from Google, in English (alerts.py's translator and its store): the
         texts are public alerts, and nothing of the trip comes with them."""
+        by = time.monotonic() + self.TRANSLATE_BY
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 200_000:
@@ -5984,15 +8424,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError()
         except (ValueError, KeyError, TypeError):
             return self.answer(400, {"error": "texts: up to %d of %d characters" % (self.TRANSLATE_MOST, self.TRANSLATE_LONGEST)})
-        if not working.acquire(blocking=False):
-            return self.answer(503, {"error": "busy"})
+        # Not in the ordinary slots (working): kept texts answer at once, and the translator admits its own few.
         try:
-            self.answer(200, {"texts": alerts.current.translations.now(texts)})
+            self.answer(200, {"texts": alerts.current.translations.now(texts, by)})
+        except alerts.Busy:
+            self.answer(503, {"error": "busy"})
         except OSError as e:
             log("translate failing:", repr(e))
             self.answer(502, {"error": "the translator didn't answer"})
-        finally:
-            working.release()
 
     def answer_gzipped(self, packed):
         """JSON kept gzipped, as it is to a client that takes gzip (Android's does), else unpacked."""
@@ -6066,12 +8505,19 @@ class Handler(BaseHTTPRequestHandler):
         if not 0 < length <= 262144 + CARD_LIMIT * 4 // 3 + 4:
             self.close_connection = True
             return self.answer(413, {"error": "invalid share size"})
+        if not share_reading.acquire(blocking=False):
+            self.close_connection = True
+            return self.answer(503, {"error": "busy"})
+        try:
+            raw = self.rfile.read(length)
+        finally:
+            share_reading.release()
         if not working.acquire(blocking=False):
             self.close_connection = True
             return self.answer(503, {"error": "busy"})
         try:
             try:
-                doc = json.loads(self.rfile.read(length))
+                doc = json.loads(raw)
                 trip, days = doc.get("trip"), doc.get("days", 7)
                 if type(days) is not int or days not in (3, 7, 30) or not isinstance(trip, dict):
                     raise ValueError()
@@ -6089,7 +8535,14 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError()
             except (ValueError, KeyError, TypeError, AttributeError):
                 return self.answer(400, {"error": "invalid shared trip"})
-            self.answer(201, shared_trips.put(trip, days, card, link_site(self.headers.get("Host"))))
+            try:
+                made = shared_trips.put(trip, days, card, link_site(self.headers.get("Host")))
+            except NotKept as e:
+                return self.answer(e.status, {"error": str(e)})
+            except sqlite3.Error as e:
+                log("trip link not made:", repr(e))
+                return self.answer(503, {"error": "trip links can't be made just now"})
+            self.answer(201, made)
         finally:
             working.release()
 
@@ -6137,8 +8590,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.stops(tuple(sorted(set(stops.group(1).split(",")))), now)
         if (line := LINE.match(path)) is not None:
             return self.line(urllib.parse.unquote(line.group(1)), fresh, now)
+        if (late := LATE.match(path)) is not None:
+            return self.late(late.group(1).split(","))
+        if (busy := BUSY_PATH.match(path)) is not None:
+            return self.busy(busy.group(1).split(","))
         if (trip := PLAN.match(path)) is not None:
-            return self.plan(trip)
+            return self.in_turn(trip)
         if (bundle := BUNDLE_FILE.match(path)) is not None:
             return self.bundle(bundle.group(1))
         if (shape := SHAPE.match(path)) is not None:
@@ -6148,6 +8605,8 @@ class Handler(BaseHTTPRequestHandler):
             if route not in catalog["shapes"]:
                 return self.answer(404, {"error": "no shape for this route"})
             return self.answer(200, {"route": route, "shape": catalog["shapes"][route]})
+        if (bus := BUS.match(path)) is not None:
+            return self.bus(bus.group(1))
         asked = FOLLOW.match(path)
         if not asked:
             return self.answer(404, {"error": "not found"})
@@ -6159,6 +8618,19 @@ class Handler(BaseHTTPRequestHandler):
             rows = [r[1:] for r in trains_placed([(int(r[0].split("_")[0]), *r) for r in rows], now) if r[0] in routes]
         self.answer(200, {"at": int(now), "next": int(now + FOLLOW_TTL), "v": [list(row) for row in rows]})
 
+
+    def bus(self, plate):
+        """What kind of bus this is (fleet_now()), with the day the file was last checked; never its plate."""
+        table = fleet_now()
+        if table is None:
+            return self.answer(503, {"error": "no fleet yet"})
+        if (datetime.datetime.now(ISRAEL).date() - datetime.date.fromisoformat(table["made"])).days > FLEET_STALE:
+            return self.answer(503, {"error": "fleet out of date", "made": table["made"]})
+        known = table["buses"].get(str(int(plate)))
+        said = {k: v for k, v in zip(("size", "seats", "year", "power"), known or ()) if v}
+        if not said:
+            return self.answer(404, {"error": "not in the fleet file"})
+        self.answer(200, {"made": table["made"], "bus": said})
 
     def snapshot_next(self, woke, now):
         return int(now + 5 if woke else min(max(state["next"] + 2, now + 5), now + 30))
@@ -6188,7 +8660,7 @@ class Handler(BaseHTTPRequestHandler):
             rows = with_near(rows, codes, now, buses=buses)
             rows = placed([kav_times(r, now, i < len(ministry)) for i, r in enumerate(rows)], now, buses=buses)
             rows = standing(gone_by(running(timetabled(rows, codes, now)), now, buses=buses), now)
-            rows = trains_on_board(with_later(named_trains(quiet(rows, now)), codes, now, buses=buses), now)
+            rows = one_run_a_bus(trains_on_board(with_later(named_trains(quiet(rows, now)), codes, now, buses=buses), now))
         except Exception:
             return self.answer(503, {"error": "the ministry didn't answer"})
         self.answer(200, {
@@ -6221,18 +8693,31 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(folder, name), "rb") as f:
             shutil.copyfileobj(f, self.wfile, 1 << 16)
 
+    def in_turn(self, asked):
+        """plan() when it is the trip's turn (MAX_PLANNING, PLAN_QUEUE), or the busy answer."""
+        self.came = time.time()  # for plan()'s PLAN_BY
+        if not planning.acquire(timeout=PLAN_QUEUE):
+            return self.answer(503, {"error": "busy"})
+        try:
+            self.plan(asked)
+        finally:
+            planning.release()
+
     def plan(self, asked):
+        """planned() for the rider's settings, its path's last part (asked_as())."""
+        as_rider(asked_as(asked.group(9)), Handler.planned, self, asked)
+
+    def planned(self, asked):
         """Routes from one place to another, planned here on the ministry's timetable."""
         started = time.time()
-        flat, flon, tlat, tlon, when, way, modes, via = asked.groups()
+        until = getattr(self, "came", started) + PLAN_BY
+        flat, flon, tlat, tlon, when, way, modes, via = asked.groups()[:8]
         frm, to = (float(flat), float(flon)), (float(tlat), float(tlon))
         # Each place on the way: where, and the seconds to stay there when its minutes are given.
         via = [(float(lat), float(lon)) + tuple(int(m) * 60 for m in stay if int(m))
                for lat, lon, *stay in (p.split(",") for p in via.split(";"))] if via else []
         if not all(inside(*p[:2]) for p in [frm, to] + via):
             return self.answer(400, {"error": "outside the timetable's area"})
-        if not planning.acquire(blocking=False):
-            return self.answer(503, {"error": "busy"})
         when, arrive, allowed = int(when), way in "al", [int(m) for m in modes.split(",")] if modes else []
         if PLAN_URL:
             try:
@@ -6240,8 +8725,6 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError) as e:
                 log("own planner failed:", repr(e))
                 return self.answer(502, {"error": "the planner didn't answer"})
-            finally:
-                planning.release()
         asked = when
         if way == "l":
             when = last_way(when)
@@ -6254,14 +8737,20 @@ class Handler(BaseHTTPRequestHandler):
         # Asked beside the routes list's own questions, to be ready when plan_answer() takes them.
         like, main_answer, dawning = None, Future(), None
         dawn = morning_after(when) if way in "nd" else None
-        rest, resting = (rest_end(when, frm) if way in "nda" and not via else None), None
+        rest, resting = (rest_end(when, frm) if way in "nda" and not via else None), []
         off = rest_end(asked, frm)
-        if rest:
-            asking = ThreadPoolExecutor(1)
-            rest_from = max(when, rest[0] - REST_BEFORE)
-            resting = asking.submit(ask_planner, plan_variables(frm, to, rest_from, False, allowed, "main", via,
-                                                                REST_WINDOW, (), at))
-            asking.shutdown(wait=False)
+
+        def ask_rest():
+            """The routes list's question after the days off, asked once: its answer is taken only when the list has
+            nothing to ride (plan_answer()), so it goes out once the routes list's own answer has nothing to ride, or
+            when plan_answer() wants it. From noon before Shabbat it is an eight-hour question, beside every trip's."""
+            if not resting:
+                asking = ThreadPoolExecutor(1)
+                rest_from = max(when, rest[0] - REST_BEFORE)
+                resting.append(asking.submit(ask_planner, plan_variables(frm, to, rest_from, False, allowed, "main", via,
+                                                                         REST_WINDOW, (), at)))
+                asking.shutdown(wait=False)
+            return resting[0]
         if MORNING_TOO and dawn and not via:
             asking = ThreadPoolExecutor(1)
             dawning = asking.submit(ask_planner, plan_variables(frm, to, dawn, False, allowed, "main", via, MORNING_TOO_WINDOW, (), at))
@@ -6275,7 +8764,7 @@ class Handler(BaseHTTPRequestHandler):
         if WEIGHED and way in "nd" and not via:
             asking = ThreadPoolExecutor(1)
             # half a second inside the wait below, so the answers that came in time are taken when one hasn't
-            like = asking.submit(weighed_answers, frm, to, when, allowed, at, by=WEIGHED_BY - 0.5,
+            like = asking.submit(as_rider, rider()[0] + "nn" + rider()[3], weighed_answers, frm, to, when, allowed, at, by=WEIGHED_BY - 0.5,
                                  main=lambda wait: main_answer.result(timeout=wait))
             asking.shutdown(wait=False)
         try:
@@ -6283,8 +8772,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             log("planner failed:", repr(e))
             return self.answer(503, {"error": "the planner didn't answer"})
-        finally:
-            planning.release()
+        if rest and not any(i["rides"] for i in itineraries(doc, {}, {}, {})):
+            ask_rest()
         again = lambda routes: ask_planner(plan_variables(frm, to, when, arrive, allowed, "main", via, window, routes, at))
         morning = (lambda: ask_planner(plan_variables(frm, to, dawn, False, allowed, "main", via, MORNING_WINDOW, (), at))) if dawn else None
         reluctant = lambda: ask_planner(plan_variables(frm, to, when, arrive, allowed, "main", via, window, (), at, WALK_RELUCTANCE_AGAIN))
@@ -6298,7 +8787,7 @@ class Handler(BaseHTTPRequestHandler):
                 doc = ask_planner(plan_variables(frm, to, morning_after(rest[0] + 6 * 3600), False, allowed, "main",
                                                  via, MORNING_WINDOW, (), at), left)
             else:
-                doc = resting.result(timeout=max(0.1, left))
+                doc = ask_rest().result(timeout=max(0.1, left))
             return doc, rest[0], rest[1]
 
         def earlier(routes, window=LAST_DAY_WINDOW):
@@ -6307,6 +8796,19 @@ class Handler(BaseHTTPRequestHandler):
                 raise TimeoutError("no time left")
             return ask_planner(plan_variables(frm, to, when, arrive, allowed, "main", via, window, routes, at), left)
         wide = min(WIDER_WINDOW, dawn - when) if dawn else WIDER_WINDOW
+
+        def soonest():
+            """Arriving by a time: the routes list's question leaving from when the trip was asked for, in the time left."""
+            left = until - time.time()
+            if left < 1:
+                raise TimeoutError("no time left")
+            # Given up at until, however the answer comes (a socket timeout is per read, not for the whole).
+            asking = ThreadPoolExecutor(1)
+            try:
+                return asking.submit(ask_planner, plan_variables(frm, to, int(started), False, allowed, "main", via, None, (),
+                                                                 at), left).result(timeout=left)
+            finally:
+                asking.shutdown(wait=False)
 
         def found_too():
             """The extra questions' answers that came in time: the weighed ones, then the next morning's."""
@@ -6326,8 +8828,8 @@ class Handler(BaseHTTPRequestHandler):
                                      officially.result if officially else None,
                                      (lambda: ask_planner(plan_variables(frm, to, when, arrive, allowed, "main", via, DIRECT_WINDOW, (),
                                                                          at, transfers=0))) if way in "nd" and not via else None,
-                                     found_too if like or dawning else None, rested=rested if resting else None, off=off,
-                                     now=started if arrive else None))
+                                     found_too if like or dawning else None, rested=rested if rest else None, off=off,
+                                     now=started if arrive else None, until=until, soonest=soonest if way == "a" else None))
 
     def line(self, number, fresh, now):
         """Every bus on the routes that carry this number, and those routes."""
@@ -6341,6 +8843,34 @@ class Handler(BaseHTTPRequestHandler):
         self.answer(200, {
             "at": fresh.at, "next": self.snapshot_next(woke, now), "v": rows, "lines": lines_of(routes),
         })
+
+
+    def late(self, routes):
+        """How late these routes' buses usually run, by band (lateness_now()), with the day the figures were made and the
+        days they come from; a route without figures isn't there. None made over LATENESS_STALE days ago."""
+        table = lateness_now()
+        if table is None:
+            return self.answer(503, {"error": "no lateness yet"})
+        if (datetime.datetime.now(ISRAEL).date() - datetime.date.fromisoformat(table["made"])).days > LATENESS_STALE:
+            return self.answer(503, {"error": "lateness out of date", "made": table["made"]})
+        names = ("late", "on", "runs", "days")
+        self.answer(200, {
+            "made": table["made"], "from": table.get("from"), "to": table.get("to"), "days": len(table["days"]),
+            "early": table["early"], "late": table["late"],
+            "routes": {r: {band: dict(zip(names, f)) for band, f in table["routes"][r].items()}
+                       for r in dict.fromkeys(routes) if r in table["routes"]},
+        })
+
+    def busy(self, routes):
+        """How busy these routes usually are at each hour of the week (busy_now()), with the month counted and the day the
+        levels were told; a route without levels isn't there. None for a month ended over BUSY_STALE days ago."""
+        table = busy_now()
+        if table is None:
+            return self.answer(503, {"error": "no crowding figures yet"})
+        if (datetime.datetime.now(ISRAEL).date() - datetime.date.fromisoformat(table["to"])).days > BUSY_STALE:
+            return self.answer(503, {"error": "crowding figures out of date", "to": table["to"]})
+        self.answer(200, {"made": table["made"], "from": table["from"], "to": table["to"],
+                          "routes": {r: table["routes"][r] for r in dict.fromkeys(routes) if r in table["routes"]}})
 
 
 class Server(ThreadingHTTPServer):
@@ -6359,6 +8889,43 @@ class Server(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    # keep_fleet()'s morning, in a process of its own within its bounds.
+    if sys.argv[1:] == ["fleet"]:
+        lateness_limits(FLEET_MEMORY, FLEET_CPU)
+        problem, table = fleet_rebuild()
+        with open("/proc/self/status") as f:
+            space = next((int(line.split()[1]) // 1024 for line in f if line.startswith("VmPeak:")), 0)
+        print("portal", problem or "ok", "buses", len(table["buses"]) if table else "none",
+              "peak memory %d MB" % (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024), "address space %d MB" % space)
+        sys.exit(0)
+    # keep_chance()'s nightly table, in this process of its own: the lines' kinds come on stdin.
+    if sys.argv[1:] == ["chance-tables"]:
+        os.nice(19)
+        built = chance_rebuild(json.load(sys.stdin))
+        print("scored", ",".join(built["scored"]), "passings", sum(c["n"] for c in built["table"].values()),
+              "peak memory %d MB" % (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024))
+        sys.exit(0)
+    # keep_lateness()'s morning, the same way, within its own bounds: each line's kind comes on stdin.
+    if sys.argv[1:] == ["lateness"]:
+        lateness_limits()
+        kept, judged, failed, table = lateness_rebuild(json.load(sys.stdin))
+        with open("/proc/self/status") as f:
+            space = next((int(line.split()[1]) // 1024 for line in f if line.startswith("VmPeak:")), 0)
+        print("today's trips", "kept" if kept else "not in the timetable", "judged", ",".join(judged) or "none",
+              "failed", ",".join(failed) or "none", "skipped", ",".join(table["skipped"]) or "none",
+              "routes", len(table["routes"]), "peak memory %d MB" % (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024),
+              "address space %d MB" % space)
+        sys.exit(0)
+    # keep_busy()'s morning, the same way and within the same bounds: each route's ministry line comes on stdin.
+    if sys.argv[1:] == ["busy"]:
+        lateness_limits(BUSY_MEMORY, BUSY_CPU)
+        problem, table = busy_rebuild(json.load(sys.stdin))
+        with open("/proc/self/status") as f:
+            space = next((int(line.split()[1]) // 1024 for line in f if line.startswith("VmPeak:")), 0)
+        print("portal", problem or "ok", "routes", len(table["routes"]) if table else "none", "month",
+              table["month"] if table else "none", "peak memory %d MB" % (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024),
+              "address space %d MB" % space)
+        sys.exit(0)
     # Signed with an empty key, every request would pass: a server without its key answers no one rather than anyone.
     if ACCESS in ("key", "accounts") and not APP_KEY:
         sys.exit("KAV_APP_KEY is empty: set one in .env (the setup page and install.sh make one), see .env.example")
@@ -6368,19 +8935,29 @@ if __name__ == "__main__":
     # asked at all, and the app takes its live times elsewhere.
     if URL:
         threading.Thread(target=poll, daemon=True).start()
+        threading.Thread(target=keep_weekend_buses, daemon=True).start()
     else:
         log("no MOT_KEY: no live buses, the planner and the timetable only")
     threading.Thread(target=keep_lines, daemon=True).start()
     threading.Thread(target=keep_shapes, daemon=True).start()
+    if FLEET:
+        threading.Thread(target=keep_fleet, daemon=True).start()
     if alerts.SOURCE == "gtfsrt":
         threading.Thread(target=keep_stop_codes, daemon=True).start()
     alerts.start(route_name, stop_codes.get)
     if alerts.current.translations is not None:
         threading.Thread(target=keep_names, daemon=True).start()
-    # Both are the planner's; a server run without one (server/selfhost's PLANNER=off) has neither.
+    # The planner's, and the fares of its routes; a server run without one (server/selfhost's PLANNER=off) has none.
     if OTP_URL:
         threading.Thread(target=keep_rail_copies, daemon=True).start()
         threading.Thread(target=keep_rail_only, daemon=True).start()
+        threading.Thread(target=keep_fares, daemon=True).start()
+        if HISTORY and CHANCE_TABLES:
+            threading.Thread(target=keep_chance, daemon=True).start()
+    if HISTORY and LATENESS and REALTIME:
+        threading.Thread(target=keep_lateness, daemon=True).start()
+    if BUSY and LATENESS:
+        threading.Thread(target=keep_busy, daemon=True).start()
     server = Server(("0.0.0.0", PORT), Handler)
     log("listening on", PORT)
     server.serve_forever()

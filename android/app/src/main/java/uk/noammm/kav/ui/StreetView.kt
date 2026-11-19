@@ -159,6 +159,7 @@ fun StreetViewHost() {
         enter = fadeIn(tween(200)),
         exit = fadeOut(tween(200)),
     ) {
+        VeilMaps()
         last?.let { StopLookScreen(it) { StreetViewer.open = null } }
     }
 }

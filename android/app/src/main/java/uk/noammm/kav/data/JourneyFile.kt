@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.ActiveJourney
+import uk.noammm.kav.ext.RefTable
 import java.io.File
 
 object JourneyFile {
@@ -71,19 +72,32 @@ object JourneyFile {
         .put("stops", JSONObject().apply { journey.resolved.stops.forEach { (id, s) -> put(id.toString(), json(s)) } })
         .put("types", JSONObject().apply { journey.resolved.routeTypes.forEach { (a, t) -> put(a.toString(), t) } })
         .put("shapes", JSONObject().apply { journey.resolved.shapes.forEach { (id, s) -> put(id.toString(), coords(s)) } })
+        .withRefs(listOf(journey.trip), journey.resolved, journey.resolved.shapes.keys)
+
+    // An extension's handles are only this run's: the references behind them go beside them, and are read back as this
+    // run's handles (RefTable.Remap). A file with only Kav's own ids is as it always was.
+    private fun JSONObject.withRefs(trips: List<Transit.Itinerary>, r: Transit.Resolved, more: Collection<Int> = emptyList()): JSONObject {
+        val legs = trips.flatMap { it.legs }.flatMap { listOf(it) + it.alternatives }
+        val ints = legs.flatMap { listOf(it.lineId, it.fromStop, it.toStop) + it.stops + it.alternativeLineIds } +
+            r.lines.keys + r.lines.values.map { it.agencyId } + r.stops.keys + r.routeTypes.keys + more
+        val trips2 = legs.flatMap { listOf(it.tripId) + it.nextDeps.map { d -> d.tripId } }
+        val refs = RefTable.refs(ints, trips2)
+        return if (refs.length() == 0) this else put("refs", refs)
+    }
 
     internal fun parse(o: JSONObject): Pair<ActiveJourney, Int>? = try {
+        val m = RefTable.Remap.of(o.optJSONObject("refs"))
         val journey = ActiveJourney(
-            trip = itinerary(o.getJSONObject("trip")),
+            trip = itinerary(o.getJSONObject("trip"), m),
             resolved = Transit.Resolved(
-                lines = keyed(o.optJSONObject("lines")) { line(it) },
-                stops = keyed(o.optJSONObject("stops")) { stop(it) },
-                routeTypes = counts(o.optJSONObject("types")),
-                shapes = paths(o.optJSONObject("shapes")),
+                lines = keyed(o.optJSONObject("lines"), m) { line(it, m) },
+                stops = keyed(o.optJSONObject("stops"), m) { stop(it, m) },
+                routeTypes = counts(o.optJSONObject("types"), m),
+                shapes = paths(o.optJSONObject("shapes"), m),
             ),
             fromLabel = o.optString("from"),
             toLabel = o.optString("to"),
-            chosen = counts(o.optJSONObject("chosen")),
+            chosen = counts(o.optJSONObject("chosen"), RefTable.Remap.NONE),
             fromHere = o.optBoolean("fromHere", true),
             stopovers = o.optJSONArray("stopovers")?.let { a ->
                 (0 until a.length()).mapNotNull { i -> a.optJSONObject(i) }.map {
@@ -108,14 +122,16 @@ object JourneyFile {
                         .put("type", it.type).put("index", it.index))
                 }
             })
+            .withRefs(routes, r)
 
     internal fun routes(o: JSONObject): RecentRoutes.Saved? = try {
+        val m = RefTable.Remap.of(o.optJSONObject("refs"))
         RecentRoutes.Saved(
-            objects(o.optJSONArray("trips")).map { itinerary(it) },
+            objects(o.optJSONArray("trips")).map { itinerary(it, m) },
             Transit.Resolved(
-                lines = keyed(o.optJSONObject("lines")) { line(it) },
-                stops = keyed(o.optJSONObject("stops")) { stop(it) },
-                routeTypes = counts(o.optJSONObject("types")),
+                lines = keyed(o.optJSONObject("lines"), m) { line(it, m) },
+                stops = keyed(o.optJSONObject("stops"), m) { stop(it, m) },
+                routeTypes = counts(o.optJSONObject("types"), m),
             ),
             objects(o.optJSONArray("sections")).map {
                 Transit.Section(it.optInt("id", -1), it.optString("name"), it.optInt("max", Int.MAX_VALUE),
@@ -131,15 +147,21 @@ object JourneyFile {
         .put("fare", t.fare).put("cur", t.currency).put("co2", t.co2g)
         .put("acc", t.accessible).put("tags", JSONArray(t.tags))
         .put("sec", t.section).put("secId", t.sectionId)
+        .put("singles", t.singleFares)
+        .apply { if (t.provider.isNotEmpty()) put("provider", t.provider) }
+        .apply { if (t.policy.isNotEmpty()) put("policy", t.policy) }
 
-    private fun itinerary(o: JSONObject) = Transit.Itinerary(
+    private fun itinerary(o: JSONObject, m: RefTable.Remap) = Transit.Itinerary(
         guid = o.optString("guid"), group = o.optInt("group"),
-        legs = objects(o.optJSONArray("legs")).map { leg(it) },
+        legs = objects(o.optJSONArray("legs")).map { leg(it, m) },
         dep = o.optLong("dep"), arr = o.optLong("arr"),
-        fare = o.optInt("fare", -1), currency = o.optString("cur"),
+        fare = o.optInt("fare", -1), currency = o.optString("cur"), singleFares = o.optInt("singles", -1),
         co2g = o.optInt("co2", -1), accessible = o.optBoolean("acc"),
         tags = strings(o.optJSONArray("tags")).mapNotNull(KavPlan::tagOf),
         section = o.optString("sec"), sectionId = o.optInt("secId", -1),
+        provider = o.optString("provider"),
+        // The extensions it was judged by, and the words of their tags on it.
+        policy = o.optString("policy").also { if (it.isNotEmpty()) uk.noammm.kav.ext.Tags.learn(uk.noammm.kav.ext.Snapshot.parse(it)) },
     )
 
     private fun json(l: Transit.Leg): JSONObject {
@@ -150,6 +172,7 @@ object JourneyFile {
             .put("stops", JSONArray(l.stops))
             .put("fromStop", l.fromStop).put("toStop", l.toStop)
             .put("m", l.meters)
+            .apply { if (l.insideMeters > 0) put("im", l.insideMeters) }
             .put("deps", JSONArray().apply { l.nextDeps.forEach { put(json(it)) } })
             .put("name", l.shortName).put("pathway", l.pathway)
             .put("fare", l.fare).put("cur", l.currency)
@@ -167,14 +190,14 @@ object JourneyFile {
         return o
     }
 
-    private fun leg(o: JSONObject): Transit.Leg = Transit.Leg(
+    private fun leg(o: JSONObject, m: RefTable.Remap): Transit.Leg = Transit.Leg(
         kind = Transit.LegKind.valueOf(o.getString("kind")),
-        lineId = o.optInt("line", -1), tripId = o.optLong("trip"),
+        lineId = m.id(o.optInt("line", -1)), tripId = m.trip(o.optLong("trip")),
         dep = o.optLong("dep"), arr = o.optLong("arr"),
-        stops = ints(o.optJSONArray("stops")),
-        fromStop = o.optInt("fromStop", -1), toStop = o.optInt("toStop", -1),
-        meters = o.optInt("m"),
-        nextDeps = objects(o.optJSONArray("deps")).map { departure(it) },
+        stops = ints(o.optJSONArray("stops")).map(m::id),
+        fromStop = m.id(o.optInt("fromStop", -1)), toStop = m.id(o.optInt("toStop", -1)),
+        meters = o.optInt("m"), insideMeters = o.optInt("im"),
+        nextDeps = objects(o.optJSONArray("deps")).map { departure(it, m) },
         shortName = o.optString("name"), pathway = o.optBoolean("pathway"),
         fare = o.optInt("fare", -1), currency = o.optString("cur"),
         shape = points(o.optJSONArray("shape")),
@@ -182,8 +205,8 @@ object JourneyFile {
         alertIds = o.optJSONArray("alertIds")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty(),
         taxiPickup = o.optJSONArray("pickup")?.let { points(it).firstOrNull() },
         taxiDropoff = o.optJSONArray("dropoff")?.let { points(it).firstOrNull() },
-        alternatives = objects(o.optJSONArray("alts")).map { leg(it) },
-        alternativeLineIds = ints(o.optJSONArray("altLines")),
+        alternatives = objects(o.optJSONArray("alts")).map { leg(it, m) },
+        alternativeLineIds = ints(o.optJSONArray("altLines")).map(m::id),
         shared = o.optInt("shared"), sharedBy = o.optString("sharedBy"),
         turns = KavPlan.turnsOf(o.optJSONArray("turns")),
         visit = o.optJSONObject("visit")?.let {
@@ -193,27 +216,33 @@ object JourneyFile {
 
     private fun json(d: Transit.Departure): JSONObject = JSONObject()
         .put("trip", d.tripId).put("static", d.staticUtc)
-        .put("rt", d.rtUtc).put("stat", d.statisticalUtc)
+        .put("rt", d.rtUtc).put("stat", d.statisticalUtc).put("given", d.givenUtc)
         .put("status", d.status).put("cert", d.certainty).put("traffic", d.traffic)
         .put("freq", d.frequency).put("dropped", d.rtDropped)
         .put("veh", d.vehicleStatus).put("alert", d.alert)
         .put("platform", d.platform)
 
-    private fun departure(o: JSONObject) = Transit.Departure(
-        tripId = o.optLong("trip"), staticUtc = o.optLong("static"),
-        rtUtc = o.optLong("rt"), statisticalUtc = o.optLong("stat"),
-        status = o.optInt("status"), certainty = o.optInt("cert"),
-        traffic = o.optInt("traffic"), frequency = o.optBoolean("freq"),
-        rtDropped = o.optBoolean("dropped"), vehicleStatus = o.optInt("veh"),
-        alert = o.optInt("alert"), platform = o.optString("platform"),
-    )
+    // With the moment its live time was given (Transit.departures() ages it). A file from before that was kept has a
+    // live time of unknown age: its time stays, not as live.
+    private fun departure(o: JSONObject, m: RefTable.Remap): Transit.Departure {
+        val dated = o.has("given")
+        val rt = o.optLong("rt")
+        return Transit.Departure(
+            tripId = m.trip(o.optLong("trip")), staticUtc = o.optLong("static"),
+            rtUtc = if (dated) rt else 0L, statisticalUtc = if (!dated && rt > 0) rt else o.optLong("stat"),
+            status = o.optInt("status"), certainty = o.optInt("cert"),
+            traffic = o.optInt("traffic"), frequency = o.optBoolean("freq"),
+            rtDropped = o.optBoolean("dropped"), vehicleStatus = o.optInt("veh"),
+            alert = o.optInt("alert"), platform = o.optString("platform"), givenUtc = o.optLong("given"),
+        )
+    }
 
     private fun json(l: Transit.LineInfo): JSONObject = JSONObject()
         .put("group", l.groupId).put("number", l.number).put("agency", l.agencyId)
         .put("origin", l.origin).put("dest", l.destination).put("caption", l.caption).put("route", l.routeName)
 
-    private fun line(o: JSONObject) = Transit.LineInfo(
-        o.optInt("group", -1), o.optString("number"), o.optInt("agency", -1),
+    private fun line(o: JSONObject, m: RefTable.Remap) = Transit.LineInfo(
+        o.optInt("group", -1), o.optString("number"), m.id(o.optInt("agency", -1)),
         o.optString("origin"), o.optString("dest"), o.optString("caption"), o.optString("route"),
     )
 
@@ -223,8 +252,8 @@ object JourneyFile {
         return o
     }
 
-    private fun stop(o: JSONObject) = Transit.StopInfo(
-        o.optInt("id"), o.optString("name"), o.optString("code"),
+    private fun stop(o: JSONObject, m: RefTable.Remap) = Transit.StopInfo(
+        m.id(o.optInt("id")), o.optString("name"), o.optString("code"),
         o.optDouble("lat", Double.NaN), o.optDouble("lon", Double.NaN),
     )
 
@@ -239,24 +268,24 @@ object JourneyFile {
         return out
     }
 
-    private fun <V> keyed(o: JSONObject?, value: (JSONObject) -> V): Map<Int, V> {
+    private fun <V> keyed(o: JSONObject?, m: RefTable.Remap, value: (JSONObject) -> V): Map<Int, V> {
         if (o == null) return emptyMap()
         val out = HashMap<Int, V>()
-        for (k in o.keys()) out[k.toIntOrNull() ?: continue] = value(o.getJSONObject(k))
+        for (k in o.keys()) out[m.id(k.toIntOrNull() ?: continue)] = value(o.getJSONObject(k))
         return out
     }
 
-    private fun counts(o: JSONObject?): Map<Int, Int> {
+    private fun counts(o: JSONObject?, m: RefTable.Remap): Map<Int, Int> {
         if (o == null) return emptyMap()
         val out = HashMap<Int, Int>()
-        for (k in o.keys()) out[k.toIntOrNull() ?: continue] = o.optInt(k)
+        for (k in o.keys()) out[m.id(k.toIntOrNull() ?: continue)] = o.optInt(k)
         return out
     }
 
-    private fun paths(o: JSONObject?): Map<Int, List<Pair<Double, Double>>> {
+    private fun paths(o: JSONObject?, m: RefTable.Remap): Map<Int, List<Pair<Double, Double>>> {
         if (o == null) return emptyMap()
         val out = HashMap<Int, List<Pair<Double, Double>>>()
-        for (k in o.keys()) out[k.toIntOrNull() ?: continue] = points(o.optJSONArray(k))
+        for (k in o.keys()) out[m.id(k.toIntOrNull() ?: continue)] = points(o.optJSONArray(k))
         return out
     }
 

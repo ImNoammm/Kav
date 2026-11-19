@@ -1,6 +1,6 @@
 // Copies the repo's own Markdown into docs/ before every build, so the site never keeps a second copy of them.
 // Links between these files become site links; links to anything else in the repo go to it on GitHub.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs'
 import { dirname, join, normalize, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -87,4 +87,15 @@ for (const [file, page] of DOCS) {
   }
 }
 console.log(`sync-docs: ${DOCS.length - missing} of ${DOCS.length} docs copied from ${normalize(repo)}`)
+
+// The add-source page draws its QR code with the same qrcode-generator (Kazuhiko Arase, MIT) as the self-hosted setup
+// page, served from this site so the page asks no other host for anything.
+const QR = 'server/selfhost/setup/static/qrcode.js'
+if (existsSync(join(repo, QR))) {
+  mkdirSync(join(site, 'public', 'js'), { recursive: true })
+  copyFileSync(join(repo, QR), join(site, 'public', 'js', 'qrcode.js'))
+} else {
+  console.warn(`sync-docs: ${QR} is missing, the add-source page has no QR code`)
+  missing++
+}
 if (missing) process.exitCode = 1

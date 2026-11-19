@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +37,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +52,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import uk.noammm.kav.Prefs
+import uk.noammm.kav.data.SavedTime
 import uk.noammm.kav.data.Transit
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -79,6 +84,10 @@ fun WhenSheet(
     }
     var hour by remember(departAt) { mutableIntStateOf(start.get(Calendar.HOUR_OF_DAY)) }
     var minute by remember(departAt) { mutableIntStateOf(start.get(Calendar.MINUTE)) }
+    val ctx = LocalContext.current
+    var kept by remember { mutableStateOf(Prefs.savedTimes(ctx)) }
+    // Keep this time as the rider last set it; until then, whether the time typed in is one already kept.
+    var keepAsked by remember(mode) { mutableStateOf<Boolean?>(null) }
 
     BottomSheet(onDismiss, scrolls = true) { close ->
         val chosen = mode
@@ -103,6 +112,19 @@ fun WhenSheet(
         Spacer(Modifier.height(K.gap3))
 
         if (chosen == null) {
+            // The kept times, each for its next time: today's while it's still ahead, tomorrow's once it has gone.
+            for (t in kept) {
+                val label = savedLabel(t)
+                WhenRow(label, trailing = {
+                    KavIconButton(Icons.Rounded.Close, T("Remove $label", "הסרת $label"), {
+                        kept = kept - t
+                        Prefs.setSavedTimes(ctx, kept)
+                    }, size = 36.dp)
+                }) {
+                    val (ms, type) = savedPick(t, System.currentTimeMillis())
+                    close { onPick(ms, type) }
+                }
+            }
             WhenRow(T("Set departure time", "קביעת שעת יציאה")) { mode = Transit.TIME_DEPARTURE }
             WhenRow(T("Set desired arrival time", "קביעת שעת הגעה רצויה")) { mode = Transit.TIME_ARRIVAL }
             WhenRow(T("Latest departure", "היציאה האחרונה")) { close { onPick(0L, Transit.TIME_LAST) } }
@@ -128,14 +150,25 @@ fun WhenSheet(
                 Step(false, day < 14, T("Next day", "היום הבא")) { day++ }
             }
             Spacer(Modifier.height(K.gap3))
-            val pickedToday = chosenMillis(today, day, hour, minute)
-            val rolled = day == 0 && pickedToday < openedMinute
-            val picked = if (rolled) chosenMillis(today, day + 1, hour, minute) else pickedToday
+            val (picked, rolled) = nextPick(today, day, hour, minute, openedMinute)
             if (rolled) {
                 NoteCard(T("That time has passed today, this will be for tomorrow.", "השעה הזו כבר עברה היום, הנסיעה תתוכנן למחר."))
                 Spacer(Modifier.height(K.gap2))
             }
+            val time = SavedTime(chosen, hour, minute)
+            val keep = keepAsked ?: (time in kept)
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(keep, role = Role.Switch) { keepAsked = it },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(T("Keep this time", "לשמור את השעה הזו"), style = K.type.body, modifier = Modifier.weight(1f))
+                KavSwitch(keep)
+            }
+            Spacer(Modifier.height(K.gap2))
             KavButton(T("Done", "סיום"), {
+                // Kept, it joins the times at the top of the first list; turned off, it leaves them.
+                val after = if (keep) SavedTime.keep(kept, time) else kept - time
+                if (after != kept) Prefs.setSavedTimes(ctx, after)
                 val (ms, type) = clampDepart(picked, chosen, System.currentTimeMillis())
                 close { onPick(ms, type) }
             }, wide = true)
@@ -267,7 +300,7 @@ fun ChoiceSheet(title: String, choices: List<String>, selected: Int, onPick: (In
 }
 
 @Composable
-private fun WhenRow(label: String, tint: Color = K.text, last: Boolean = false, checked: Boolean = false, onClick: () -> Unit) {
+private fun WhenRow(label: String, tint: Color = K.text, last: Boolean = false, checked: Boolean = false, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     Column {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 52.dp)
@@ -276,13 +309,14 @@ private fun WhenRow(label: String, tint: Color = K.text, last: Boolean = false, 
         ) {
             Text(label, style = K.type.body, color = tint, modifier = Modifier.weight(1f))
             if (checked) Icon(Icons.Rounded.Check, contentDescription = null, tint = K.accentInk, modifier = Modifier.size(18.dp))
+            trailing?.invoke()
         }
         if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(K.border))
     }
 }
 
 @Composable
-private fun Step(back: Boolean, enabled: Boolean, description: String, onClick: () -> Unit) {
+internal fun Step(back: Boolean, enabled: Boolean, description: String, onClick: () -> Unit) {
     Box(
         Modifier.size(48.dp).clip(CircleShape)
             .semantics { contentDescription = description }
@@ -296,7 +330,7 @@ private fun Step(back: Boolean, enabled: Boolean, description: String, onClick: 
     }
 }
 
-private fun dayLabel(today: Calendar, offset: Int): String {
+internal fun dayLabel(today: Calendar, offset: Int): String {
     val c = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, offset) }
     fun same(a: Calendar, b: Calendar) = a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
         a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
@@ -306,6 +340,17 @@ private fun dayLabel(today: Calendar, offset: Int): String {
     return SimpleDateFormat("EEE d MMM", T.locale).apply { timeZone = ISRAEL }.format(Date(c.timeInMillis))
 }
 
+// A kept time as the first list shows it, in the rider's clock: "Arrive by 08:00", "Depart at 7:30 PM".
+internal fun savedLabel(t: SavedTime): String {
+    val time = T.ltr(hhmm(t.hour * 3600 + t.minute * 60))
+    return if (t.type == Transit.TIME_ARRIVAL) T("Arrive by $time", "הגעה עד $time") else T("Depart at $time", "יציאה בשעה $time")
+}
+
+// A kept time tapped at now: its next time from the tap, not from when the sheet opened, so one left open past a kept
+// time's minute plans it for tomorrow; then as Done plans it.
+internal fun savedPick(t: uk.noammm.kav.data.SavedTime, now: Long): Pair<Long, Int> =
+    clampDepart(nextPick(Calendar.getInstance(ISRAEL).apply { timeInMillis = now }, 0, t.hour, t.minute, now / 60_000 * 60_000).first, t.type, now)
+
 internal fun clampDepart(pickedMs: Long, timeType: Int, now: Long): Pair<Long, Int> =
     if (pickedMs <= now) 0L to Transit.TIME_DEPARTURE else pickedMs to timeType
 
@@ -314,6 +359,14 @@ private fun daysBetween(from: Calendar, to: Calendar): Int {
         set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }.timeInMillis
     return Math.round((midnight(to) - midnight(from)) / 86_400_000.0).toInt()
+}
+
+// The time on the chosen day, and whether it went over to tomorrow: today's, once gone, is tomorrow's, as for a rider
+// planning the evening before. A kept time takes its next one this way (day 0).
+internal fun nextPick(today: Calendar, day: Int, hour: Int, minute: Int, openedMinute: Long): Pair<Long, Boolean> {
+    val onDay = chosenMillis(today, day, hour, minute)
+    val rolled = day == 0 && onDay < openedMinute
+    return (if (rolled) chosenMillis(today, day + 1, hour, minute) else onDay) to rolled
 }
 
 private fun chosenMillis(anchor: Calendar, offset: Int, hour: Int, minute: Int): Long =

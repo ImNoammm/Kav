@@ -492,6 +492,8 @@ internal fun reportJson(
 // A report about the bus of a ride, the one the rider is on when Kav knows it, from where they got on to where they
 // got off.
 internal fun rideReport(ride: Transit.Leg, r: Transit.Resolved, bus: Transit.Arrival?, at: Long): ReportFor? {
+    // The ministry's form is for the ministry's lines: an extension's ride isn't reported there.
+    if (uk.noammm.kav.ext.RefTable.isHandle(ride.lineId)) return null
     val line = r.line(ride.lineId)
     val stops = ride.stops.map { id -> r.stop(id).let { ReportStop(id, it?.name.orEmpty(), it?.code?.ifBlank { null }) } }
     val mode = legMode(ride, r)

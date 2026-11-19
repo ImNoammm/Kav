@@ -4,8 +4,9 @@ A person signs in once on a phone, with their username and password or an invite
 its own: its requests are signed with it as Kav's are with the app key (X-Kav), and say which device they're from
 (X-Kav-Device). The password never stays on the phone; signing a phone out revokes its token alone.
 
-Kept: the accounts (scrypt hashes), their phones and when each was last seen, invites, and wrong-password pauses.
-Nothing about trips, searches or places. Python's own library only; live.py and the setup page share it."""
+Kept: the accounts (scrypt hashes), their phones and when each was last seen, and invites; wrong-password pauses in
+memory. Nothing about trips, searches or places. Python's own library only; live.py and the setup page share it."""
+import collections
 import hashlib
 import hmac
 import os
@@ -21,6 +22,10 @@ PAUSE_S = 15 * 60
 MIN_PASSWORD = 8
 SETUP = "setup:"  # the setup page's own count of wrong passwords, apart from the phones' (pauses)
 SEEN_EVERY = 300  # seconds between the writes of a phone's "last seen"
+# Wrong passwords are counted in memory, the same way for every name, real or not, so neither the answers, their time
+# nor a restart tells which names have accounts. A count goes PAUSE_S after its last wrong password; past this many names
+# nobody has, the oldest of those go too (people's never do, so trying names can't lift a person's pause).
+COUNTED = 10000
 # Passwords too common to allow, however long (the top of the usual lists).
 COMMON = {"password", "12345678", "123456789", "1234567890", "qwertyuiop", "11111111", "00000000", "password1",
           "iloveyou", "qwerty123", "1q2w3e4r", "abcd1234", "kavkavkav", "princess", "sunshine", "football"}
@@ -47,6 +52,11 @@ def password_matches(password, stored):
         return False
 
 
+def usable(name):
+    """Whether a username (stripped, lower case) is one an account can have."""
+    return 1 <= len(name) <= 40 and all(c.isalnum() or c in "._-" for c in name)
+
+
 def weak(password):
     """Why a password won't do, or None."""
     if len(password) < MIN_PASSWORD:
@@ -59,6 +69,10 @@ def weak(password):
 class Store:
     def __init__(self, path):
         self.path, self.lock, self.seen = path, threading.Lock(), {}
+        # Wrong passwords by name (SETUP + name for the setup page's): (in a row, paused until, the last), oldest first.
+        self.counts = {True: collections.OrderedDict(), False: collections.OrderedDict()}  # people's, names nobody has
+        # A stored password like an account's, for names nobody has: the same scrypt work, made now so no request makes it.
+        self.nobody = hash_password(secrets.token_urlsafe(16))
         with self.lock, closing(self.connect()) as db, db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS people (name TEXT PRIMARY KEY, hash TEXT, admin INTEGER, disabled INTEGER,
@@ -68,6 +82,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS invites (code TEXT PRIMARY KEY, name TEXT, expires INTEGER);
                 CREATE TABLE IF NOT EXISTS pauses (name TEXT PRIMARY KEY, wrong INTEGER, until INTEGER);
             """)
+            db.execute("DELETE FROM pauses")  # counted in memory now (self.counts)
         os.chmod(path, 0o600)
 
     def connect(self):
@@ -77,7 +92,7 @@ class Store:
 
     def add(self, name, password=None, admin=False):
         name = name.strip().lower()
-        if not (1 <= len(name) <= 40) or not all(c.isalnum() or c in "._-" for c in name):
+        if not usable(name):
             raise Refused("A username is letters, numbers, dots, dashes and underscores.")
         if password is not None and weak(password):
             raise Refused(weak(password))
@@ -106,6 +121,7 @@ class Store:
         with self.lock, closing(self.connect()) as db, db:
             db.execute("UPDATE people SET hash = ? WHERE name = ?", (hash_password(password), name))
             db.execute("DELETE FROM pauses WHERE name = ?", (name,))
+            self.counts[True].pop(name, None)
 
     def update(self, name, admin=None, disabled=None):
         with self.lock, closing(self.connect()) as db, db:
@@ -120,6 +136,9 @@ class Store:
             for table in ("people", "devices", "invites", "pauses"):
                 db.execute("DELETE FROM %s WHERE name = ?" % table, (name,))
             db.execute("DELETE FROM pauses WHERE name = ?", (SETUP + name,))
+            for book in self.counts.values():
+                book.pop(name, None)
+                book.pop(SETUP + name, None)
 
     def verify(self, name, password, now=None, setup=False):
         """The person, for the right password: {name, admin}. Five wrong ones in a row pause the username, counted
@@ -128,20 +147,28 @@ class Store:
         now = int(time.time() if now is None else now)
         name = (name or "").strip().lower()
         key = SETUP + name if setup else name
+        # A name no account can have is refused as a wrong one, before the store is asked anything.
+        if not usable(name):
+            raise Refused("Wrong username or password.")
         with self.lock, closing(self.connect()) as db, db:
-            paused = db.execute("SELECT wrong, until FROM pauses WHERE name = ?", (key,)).fetchone()
+            row = db.execute("SELECT hash, disabled, admin FROM people WHERE name = ?", (name,)).fetchone()
+            counts = self.counts[row is not None]
+            for book in self.counts.values():  # counts PAUSE_S past their last wrong password go, whoever asks
+                while book and next(iter(book.values()))[2] + PAUSE_S <= now:
+                    book.popitem(last=False)
+            paused = counts.get(key)
             if paused and paused[1] > now:
                 raise Refused("Too many wrong passwords. Try again in %d minutes." % -(-(paused[1] - now) // 60),
                               paused[1] - now)
-            row = db.execute("SELECT hash, disabled, admin FROM people WHERE name = ?", (name,)).fetchone()
-            right = bool(row and row[0] and password_matches(password or "", row[0]))
+            right = password_matches(password or "", row[0] if row and row[0] else self.nobody) and bool(row and row[0])
             if not right:
-                # Kept before the refusal: raised inside the transaction, it would be rolled back with it.
                 wrong = (paused[0] if paused else 0) + 1
-                db.execute("INSERT OR REPLACE INTO pauses VALUES (?, ?, ?)",
-                           (key, 0 if wrong >= PAUSE_AFTER else wrong, now + PAUSE_S if wrong >= PAUSE_AFTER else 0))
+                counts.pop(key, None)
+                counts[key] = (0 if wrong >= PAUSE_AFTER else wrong, now + PAUSE_S if wrong >= PAUSE_AFTER else 0, now)
+                while len(self.counts[False]) > COUNTED:
+                    self.counts[False].popitem(last=False)
             else:
-                db.execute("DELETE FROM pauses WHERE name = ?", (key,))
+                counts.pop(key, None)
         if not right:
             raise Refused("Wrong username or password.")
         if row[1]:

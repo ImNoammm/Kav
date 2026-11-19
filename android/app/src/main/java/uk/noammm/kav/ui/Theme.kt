@@ -37,6 +37,8 @@ enum class Look { DARK, OLED, LIGHT }
 
 object K {
     var look by mutableStateOf(Look.DARK)
+    // Settings' System look: look is the one the phone's dark theme gives (Prefs.lookOf), and changes with it.
+    var followsSystem by mutableStateOf(false)
     val light get() = look == Look.LIGHT
     var liquid by mutableStateOf(false)
 
@@ -109,9 +111,10 @@ object K {
     fun restyle(change: () -> Unit) { restyling = Restyle(change) }
 
     // Every colour has to be set for every look, or a switch leaves strays from the last one (Palette has them all).
+    // A theme the rider chose gives the colours, except on Kav's protected surfaces (ExtLook).
     fun applyTheme(chosen: Look) {
         look = chosen
-        val p = palette(chosen)
+        val p = ExtLook.paletteFor(chosen)
         bg = p.bg; surface = p.surface; surfaceRaised = p.surfaceRaised
         fill = p.fill; fillStrong = p.fillStrong; separator = p.separator
         text = p.text; textSecondary = p.textSecondary; textTertiary = p.textTertiary
@@ -285,6 +288,8 @@ object KType {
     val subhead get() = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, color = K.textSecondary)
     // Section headers, tab labels, captions under icons.
     val caption get() = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = .2.sp, color = K.textSecondary)
+    // A section's title over its card (SectionHeader, InfoHeader): read as a title, not a footnote.
+    val header get() = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = K.textSecondary)
 }
 
 // Figures of one width, for times and counts that change in place without the line jumping.
@@ -295,6 +300,8 @@ object Shown {
     var accessibility by mutableStateOf(true)
     var fareProfile by mutableStateOf(uk.noammm.kav.data.FareProfile.REGULAR)
     var twelveHour by mutableStateOf(false)
+    // Paying on Home and on each ride; off, Kav shows nothing about paying (as before 4.3.2).
+    var payments by mutableStateOf(true)
     // A popup and a dot on Settings when a new version is out. Off for riders who update another way, as with Obtainium.
     var updatePrompts by mutableStateOf(true)
 }
@@ -330,6 +337,7 @@ class Restyle(val change: () -> Unit) { var done = false }
 @Composable
 private fun ThemeFade(content: @Composable () -> Unit) {
     val layer = rememberGraphicsLayer()
+    val frozen = rememberGraphicsLayer().apply { compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen }
     var recording by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf<ImageBitmap?>(null) }
     val fade = remember { Animatable(0f) }
@@ -364,7 +372,14 @@ private fun ThemeFade(content: @Composable () -> Unit) {
                 layer.record { this@drawWithContent.drawContent() }
                 drawLayer(layer)
             } else drawContent()
-            held?.let { drawImage(it, alpha = fade.value) }
+            held?.let { picture ->
+                // A map on its own surface left a hole in the picture: its still goes in it, and the two fade as one.
+                if (MAP_ON_SURFACE && MapStills.shown.isNotEmpty()) {
+                    frozen.alpha = fade.value
+                    frozen.record { drawImage(picture); with(MapStills) { drawUnder(androidx.compose.ui.geometry.Offset.Zero) } }
+                    drawLayer(frozen)
+                } else drawImage(picture, alpha = fade.value)
+            }
         },
     ) { content() }
 }

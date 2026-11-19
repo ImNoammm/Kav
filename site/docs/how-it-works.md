@@ -15,7 +15,7 @@ for what it can't know itself: where the buses are now, and trips planned agains
 - **The timetable** for the coming week, compiled every night from the Ministry of Transport's GTFS feed by GitHub
   Actions and downloaded in the background. Departure boards, line pages and timetables read it, with or without
   signal.
-- **Your places**, favourites, recent trips and settings never leave the phone, except in a `.kav` backup you save
+- **Your places**, favorites, recent trips and settings never leave the phone, except in a `.kav` backup you save
   yourself.
 
 ## Sources you pick

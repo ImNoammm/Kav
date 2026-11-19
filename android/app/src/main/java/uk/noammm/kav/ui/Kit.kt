@@ -53,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -97,6 +98,7 @@ fun KavButton(
     busy: Boolean = false,
     enabled: Boolean = true,
     wide: Boolean = false,
+    image: androidx.compose.ui.graphics.ImageBitmap? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -117,7 +119,8 @@ fun KavButton(
     Row(
         modifier
             .then(if (wide) Modifier.fillMaxWidth() else Modifier)
-            .heightIn(min = animateDpAsState(if (style == ButtonStyle.Primary) 52.dp else 48.dp, spring(dampingRatio = 1f, stiffness = 500f), label = "buttonHeight").value)
+            // One height for every style, so buttons side by side line up.
+            .heightIn(min = 52.dp)
             .graphicsLayer { scaleX = press; scaleY = press }
             .clip(K.capsule)
             .background(fill)
@@ -146,6 +149,11 @@ fun KavButton(
                 Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(K.gap2))
             }
+        }
+        // Another app's own icon (a store's), as it is on the phone.
+        image?.let {
+            androidx.compose.foundation.Image(it, contentDescription = null, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(K.gap2))
         }
         // A label that changes (Show, Hide) fades from one to the other while the button eases to its new width.
         ChangingText(label) { Text(it, style = K.type.bodyStrong, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -359,6 +367,13 @@ fun ListGroup(
     }
 }
 
+// A control at a header's end that keeps its whole touch area without making the header taller: laid out as tall as
+// nothing, and drawn centred on the title.
+internal fun Modifier.overlapsHeight(): Modifier = layout { m, c ->
+    val p = m.measure(c.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+    layout(p.width, 0) { p.place(0, -p.height / 2) }
+}
+
 // A hairline across a group, from inset at its start.
 @Composable
 fun Separator(inset: Dp = K.gap4) {
@@ -406,6 +421,7 @@ fun ListRow(
     chevron: Boolean = onClick != null,
     titleColor: Color = K.text,
     subtitleMaxLines: Int = 1,
+    subtitleColor: Color? = null,
 ) {
     Row(
         modifier
@@ -419,7 +435,7 @@ fun ListRow(
         leading?.invoke()
         Column(Modifier.weight(1f)) {
             Text(title, style = K.type.body, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            subtitle?.let { Text(it, style = K.type.subhead, maxLines = subtitleMaxLines, overflow = TextOverflow.Ellipsis) }
+            subtitle?.let { Text(it, style = K.type.subhead, color = subtitleColor ?: Color.Unspecified, maxLines = subtitleMaxLines, overflow = TextOverflow.Ellipsis) }
         }
         // A value that comes later (a distance once you're found) fades in, and a new one rolls over the old.
         var kept by remember { mutableStateOf(value) }
@@ -439,18 +455,19 @@ fun ListRow(
     }
 }
 
-// A section's header: small, lined up with its rows' text, with an action at its end where it has one.
+// A section's header, the one look for every section title (InfoHeader's too): lined up with its rows' text, well above
+// its card and close over it, so it sits with the card it names, with an action at its end where it has one.
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     Row(
         modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap2, top = K.gap6, bottom = K.gap2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, style = K.type.caption, modifier = Modifier.weight(1f))
+        Text(text, style = K.type.header, modifier = Modifier.weight(1f))
         if (action != null && onAction != null) {
             Text(
                 action, style = K.type.caption, color = K.accentInk,
-                modifier = Modifier.minimumInteractiveComponentSize().clip(K.capsule)
+                modifier = Modifier.overlapsHeight().minimumInteractiveComponentSize().clip(K.capsule)
                     .clickable(role = Role.Button, onClick = onAction).padding(horizontal = K.gap2),
             )
         }

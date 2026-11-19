@@ -93,15 +93,17 @@ internal fun FreshAlerts(rides: List<Pair<Transit.Leg, Transit.Resolved>> = empt
     }
 }
 
-// Keeps how busy the shown rides usually are fresh, from Google, while a trip page is open (GoogleCrowd).
+// Keeps how busy the shown rides usually are fresh while a trip page is open, from Google (GoogleCrowd) or from Kav's
+// server by their routes (KavCrowd), whichever the rider picked.
 @Composable
 internal fun FreshCrowd(rides: List<Pair<Transit.Leg, Transit.Resolved>>) {
-    if (!uk.noammm.kav.data.GoogleCrowd.enabled) return
+    if (!uk.noammm.kav.data.GoogleCrowd.enabled && !uk.noammm.kav.data.KavCrowd.enabled) return
     val shown by androidx.compose.runtime.rememberUpdatedState(rides)
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(1_500)
         while (true) {
-            uk.noammm.kav.data.GoogleCrowd.refresh(shown)
+            if (uk.noammm.kav.data.GoogleCrowd.enabled) uk.noammm.kav.data.GoogleCrowd.refresh(shown)
+            if (uk.noammm.kav.data.KavCrowd.enabled) uk.noammm.kav.data.KavCrowd.refresh(shown.mapNotNull { uk.noammm.kav.data.KavPlan.routeOf(it.first.lineId) })
             kotlinx.coroutines.delay(60_000)
         }
     }
@@ -109,12 +111,12 @@ internal fun FreshCrowd(rides: List<Pair<Transit.Leg, Transit.Resolved>>) {
 
 // How busy the ride's next departure usually is, as Google predicts it for the line and the hour: a meter of five and
 // its words, Google's five steps in order (its scale runs from least to most; what it calls each is Kav's reading).
-// While Google is asked, the meter pulses; when asking failed, or Google has no level for it, it says so.
+// While Google is asked, the meter pulses; when asking failed, or Google has no level for it, it says so. From Kav's
+// server instead, how its hour compares with the line's own (KavCrowd).
 @Composable
 internal fun CrowdMeter(ride: Transit.Leg, r: Transit.Resolved, dep: Transit.Departure?) {
-    val crowd = uk.noammm.kav.data.GoogleCrowd.displayed(
-        dep?.let { uk.noammm.kav.data.GoogleCrowd.of(ride, r, it) }, r.isTrain(ride),
-    )
+    val crowd = uk.noammm.kav.data.KavCrowd.at(uk.noammm.kav.data.KavPlan.routeOf(ride.lineId), dep?.timeUtc ?: 0)
+        ?: uk.noammm.kav.data.GoogleCrowd.displayed(dep?.let { uk.noammm.kav.data.GoogleCrowd.of(ride, r, it) }, r.isTrain(ride))
     var shown by remember { mutableStateOf(crowd) }
     if (crowd != null) shown = crowd
     androidx.compose.animation.AnimatedVisibility(
@@ -126,12 +128,25 @@ internal fun CrowdMeter(ride: Transit.Leg, r: Transit.Resolved, dep: Transit.Dep
     ) { shown?.let { CrowdLevel(it) } }
 }
 
+// Kav's own level in words (KavCrowd): how the hour compares with the line's own hours, never how full the bus is.
+internal fun usualWords(c: uk.noammm.kav.data.GoogleCrowd.Crowd.Usual): String {
+    val words = when (c.level) {
+        '3' -> T("Usually one of this line's busiest hours", "בדרך כלל אחת השעות העמוסות ביותר בקו")
+        '2' -> T("Usually about average for this line", "בדרך כלל עומס רגיל לקו הזה")
+        '1' -> T("Usually one of this line's quieter hours", "בדרך כלל אחת השעות השקטות יותר בקו")
+        else -> T("Usually not busy", "בדרך כלל לא עמוס")
+    }
+    return words
+}
+
 // The meter and its words for one state: the bars fill to a level, or wave while Google is asked, and stay empty
 // when it failed or has none. Each bar eases to its new fill and the words cross-fade, so a level coming in after the
-// wave grows out of it.
+// wave grows out of it. Kav's own level has three bars, its line's quieter, average and busiest hours.
 @Composable
 internal fun CrowdLevel(crowd: uk.noammm.kav.data.GoogleCrowd.Crowd) {
-    val level = (crowd as? uk.noammm.kav.data.GoogleCrowd.Crowd.Level)?.level ?: 0
+    val usual = crowd as? uk.noammm.kav.data.GoogleCrowd.Crowd.Usual
+    val bars = if (usual != null) 3 else 5
+    val level = (crowd as? uk.noammm.kav.data.GoogleCrowd.Crowd.Level)?.level ?: usual?.let { if (it.level == 'q') 1 else it.level - '0' } ?: 0
     val words = when (crowd) {
         is uk.noammm.kav.data.GoogleCrowd.Crowd.Level -> when (level) {
             1 -> T("Usually not busy", "בדרך כלל לא עמוס")
@@ -143,8 +158,9 @@ internal fun CrowdLevel(crowd: uk.noammm.kav.data.GoogleCrowd.Crowd) {
         uk.noammm.kav.data.GoogleCrowd.Crowd.Asking -> T("Checking how busy…", "בודקים כמה עמוס…")
         uk.noammm.kav.data.GoogleCrowd.Crowd.Failed -> T("Couldn't check how busy", "לא הצלחנו לבדוק כמה עמוס")
         uk.noammm.kav.data.GoogleCrowd.Crowd.Unknown -> T("Google has no estimate for this one", "ל-Google אין הערכה לנסיעה הזו")
+        is uk.noammm.kav.data.GoogleCrowd.Crowd.Usual -> usualWords(crowd)
     }
-    val said = if (level > 0) T("$words, $level of 5, as Google predicts", "$words, $level מתוך 5, לפי Google") else words
+    val said = if (level > 0 && usual == null) T("$words, $level of 5, as Google predicts", "$words, $level מתוך 5, לפי Google") else words
     val asking = crowd == uk.noammm.kav.data.GoogleCrowd.Crowd.Asking
     // One wave across the bars a second while asking; still otherwise, so a shown level draws nothing more.
     val wave = if (asking) {
@@ -161,7 +177,7 @@ internal fun CrowdLevel(crowd: uk.noammm.kav.data.GoogleCrowd.Crowd) {
             Icons.Rounded.Groups, contentDescription = null,
             tint = K.dim, modifier = Modifier.size(18.dp).padding(end = 3.dp),
         )
-        for (i in 1..5) {
+        for (i in 1..bars) {
             val fill by androidx.compose.animation.animateColorAsState(if (i <= level) K.textSecondary else K.fill, tween(260), label = "crowdBar")
             Box(
                 Modifier.size(width = 5.dp, height = 12.dp).clip(RoundedCornerShape(2.dp))
@@ -169,7 +185,7 @@ internal fun CrowdLevel(crowd: uk.noammm.kav.data.GoogleCrowd.Crowd) {
                         drawRect(fill)
                         // A brighter crest passing along the empty bars, left to right in either language's order.
                         wave?.let { w ->
-                            val d = kotlin.math.abs(w.value * 6f - i)
+                            val d = kotlin.math.abs(w.value * (bars + 1) - i)
                             if (d < 1.5f) drawRect(crest.copy(alpha = (1f - d / 1.5f) * .9f))
                         }
                     },
@@ -218,10 +234,14 @@ fun nowSec(): Int {
     return c.get(Calendar.HOUR_OF_DAY) * 3600 + c.get(Calendar.MINUTE) * 60 + c.get(Calendar.SECOND)
 }
 
+// Whole minutes until a moment secs away, never rounded up: a bus 3:59 away is 3 min, so no count Kav shows promises
+// more time than there is. Under a minute, and gone, 0: the places that show it say "now" for that.
+fun minsLeft(secs: Long): Long = if (secs <= 0) 0 else secs / 60
+
 fun relative(t: Int, from: Int = nowSec()): String? {
     val d = t - from
     if (d < 0 || d > 3600) return null
-    val m = (d / 60.0).roundToInt()
+    val m = minsLeft(d.toLong())
     return if (m <= 0) T("now", "עכשיו") else T("$m min", "$m דק׳")
 }
 
@@ -464,7 +484,7 @@ fun PreciseLocationNudge() {
             Text(
                 T(
                     "Turn on ‘Use precise location’. Without it Android rounds your position " +
-                        "to about a kilometre, which can plan your trip from the wrong town.",
+                        "to about a kilometer, which can plan your trip from the wrong town.",
                     "הפעילו את ‘השתמשו במיקום מדויק’. בלעדיו אנדרואיד מעגל את המיקום שלכם " +
                         "לכדי קילומטר בערך, מה שעלול לתכנן את הנסיעה מהעיר הלא נכונה.",
                 ),
@@ -906,6 +926,8 @@ fun BottomSheet(
                         ) { it },
                     )
                     .offset { androidx.compose.ui.unit.IntOffset(0, pulled.roundToInt()) }
+                    // Never under the status bar: a sheet taller than the screen scrolls inside itself (scrolls).
+                    .statusBarsPadding()
                     // Above the system's bar (and the keyboard); the tab bar is away while a sheet is open.
                     .padding(bottom = bottomCover())
                     .padding(K.gap3)

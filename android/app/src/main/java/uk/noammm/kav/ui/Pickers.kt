@@ -71,6 +71,10 @@ fun KavField(
     floating: Boolean = false,
     // flat: no capsule of its own, for a field that is the first row of a card.
     flat: Boolean = false,
+    // multiline: Enter makes a new line and the field grows as it fills, on a rounded card rather than a capsule.
+    multiline: Boolean = false,
+    // onIme: what the keyboard's action key does, in place of Compose's own (which can't leave this composition).
+    onIme: (() -> Unit)? = null,
 ) {
     val focus = remember { FocusRequester() }
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
@@ -86,29 +90,32 @@ fun KavField(
     BasicTextField(
         value = shown,
         onValueChange = { field = it; if (it.text != value) onValue(it.text) },
-        singleLine = true,
+        singleLine = !multiline,
+        minLines = if (multiline) 3 else 1,
         textStyle = K.type.body,
         cursorBrush = SolidColor(K.text),
         visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardActions = if (onIme != null) androidx.compose.foundation.text.KeyboardActions(onAny = { onIme() }) else androidx.compose.foundation.text.KeyboardActions.Default,
         keyboardOptions = KeyboardOptions(
             keyboardType = keyboard,
-            imeAction = ime ?: if (keyboard == KeyboardType.Text) ImeAction.Search else ImeAction.Done,
+            imeAction = if (multiline) ImeAction.Default else ime ?: if (keyboard == KeyboardType.Text) ImeAction.Search else ImeAction.Done,
         ),
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             // A capsule with a quiet fill; glass where it floats over a list.
-            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(26.dp) else Modifier.clip(K.capsule).background(K.fill))
+            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(26.dp)
+                else Modifier.clip(if (multiline) androidx.compose.foundation.shape.RoundedCornerShape(K.rTile) else K.capsule).background(K.fill))
             .focusRequester(focus)
             .semantics { contentDescription = placeholder }
             .padding(horizontal = K.gap4, vertical = 14.dp),
         decorationBox = { innerTextField ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically) {
                 if (search) {
                     SearchGlyph(K.textTertiary, 20.dp)
                     Spacer(Modifier.width(K.gap2))
                 }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.weight(1f), contentAlignment = if (multiline) Alignment.TopStart else Alignment.CenterStart) {
                     if (value.isEmpty()) Text(placeholder, style = K.type.body, color = K.textTertiary)
                     innerTextField()
                 }
@@ -486,6 +493,7 @@ fun StopMapPicker(
 ) {
     val rise = with(androidx.compose.ui.platform.LocalDensity.current) { 76.dp.roundToPx() }
     androidx.compose.animation.AnimatedVisibility(visible, enter = searchIn(rise).targetContentEnter, exit = searchOut(rise).initialContentExit) {
+        VeilMaps()
         MapPickerScreen(net, here, onPick, onDismiss, onLocate, allowPin, onStop)
     }
 }

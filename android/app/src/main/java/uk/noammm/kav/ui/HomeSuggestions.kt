@@ -545,7 +545,7 @@ private fun NearestStation(net: Net, station: Station, planned: List<StationLine
             }
         }
     }
-    // The times are read against the clock once per update, so they change together, rolling.
+    // When the lines were last worked out: each row counts down from it by the clock now (LineRow, countdown()).
     val second = remember(lines) { nowSec() }
     val shown = lines?.take(SHOWN_LINES)
     val measurer = rememberTextMeasurer()
@@ -597,6 +597,7 @@ private fun NearestStation(net: Net, station: Station, planned: List<StationLine
 // a twin's for a twin's line.
 @Composable
 private fun LineRow(net: Net, line: StationLine, plate: Dp, tall: Dp, timeColumn: Dp, second: Int, onClick: () -> Unit) {
+    val clock = rememberClockSec()
     val from = net.stopName(line.stop)
     OnPlate(
         K.gap3,
@@ -619,7 +620,8 @@ private fun LineRow(net: Net, line: StationLine, plate: Dp, tall: Dp, timeColumn
             }
             Spacer(Modifier.width(4.dp))
             Box(Modifier.width(timeColumn), contentAlignment = Alignment.CenterStart) {
-                LiveText(relative(maxOf(line.at, second), second) ?: hhmm(line.at), style = K.type.subhead.tabular,
+                // Counted by the clock now, as the stop's board and the trip page are (countdown()).
+                LiveText(countdown(maxOf(line.at, second), second, clock) ?: hhmm(line.at), style = K.type.subhead.tabular,
                     color = line.live?.let(::depColour) ?: K.scheduled, maxLines = 1)
             }
         }

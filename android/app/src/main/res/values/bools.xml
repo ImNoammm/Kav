@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kav's ticket reader (TicketReader) needs Android 11's screenshots: offered to Android only from then on. -->
+    <bool name="ticket_reader">false</bool>
+</resources>

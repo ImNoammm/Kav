@@ -72,8 +72,8 @@ internal fun railPair(trips: List<Transit.Itinerary>, r: Transit.Resolved): Rail
         val trains = t.rides.filter(r::isTrain)
         if (trains.isEmpty()) continue
         val first = trains.first(); val last = trains.last()
-        val from = r.stop(first.fromStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: continue
-        val to = r.stop(last.toStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: continue
+        val from = r.stop(first.fromStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: continue
+        val to = r.stop(last.toStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: continue
         if (from == to) continue
         return RailPair(from, to, r.stopName(first.fromStop).orEmpty(), r.stopName(last.toStop).orEmpty(), first.dep)
     }
@@ -247,8 +247,9 @@ internal class TrainChange(val station: String, val inAt: String, val out: Strin
 
 internal fun trainChange(arriving: Transit.Leg, next: Transit.Leg, nextWait: Transit.Leg?, r: Transit.Resolved): TrainChange? {
     if (!r.isTrain(arriving) || !r.isTrain(next)) return null
-    val code = r.stop(next.fromStop)?.code
-    val alight = r.stop(arriving.toStop)?.code
+    // The same station by the ministry's code; an extension's stops only by their own ids.
+    val code = r.stop(next.fromStop)?.ministryCode()?.toString()
+    val alight = r.stop(arriving.toStop)?.ministryCode()?.toString()
     if (next.fromStop != arriving.toStop && (code.isNullOrBlank() || code != alight)) return null
     val inAt = r.alightPlatform(arriving)
     val out = r.platform(next, nextWait)

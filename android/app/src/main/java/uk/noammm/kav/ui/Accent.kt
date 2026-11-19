@@ -83,7 +83,7 @@ fun AccentPicker(modifier: Modifier = Modifier, onChange: (Color) -> Unit) {
         // A tap or a drag along it picks; a drag up or down scrolls the page past it.
         Canvas(
             Modifier.fillMaxWidth().height(36.dp)
-                .semantics { contentDescription = T("Colour", "צבע") }
+                .semantics { contentDescription = T("Color", "צבע") }
                 .pointerInput(strength) { detectTapGestures { pick(it.x, size.width, tap = true) } }
                 .pointerInput(strength) {
                     detectHorizontalDragGestures(onDragStart = { pick(it.x, size.width) }) { change, _ ->
@@ -124,14 +124,12 @@ fun AccentPicker(modifier: Modifier = Modifier, onChange: (Color) -> Unit) {
 
 @Composable
 fun AccentPreview(modifier: Modifier = Modifier) {
-    // The page under the floating parts is what their glass is made of: map under the search and the trip card, so
-    // liquid glass shows the streets through both and solid hides them, as on Home. It's drawn once; the glass draws
-    // again only with it. The map fills the card: ending under the floating parts, it left the rest a darker band.
-    val liquid = rememberLiquidBackdrop()
+    // A map under the search and the trip card, so transparent shows the streets through both, as panels over a map look
+    // now, and solid hides them. The map fills the card: ending under the floating parts, it left the rest a darker band.
     val density = LocalDensity.current
     var floating by remember { mutableStateOf(150.dp) }
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.bg).border(0.5.dp, K.separator, RoundedCornerShape(K.rCard))) {
-        Box(Modifier.fillMaxWidth().glassBackdrop(liquid)) {
+        Box(Modifier.fillMaxWidth()) {
             PreviewMap(Modifier.matchParentSize())
             Column(
                 Modifier.fillMaxWidth().padding(start = K.gap3, top = floating, end = K.gap3, bottom = K.gap3),
@@ -158,49 +156,47 @@ fun AccentPreview(modifier: Modifier = Modifier) {
             }
         }
         // The floating search and settings over the map, and the trip card under them, as on Home.
-        CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
-            Column(
-                Modifier.fillMaxWidth().padding(K.gap3).onSizeChanged { floating = with(density) { it.height.toDp() } + K.gap3 * 2 },
-                verticalArrangement = Arrangement.spacedBy(K.gap2),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                    Row(
-                        Modifier.weight(1f).height(32.dp).glassSurface(16.dp).padding(horizontal = K.gap3),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
-                    ) {
-                        Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(14.dp))
-                        Text(T("Where to?", "לאן?"), fontSize = 12.sp, color = K.textSecondary)
-                    }
-                    Box(Modifier.size(32.dp).glassSurface(16.dp), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Settings, contentDescription = null, tint = K.text, modifier = Modifier.size(16.dp))
-                    }
-                }
-                Column(Modifier.fillMaxWidth().glassSurface(K.rTile).padding(K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(T("Current trip", "הנסיעה הנוכחית"), fontSize = 12.sp, color = K.textSecondary, modifier = Modifier.weight(1f))
-                        Text(T("Resume", "המשך"), fontSize = 12.sp, color = K.accentInk, fontWeight = FontWeight.Medium)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                        LinePlateBadge("69", Mode.BUS, operatorPlate(Operators.ofGtfs(5)))
-                        Text(T("to Tel Aviv", "לתל אביב"), fontSize = 12.sp, color = K.text, modifier = Modifier.weight(1f))
-                        LiveGlyph(K.realtime, 10.dp)
-                        Text(T("3 min", "3 דק׳"), fontSize = 12.sp, color = K.realtime, fontWeight = FontWeight.Medium)
-                    }
-                }
-                // The tab bar, the glass seen most: Home on the accent, as TabBar shows the chosen tab.
+        Column(
+            Modifier.fillMaxWidth().padding(K.gap3).onSizeChanged { floating = with(density) { it.height.toDp() } + K.gap3 * 2 },
+            verticalArrangement = Arrangement.spacedBy(K.gap2),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                 Row(
-                    Modifier.fillMaxWidth().height(44.dp).glassSurface(22.dp).padding(3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    Modifier.weight(1f).height(32.dp).seeThrough(16.dp).padding(horizontal = K.gap3),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
                 ) {
-                    Tab.entries.forEachIndexed { i, t ->
-                        val ink = if (i == 0) K.onAccent else K.textSecondary
-                        Column(
-                            Modifier.weight(1f).fillMaxHeight().clip(K.capsule).then(if (i == 0) Modifier.background(K.accent) else Modifier),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-                        ) {
-                            TabGlyph(t, ink, 14.dp)
-                            Text(t.label, fontSize = 9.sp, color = ink, maxLines = 1)
-                        }
+                    Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(14.dp))
+                    Text(T("Where to?", "לאן?"), fontSize = 12.sp, color = K.textSecondary)
+                }
+                Box(Modifier.size(32.dp).seeThrough(16.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Settings, contentDescription = null, tint = K.text, modifier = Modifier.size(16.dp))
+                }
+            }
+            Column(Modifier.fillMaxWidth().seeThrough(K.rTile).padding(K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(T("Current trip", "הנסיעה הנוכחית"), fontSize = 12.sp, color = K.textSecondary, modifier = Modifier.weight(1f))
+                    Text(T("Resume", "המשך"), fontSize = 12.sp, color = K.accentInk, fontWeight = FontWeight.Medium)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+                    LinePlateBadge("69", Mode.BUS, operatorPlate(Operators.ofGtfs(5)))
+                    Text(T("to Tel Aviv", "לתל אביב"), fontSize = 12.sp, color = K.text, modifier = Modifier.weight(1f))
+                    LiveGlyph(K.realtime, 10.dp)
+                    Text(T("3 min", "3 דק׳"), fontSize = 12.sp, color = K.realtime, fontWeight = FontWeight.Medium)
+                }
+            }
+            // The tab bar, the glass seen most: Home on the accent, as TabBar shows the chosen tab.
+            Row(
+                Modifier.fillMaxWidth().height(44.dp).seeThrough(22.dp).padding(3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Tab.entries.filter { it != Tab.Ext }.forEachIndexed { i, t ->
+                    val ink = if (i == 0) K.onAccent else K.textSecondary
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight().clip(K.capsule).then(if (i == 0) Modifier.background(K.accent) else Modifier),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                    ) {
+                        TabGlyph(t, ink, 14.dp)
+                        Text(t.label, fontSize = 9.sp, color = ink, maxLines = 1)
                     }
                 }
             }

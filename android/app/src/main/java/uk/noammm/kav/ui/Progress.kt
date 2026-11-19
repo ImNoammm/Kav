@@ -1,7 +1,6 @@
 package uk.noammm.kav.ui
 
 import uk.noammm.kav.data.Transit
-import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -390,10 +389,13 @@ private fun rideLeftBehind(step: Step.Ride, chosen: Map<Int, Int>, fix: Fix): Bo
     return alongPath(fix.lat, fix.lon, shape) > pathLength(shape) - 60 - fix.slack
 }
 
-// Minutes until the ride reaches the rider's stop: the time its last stop gets below.
-internal fun minutesToAlight(ride: Transit.Leg, r: Transit.Resolved, fix: Fix?, now: Long): Long {
+// Minutes until the ride reaches the rider's stop (minsLeft()): the time its last stop gets below.
+internal fun minutesToAlight(ride: Transit.Leg, r: Transit.Resolved, fix: Fix?, now: Long): Long =
+    minsLeft(secondsToAlight(ride, r, fix, now))
+
+internal fun secondsToAlight(ride: Transit.Leg, r: Transit.Resolved, fix: Fix?, now: Long): Long {
     val at = rideTimes(ride, r, riderTrip(ride, r, fix, now), emptyMap(), fix, now).lastOrNull()?.utc ?: r.alightAt(ride)
-    return ceil((at - now) / 60.0).toLong().coerceAtLeast(0)
+    return (at - now).coerceAtLeast(0)
 }
 
 // When the rider's bus gets to a stop of the ride, and whether that's its live time.
@@ -461,7 +463,8 @@ internal fun rideTimes(
                 after != null -> after.second - (planned(after.first) - planned(share[i]))
                 else -> planned(share[i]) + delay
             },
-            false,
+            // In step with the bus's live times (or the rider aboard it), it shows as live; only the plan alone is grey.
+            before != null || after != null,
         )
     }
 }

@@ -72,6 +72,10 @@ object Transit {
     ) {
         val point: Pair<Double, Double>? get() = validPoint(lat, lon)
 
+        // Its code as the ministry's, for the ministry's own lookups (its timetable, live times, platforms, the railway);
+        // null for an extension's stop, whose code is only its publisher's, however much it looks like the ministry's.
+        fun ministryCode(): Int? = if (uk.noammm.kav.ext.RefTable.isHandle(id)) null else code.toIntOrNull()
+
         // Its name as shown (StopNames): Kav's server and the timetable name stops in Hebrew. A name Kav doesn't know
         // (a planner's "רכבת ..." for a train station, in either language) is the timetable's stop with the same code, as
         // named there.
@@ -79,7 +83,7 @@ object Transit {
             val shown = shownName(name)
             if (shown != name) return shown
             val net = uk.noammm.kav.Loaded.net ?: return shown
-            return code.toIntOrNull()?.let { KavLive.stopOfCode(net, it) }?.takeIf { it >= 0 }?.let(net::stopName) ?: shown
+            return ministryCode()?.let { KavLive.stopOfCode(net, it) }?.takeIf { it >= 0 }?.let(net::stopName) ?: shown
         }
     }
 
@@ -128,6 +132,7 @@ object Transit {
         val vehicleStatus: Int = 0,
         val alert: Int = 0,
         val platform: String = "",
+        val givenUtc: Long = 0,
     ) {
         val timeUtc get() = if (rtUtc > 0) rtUtc else if (statisticalUtc > 0) statisticalUtc else staticUtc
 
@@ -183,6 +188,8 @@ object Transit {
         val turns: List<Turn> = emptyList(),
         // On the first leg on from a stop on the way.
         val visit: Visit? = null,
+        // Of a walk's metres, those inside a station (a plan's "im"), for a walking model to time apart.
+        val insideMeters: Int = 0,
     ) {
         val options get() = alternatives.ifEmpty { listOf(this) }
         // Every line that can take the ride by when it leaves, as a route card lists them: the card's own first of those
@@ -208,6 +215,12 @@ object Transit {
         val tags: List<String> = emptyList(),
         val section: String = "",
         val sectionId: Int = -1,
+        // Its single fares added up, where paying in an app a day pass makes it less (fare); -1 otherwise (FareProfile).
+        val singleFares: Int = -1,
+        // Whose plan it is: an extension's namespace (publisher/dataset), or empty for Kav's server's.
+        val provider: String = "",
+        // The extensions' contributions it was judged by, pinned (ext/Pipeline.kt Snapshot JSON); empty for none.
+        val policy: String = "",
     ) {
         val durationMin get() = ((arr - dep) / 60).toInt()
         val rides get() = legs.filter { it.kind == LegKind.RIDE }
@@ -341,23 +354,23 @@ object Transit {
         // The railway's own platforms for a train, once asked (RailPlatforms).
         private fun railPlatforms(ride: Leg): RailPlatforms.Platforms? {
             if (!isTrain(ride)) return null
-            val from = stop(ride.fromStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: return null
-            val to = stop(ride.toStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: return null
+            val from = stop(ride.fromStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: return null
+            val to = stop(ride.toStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: return null
             return RailPlatforms.of(from, to, ride.dep)
         }
 
         // A train whose platforms the railway can be asked for, when the plan and live times don't give both.
         fun railAsk(ride: Leg): RailPlatforms.Ask? {
             if (!isTrain(ride) || platform(ride).isNotBlank() && alightPlatform(ride).isNotBlank()) return null
-            val from = stop(ride.fromStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: return null
-            val to = stop(ride.toStop)?.code?.toIntOrNull()?.let(IsraelRail::stationOf) ?: return null
+            val from = stop(ride.fromStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: return null
+            val to = stop(ride.toStop)?.ministryCode()?.let(IsraelRail::stationOf) ?: return null
             return RailPlatforms.Ask(from, to, ride.dep, ride.shortName.ifBlank { line(ride.lineId)?.number.orEmpty() })
         }
 
         // A bus station's platform from the timetable, which numbers them. A train's comes only with its live times.
         private fun plannedPlatform(ride: Leg, stopId: Int): String {
             if (isTrain(ride)) return ""
-            val code = stop(stopId)?.code?.toIntOrNull()?.takeIf { it > 0 } ?: return ""
+            val code = stop(stopId)?.ministryCode()?.takeIf { it > 0 } ?: return ""
             val number = ride.shortName.ifBlank { line(ride.lineId)?.number.orEmpty() }.trim().ifEmpty { return "" }
             return uk.noammm.kav.Loaded.net?.platformOf(code, number, KavLive.secondOfDay(ride.dep)).orEmpty()
         }
@@ -365,19 +378,27 @@ object Transit {
         fun isTrain(ride: Leg): Boolean = routeType(line(ride.lineId)?.agencyId ?: -1) == 2
 
         // A route card's departures: every way of taking its first ride (its line and the others from the same stop to
-        // the same stop), each line's from where the ride's own start.
-        fun cardDepartures(ride: Leg, wait: Leg?, now: Long = System.currentTimeMillis() / 1000): List<Departure> {
-            val since = if (ride.dep - now <= 3600) now - 60 else ride.dep - 10 * 60
+        // the same stop), each line's from where the ride's own start. asked: the time a search leaving at a time was
+        // for, and no bus before its minute is listed, another line's first one neither (the plan's lists start there
+        // too); 0 leaving now. reach: when the rider gets to the stop, from the walk before it; no bus leaving before
+        // then is listed, so the card never offers one the route can't catch (0: not known, all from now).
+        fun cardDepartures(ride: Leg, wait: Leg?, now: Long = System.currentTimeMillis() / 1000, asked: Long = 0, reach: Long = 0): List<Departure> {
+            val since = maxOf(if (ride.dep - now <= 3600) now - 60 else ride.dep - 10 * 60, asked - 60, reach - 30)
             return boardingOptions(ride, wait).flatMap { (option, boarding) -> departures(option, boarding, now, since) }
+                .filter { it.tripId == ride.tripId || it.timeUtc >= asked - 60 }
         }
 
         fun departures(ride: Leg, wait: Leg?, now: Long = System.currentTimeMillis() / 1000, since: Long? = null): List<Departure> {
             val boarding = wait?.options?.firstOrNull { it.lineId == ride.lineId }
-            val future = boarding?.nextDeps.orEmpty().filter { it.tripId != 0L }
-            val selected = future.firstOrNull { it.tripId == ride.tripId }
+            // A planner's own live times, the ride's and its line's others, age as a bus's report does (aged()): past
+            // that, their times stay, not as live.
+            fun aged(d: Departure) =
+                if (d.givenUtc > 0 && d.rtUtc > 0 && now - d.givenUtc > STALE_LIVE_S) d.copy(rtUtc = 0, statisticalUtc = d.rtUtc) else d
+            val future = boarding?.nextDeps.orEmpty().filter { it.tripId != 0L }.map(::aged)
+            val selected = aged(future.firstOrNull { it.tripId == ride.tripId }
                 ?: ride.nextDeps.firstOrNull()
                 ?: boarding?.nextDeps?.firstOrNull { it.tripId == 0L }?.copy(tripId = ride.tripId)
-                ?: Departure(ride.tripId, ride.dep)
+                ?: Departure(ride.tripId, ride.dep))
             val alert = boarding?.alertCategory ?: 0
             // A bus its live record says is canceled for the stop (status 3) is shown so, though
             // the plan still has it coming.
@@ -421,7 +442,7 @@ object Transit {
         // As shown (StopNames).
         fun stopName(id: Int): String? = stops[id]?.shown()
         fun routeType(agencyId: Int): Int = routeTypes[agencyId] ?: 3
-        fun agencyName(agencyId: Int): String? = KavPlan.agencyName(agencyId)
+        fun agencyName(agencyId: Int): String? = uk.noammm.kav.ext.RefTable.label(agencyId) ?: KavPlan.agencyName(agencyId)
 
     }
 

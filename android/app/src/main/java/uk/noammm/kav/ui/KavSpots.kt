@@ -115,6 +115,17 @@ internal fun updatedLabel(a: Transit.Arrival): String {
     return T("Location updated: $at", "המיקום עודכן: $at") + speed
 }
 
+// The line under a bus card's headline: when the headline already says how long ago the position came, only how fast
+// the bus went (or nothing), so "Location updated" is said once.
+internal fun updatedLine(a: Transit.Arrival, headline: String, now: Long): String? {
+    if (headline != updatedAgo(now - a.sampleUtc)) return updatedLabel(a)
+    return when {
+        !a.hasLocation || a.speed < 0 -> null
+        a.speed == 0 -> T("Standing still", "עומד במקום")
+        else -> T("${a.speed} km/h", "${a.speed} קמ״ש")
+    }
+}
+
 // A trip's live layer with its buses where Kav's server last saw them, when that's newer.
 @Composable
 internal fun rememberFresher(trip: Transit.Itinerary, r: Transit.Resolved): Transit.Resolved {

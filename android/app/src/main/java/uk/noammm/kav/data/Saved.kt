@@ -111,7 +111,7 @@ fun comingText(coming: List<Coming>, now: Long, clock: (Long) -> String): String
     if (soon.isEmpty()) return T("Nothing due in the next hour", "אין יציאות בשעה הקרובה")
     return soon.groupBy { it.line }.entries.joinToString(" · ") { (line, buses) ->
         "$line: " + buses.take(3).joinToString(", ") { b ->
-            if (!b.live) clock(b.at) else ((b.at - now + 30) / 60).let { m ->
+            if (!b.live) clock(b.at) else uk.noammm.kav.ui.minsLeft(b.at - now).let { m ->
                 if (m < 1) T("now", "עכשיו") else T("$m min", "$m דק׳")
             }
         }

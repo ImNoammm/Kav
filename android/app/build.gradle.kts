@@ -20,13 +20,15 @@ android {
         applicationId = "uk.noammm.kav"
         minSdk = 26
         targetSdk = 35
-        versionCode = 43
-        versionName = "4.3.2"
+        versionCode = 45
+        versionName = "5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // MapLibre's renderer is native code. Every phone Kav can reach is arm64;
         // x86_64 stays so the release APK still installs on the emulator.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         buildConfigField("String", "KAV_LIVE_KEY", "\"$liveKey\"")
+        // Timing-only log lines of the Rav-Pass ticket reader (TicketReader.timing), for a test build: -PkavTicketTiming=true.
+        buildConfigField("boolean", "TICKET_TIMING", (project.findProperty("kavTicketTiming") == "true").toString())
     }
 
     buildTypes {
@@ -35,11 +37,30 @@ android {
         }
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signed with the local debug key: there is no store listing, and an update
             // only installs over the previous one if both carry the same signature.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+
+    // -PkavDevId: a test build with its own id and name, so it installs beside the real Kav on a phone.
+    // -PkavDevId alone gives uk.noammm.kav.dev, "Kav dev"; -PkavDevId=perf gives uk.noammm.kav.perf, "Kav perf", so
+    // two test builds can sit side by side. The release build then also turns profileable, to be measured as shipped.
+    // Off unless asked for; nothing else changes.
+    if (project.hasProperty("kavDevId")) {
+        val id = project.property("kavDevId").toString().trim().let { if (it.isEmpty() || it == "true") "dev" else it }
+        require(Regex("[a-z][a-z0-9]{0,15}").matches(id)) { "kavDevId: one short lower-case word" }
+        val res = project.layout.buildDirectory.dir("generated/kavDevId/res").get().asFile
+        File(res, "values/strings.xml").apply {
+            parentFile.mkdirs()
+            writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <string name=\"app_name\">Kav $id</string>\n</resources>\n")
+        }
+        for (type in listOf("debug", "release")) {
+            buildTypes.getByName(type).applicationIdSuffix = ".$id"
+            sourceSets.getByName(type).res.srcDirs(res)
+        }
+        buildTypes.getByName("release").isProfileable = true
     }
 
     compileOptions {

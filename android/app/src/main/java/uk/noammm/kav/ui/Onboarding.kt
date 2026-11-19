@@ -53,6 +53,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
         page, transitionSpec = { if (targetState > initialState) forward() else backward() }, label = "onboarding",
         modifier = Modifier.fillMaxSize().background(K.bg),
     ) { p ->
+        VeilMaps()
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
                 .verticalScroll(rememberScrollState()).padding(K.gap4),
@@ -91,9 +92,9 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Text(T("Pick a look", "בחרו מראה"), style = K.type.largeTitle)
                 Text(
                     T(
-                        "OLED black, light or dark, with liquid glass or solid on top. " +
+                        "OLED black, light or dark, or as your phone is set, transparent or solid on top. " +
                             "The preview changes as you tap, and Settings has this again later.",
-                        "שחור OLED, בהיר או כהה, עם זכוכית נוזלית או משטחים אטומים. " +
+                        "שחור OLED, בהיר או כהה, או לפי הטלפון, עם משטחים שקופים או אטומים. " +
                             "התצוגה המקדימה משתנה כשאתם מקישים, ואפשר לשנות זאת שוב בהגדרות.",
                     ),
                     style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
@@ -108,10 +109,10 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { Prefs.lookPicked(ctx); page = 2 }
             } else if (p == 2) {
-                Text(T("Pick a colour", "בחרו צבע"), style = K.type.largeTitle)
+                Text(T("Pick a color", "בחרו צבע"), style = K.type.largeTitle)
                 Text(
                     T(
-                        "Kav is grey with one colour on top. Slide along the colours, or take a preset; " +
+                        "Kav is gray with one color on top. Slide along the colors, or take a preset; " +
                             "the preview follows as you go, and Settings has this again later.",
                         "Kav אפורה עם צבע אחד מעליה. החליקו לאורך הצבעים או בחרו גוון מוכן; " +
                             "התצוגה המקדימה מתעדכנת תוך כדי, ואפשר לשנות זאת שוב בהגדרות.",
@@ -174,6 +175,9 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
                     OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it }, setup = true)
                 }
+                // Paying with Rav-Pass, which can be turned on here with its permissions, or later in Settings.
+                Spacer(Modifier.height(K.gap5))
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSetup() }
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { page = 5 }
             } else if (p == 5) {

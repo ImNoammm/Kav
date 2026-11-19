@@ -96,7 +96,7 @@ internal object TripShare {
             details.stops.forEach { (id, stop) ->
                 var name = net?.shown(stop.name, stopNamesEnglish) ?: stop.name
                 if (name == stop.name && net != null) {
-                    val at = stop.code.toIntOrNull()?.let { KavLive.stopOfCode(net, it) }?.takeIf { it >= 0 }
+                    val at = stop.ministryCode()?.let { KavLive.stopOfCode(net, it) }?.takeIf { it >= 0 }
                     if (at != null) name = if (stopNamesEnglish) net.nameEn.getOrNull(at)?.ifEmpty { null } ?: net.name[at] else net.name[at]
                 }
                 o.getJSONObject("stops").getJSONObject(id.toString()).put("displayName", name)

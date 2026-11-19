@@ -37,6 +37,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uk.noammm.kav.ext.Extensions
+import uk.noammm.kav.ext.Outcome
+import uk.noammm.kav.ext.RefTable
 import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.Transit
 import uk.noammm.kav.KavModel
@@ -69,13 +72,15 @@ private fun StationsBody(model: KavModel, net: Net) {
         transitionSpec = { if (targetState >= 0) forward() else backward() },
         label = "station",
     ) { stop ->
-        if (stop >= 0) DepartureBoard(model, net, stop) { model.backFromStation() }
+        // An extension's stop is a handle (RefTable): its own provider's board, never the timetable's.
+        if (stop >= 0 && RefTable.isHandle(stop)) ExtStopBoard(model, net, stop) { model.backFromStation() }
+        else if (stop >= 0) DepartureBoard(model, net, stop) { model.backFromStation() }
         else StationList(model, net, list)
     }
 }
 
 // Kept while a stop's board is open, so coming back lands where the list was.
-private class StationListState {
+internal class StationListState {
     val scroll = LazyListState()
     var hits by mutableStateOf(emptyList<Int>())
     // The words the hits were found for.
@@ -83,6 +88,8 @@ private class StationListState {
     var near by mutableStateOf(emptyList<Pair<Int, Double>>())
     // Where near was found for.
     var nearFor by mutableStateOf<Pair<Double, Double>?>(null)
+    // Where the stop-board providers' stops were added to near for: warmStops finds Kav's own early, without them.
+    var nearExtFor: Pair<Double, Double>? = null
 }
 
 // Kept with its timetable, and Nearby found as soon as the timetable loads, so the list is there the moment Stops opens.
@@ -90,6 +97,22 @@ private var keptStations: Pair<Net, StationListState>? = null
 
 private fun stationListFor(net: Net): StationListState =
     keptStations?.takeIf { it.first === net }?.second ?: StationListState().also { keptStations = net to it }
+
+// Nearby on the Stops tab: as for a search, Kav's own first, the providers' added when they're known.
+internal suspend fun nearby(
+    list: StationListState, here: Pair<Double, Double>?,
+    own: suspend (Pair<Double, Double>) -> List<Pair<Int, Double>>, providers: suspend (Pair<Double, Double>) -> List<Pair<Int, Double>>,
+) {
+    if (here == null) { list.near = emptyList(); list.nearFor = null; list.nearExtFor = null; return }
+    // Kav's own may already be there for this place (warmStops, as the timetable loaded); the providers' are added once.
+    if (list.nearFor != here) { list.near = own(here); list.nearFor = here }
+    if (list.nearExtFor == here) return
+    val mine = list.near
+    val more = providers(here)
+    if (list.nearFor != here) return
+    if (more.isNotEmpty()) list.near = mine + more
+    list.nearExtFor = here
+}
 
 suspend fun warmStops(net: Net, here: Pair<Double, Double>?) {
     if (here == null) return
@@ -114,6 +137,14 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
     // The stops saved, and those with line alerts, each with its next departures, live where they can be.
     val yours = remember(net, model.savedStops, model.lineAlerts) {
         (model.savedStops + model.lineAlerts.map { it.stop }).distinct().map { net.stopOfKey(it) }.filter { it >= 0 }
+    }
+    // Extensions' saved stops, after Kav's, their providers' stop lists asked off the main thread (known then counts up).
+    val yoursExt = remember(model.savedStops) { model.savedStops.mapNotNull { Extensions.savedHandle(it) } }
+    var known by remember { mutableIntStateOf(0) }
+    LaunchedEffect(yoursExt) {
+        if (yoursExt.isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.IO) { yoursExt.forEach { runCatching { Extensions.stopOf(it) } } }
+        known++
     }
     var t0 by remember { mutableIntStateOf(nowSec()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -157,21 +188,24 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
     var hits by list::hits
     var hitsFor by list::hitsFor
     LaunchedEffect(net, q) {
-        hits = withContext(Dispatchers.Default) { net.searchStops(q).toList() }
+        // Kav's own stops first, shown at once; then the stops of the timetable providers the rider has on, added when
+        // they're known, so a provider starting never holds up Kav's own list.
+        val own = withContext(Dispatchers.Default) { net.searchStops(q).toList() }
+        if (own.isNotEmpty() || !uk.noammm.kav.ext.Hooks.armed) { hits = own; hitsFor = q }
+        val more = withContext(Dispatchers.IO) { runCatching { Extensions.searchStops(q) }.getOrDefault(emptyList()) }
+        hits = own + more
         hitsFor = q
     }
     val here = model.here
     var near by list::near
     LaunchedEffect(net, here) {
-        if (here != null && list.nearFor == here) return@LaunchedEffect
-        near = withContext(Dispatchers.Default) {
-            if (here == null) emptyList() else net.nearestStops(here.first, here.second)
-        }
-        list.nearFor = here
+        nearby(list, here,
+            own = { withContext(Dispatchers.Default) { net.nearestStops(it.first, it.second) } },
+            providers = { withContext(Dispatchers.IO) { runCatching { Extensions.nearStops(it.first, it.second) }.getOrDefault(emptyList()) } })
     }
     // The two nearest stops' days are asked ahead too, one after the other once the list has settled, so the one opened
     // next has its provider's times already. Each is asked once a day, answered or not, to spare the provider.
-    val ahead = remember(near, yours) { near.asSequence().map { it.first }.filter { it !in yours }.take(2).toList() }
+    val ahead = remember(near, yours) { near.asSequence().map { it.first }.filter { it !in yours && !RefTable.isHandle(it) }.take(2).toList() }
     LaunchedEffect(ahead, listing, Schedules.source, today) {
         if (!listing || !Schedules.boards || ahead.isEmpty()) return@LaunchedEffect
         delay(2_000)
@@ -179,7 +213,7 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
     }
 
     // Nearby, a stop's town is named only where it isn't the nearest town's.
-    val homeTown = near.firstNotNullOfOrNull { net.cityName(it.first).ifBlank { null } }
+    val homeTown = near.firstNotNullOfOrNull { if (RefTable.isHandle(it.first)) null else net.cityName(it.first).ifBlank { null } }
     Column(Modifier.fillMaxSize().graphicsLayer { alpha = under }) {
         ScreenHeader(T("Stops", "תחנות"))
         Box(Modifier.fillMaxSize()) {
@@ -201,10 +235,13 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                     NoteCard(T("No stop by that name or code.", "אין תחנה בשם או במספר הזה."), listMotion(quick = true).padding(vertical = K.gap4))
                 } else if (hits.isNotEmpty()) item(key = "hits-gap") { Spacer(listMotion(quick = true).height(K.gap2)) }
                 itemsIndexed(hits, key = { _, s -> s }) { i, s ->
-                    Box(listMotion(quick = true)) { StopListRow(net, s, null, town = true, first = i == 0, last = i == hits.lastIndex) { model.stationStop = s } }
+                    Box(listMotion(quick = true)) {
+                        if (RefTable.isHandle(s)) ExtStopListRow(s, null, first = i == 0, last = i == hits.lastIndex) { model.stationStop = s }
+                        else StopListRow(net, s, null, town = true, first = i == 0, last = i == hits.lastIndex) { model.stationStop = s }
+                    }
                 }
             } else {
-                if (yours.isNotEmpty()) {
+                if (yours.isNotEmpty() || yoursExt.isNotEmpty()) {
                     item(key = "saved") { SectionHeader(T("Saved", "שמורות"), listMotion(quick = true)) }
                     itemsIndexed(yours, key = { _, s -> "saved-$s" }) { i, s ->
                         Box(listMotion(quick = true)) {
@@ -213,6 +250,11 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                                 first = i == 0, last = i == yours.lastIndex, day = yoursDays[s],
                                 asking = Schedules.boards && net.code.getOrElse(s) { 0 } > 0,
                             ) { model.stationStop = s }
+                        }
+                    }
+                    itemsIndexed(yoursExt, key = { _, s -> "saved-x-$s" }) { i, s ->
+                        Box(listMotion(quick = true)) {
+                            key(known) { ExtStopListRow(s, null, first = yours.isEmpty() && i == 0, last = i == yoursExt.lastIndex) { model.stationStop = s } }
                         }
                     }
                 }
@@ -252,7 +294,8 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                     }
                     else -> itemsIndexed(near, key = { _, it -> it.first }) { i, (s, d) ->
                         Box(listMotion(quick = true)) {
-                            StopListRow(net, s, distanceLabel(d), town = net.cityName(s) != homeTown, first = i == 0, last = i == near.lastIndex) {
+                            if (RefTable.isHandle(s)) ExtStopListRow(s, distanceLabel(d), first = i == 0, last = i == near.lastIndex) { model.stationStop = s }
+                            else StopListRow(net, s, distanceLabel(d), town = net.cityName(s) != homeTown, first = i == 0, last = i == near.lastIndex) {
                                 model.stationStop = s
                             }
                         }
@@ -320,7 +363,7 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StopGlyphOrPhoto(net, stop, null, thumb = 56.dp, kind = stopMode(net, stop), opened = true)
                 Spacer(Modifier.width(K.gap3))
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(net.stopName(stop), style = K.type.headline)
                     Text(stopDetail(net, stop), style = K.type.subhead)
                 }
@@ -384,7 +427,8 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
         ) { said ->
             if (said != null) NoteCard(said, Modifier.padding(horizontal = K.gap4, vertical = K.gap2))
         }
-        val lines = remember(rows, trains, T.lang) { rows.map { boardLine(net, it, live, trains, shownAt, shared = asking) } }
+        val clock = rememberClockSec()
+        val lines = remember(rows, trains, T.lang, clock) { rows.map { boardLine(net, it, live, trains, shownAt, clock, shared = asking) } }
         // The lines of its next departures asked ahead, so the line page a row opens has its provider's ways already.
         val aheadLines = remember(lines) { lines.mapNotNull { it.line }.distinctBy { it.id }.take(6) }
         LaunchedEffect(aheadLines) { if (aheadLines.isNotEmpty()) { delay(1_500); BoardsAhead.lines(aheadLines, 6) } }
@@ -433,9 +477,121 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                     }
                 }
             }
+            // Extensions' rows under the stop's own (ExtSlots.kt), only those the rider switched on.
+            if (code > 0) item(key = "ext-slots") { StopSlots(model, "il.mot/gtfs/stop/$code", net.stopName(stop)) }
         }
     }
     if (alerting) AlertSheet(model, net, stop) { alerting = false }
+    }
+}
+
+// An extension's stop (PLAN.md section 5, "a timetable or board for a service Kav lacks"): its own provider's times, and
+// only its provider's, in Kav's own board rows, every 30 seconds while it's open, with whose they are said at the top.
+// Its provider is the only one asked; nothing about it goes to Kav's server, Google or anyone else.
+@Composable
+private fun ExtStopBoard(model: KavModel, net: Net, stop: Int, onBack: () -> Unit) {
+    var t0 by remember(stop) { mutableIntStateOf(nowSec()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(stop, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { t0 = nowSec(); delay(30_000) }
+        }
+    }
+    val ns = remember(stop) { RefTable.ref(stop)?.namespace }
+    var entry by remember(stop) { mutableStateOf(Extensions.knownStop(stop)?.second) }
+    var lines by remember(stop) { mutableStateOf<Map<String, uk.noammm.kav.ext.LineEntry>>(emptyMap()) }
+    var answer by remember(stop) { mutableStateOf<Outcome<List<uk.noammm.kav.ext.BoardDeparture>>?>(null) }
+    var shownAt by remember(stop) { mutableIntStateOf(t0) }
+    var midnight by remember(stop) { mutableStateOf(0L) }
+    LaunchedEffect(stop, t0) {
+        val nowMs = System.currentTimeMillis()
+        val got = withContext(Dispatchers.IO) {
+            val e = Extensions.stopOf(stop)?.second
+            val cat = ns?.let { Extensions.catalogue(it) }
+            Triple(e, cat?.lines.orEmpty(), Extensions.departures(stop, nowMs / 1000 - 60, 60)?.outcome ?: Outcome.Unavailable())
+        }
+        got.first?.let { entry = it }
+        lines = got.second; answer = got.third
+        midnight = nowMs / 1000 - secOfDay(nowMs); shownAt = t0
+    }
+    val name = ns?.let { Extensions.nameOf(it) }.orEmpty()
+    val e = entry
+    Column(Modifier.fillMaxSize().background(K.bg)) {
+        ScreenHeader(T("Departures", "יציאות"), back = onBack)
+        Column(Modifier.padding(horizontal = K.gap4)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StopGlyphOrPhoto(-1, null, thumb = 56.dp, kind = modeOf(e?.mode ?: 3), opened = true, photo = null)
+                Spacer(Modifier.width(K.gap3))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(e?.name ?: T("Stop", "תחנה"), style = K.type.headline)
+                    Text(listOfNotNull(e?.code?.ifEmpty { null }?.let { T.ltr(it) }, T("Times by \u2068$name\u2069", "הזמנים מ-\u2068$name\u2069")).joinToString(" · "), style = K.type.subhead)
+                }
+            }
+            Spacer(Modifier.height(K.gap3))
+            val ctx = LocalContext.current
+            ActionStrip {
+                val place = e?.let { uk.noammm.kav.data.Transit.Place(name = it.name, detail = "", lat = it.lat, lon = it.lon) }
+                ActionTile(T("From here", "מכאן"), T("Plan a trip from this stop", "תכנון נסיעה מהתחנה הזו"), onClick = {
+                    if (place != null) { model.pendingFrom = place; model.tab = uk.noammm.kav.Tab.Directions }
+                }) { ink, _ -> fromHereGlyph(ink) }
+                ActionDivider()
+                ActionTile(T("To here", "לכאן"), T("Plan a trip to this stop", "תכנון נסיעה לתחנה הזו"), onClick = {
+                    if (place != null) { model.pendingTo = place; model.tab = uk.noammm.kav.Tab.Directions }
+                }) { ink, _ -> toHereGlyph(ink) }
+                ActionDivider()
+                // Saved with Kav's other stops by its reference, so it stays its publisher's (Extensions.savedKey).
+                val key = Extensions.savedKey(stop)
+                val saved = key != null && key in model.savedStops
+                ActionTile(
+                    if (saved) T("Saved", "שמורה") else T("Save", "שמירה"),
+                    if (saved) T("Saved. Tap to remove it from your stops", "שמורה. הקישו כדי להסיר אותה מהתחנות שלכם") else T("Save this stop", "שמירת התחנה"),
+                    lit = saved,
+                    onClick = { key?.let { model.saveStops(ctx, if (saved) model.savedStops - it else model.savedStops + it) } },
+                ) { ink, fill -> starGlyph(ink, fill) }
+            }
+        }
+        Spacer(Modifier.height(K.gap3))
+        val a = answer
+        val clock = rememberClockSec()
+        val rows = remember(a, lines, shownAt, clock, T.lang) {
+            ((a as? Outcome.Ok)?.value.orEmpty()).mapNotNull { d ->
+                val at = if (d.estimatedS > 0) d.estimatedS else d.scheduledS
+                val shown = (at - midnight).toInt()
+                if (shown < shownAt - 60) return@mapNotNull null
+                val soon = countdown(shown, shownAt, clock)
+                val line = lines[d.route]
+                BoardLine(
+                    -1, line?.number?.ifEmpty { null } ?: d.route.take(6), line?.mode ?: e?.mode ?: 3, -1,
+                    d.headsign.ifEmpty { line?.name.orEmpty() }, d.platform, soon ?: hhmm(shown),
+                    if (d.estimatedS > 0) uk.noammm.kav.data.Transit.Departure(-1, d.scheduledS, rtUtc = d.estimatedS, givenUtc = System.currentTimeMillis() / 1000) else null,
+                    null, false, tomorrow = soon == null && shown >= 86_400, opens = false, key = "x:${d.route}:${d.trip}:${d.scheduledS}",
+                )
+            }
+        }
+        val note = when (a) {
+            null -> null
+            is Outcome.Ok -> if (rows.isEmpty()) T("Nothing more today or tomorrow.", "אין עוד יציאות היום או מחר.") else null
+            Outcome.Empty -> T("Nothing more today or tomorrow.", "אין עוד יציאות היום או מחר.")
+            is Outcome.Unavailable -> if (ns != null && !Extensions.registered(ns, uk.noammm.kav.ext.Capabilities.BOARD))
+                T("The extension that gives this stop's times is off or not installed.", "התוסף שנותן את הזמנים של התחנה הזו כבוי או לא מותקן.")
+                else T("\u2068$name\u2069 isn't answering right now.", "\u2068$name\u2069 לא עונה כרגע.")
+            is Outcome.Malformed -> T("\u2068$name\u2069 gave times Kav couldn't read.", "\u2068$name\u2069 נתן זמנים ש-Kav לא הצליחה לקרוא.")
+            else -> T("\u2068$name\u2069 couldn't give its times right now.", "\u2068$name\u2069 לא הצליח לתת את הזמנים שלו כרגע.")
+        }
+        if (note != null) NoteCard(note, Modifier.padding(horizontal = K.gap4, vertical = K.gap2))
+        val columns = boardColumns(net, rows)
+        val keys = uniqueKeys(rows.map { it.key })
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = K.gap1, end = K.gap1, bottom = LocalBottomBarInset.current + K.gap4)) {
+            if (a == null) items(5, key = { "skeleton-$it" }) { i ->
+                BoardSkeletonRow(if (i == 0) Modifier.semantics { contentDescription = T("Loading the times", "טוענים את הזמנים") } else Modifier.clearAndSetSemantics {})
+            }
+            rows.forEachIndexed { i, l ->
+                if (l.tomorrow && (i == 0 || !rows[i - 1].tomorrow)) item(key = "tomorrow") {
+                    Text(T("Tomorrow", "מחר"), style = K.type.caption, modifier = Modifier.padding(start = K.gap3, end = K.gap3, top = K.gap4, bottom = K.gap1))
+                }
+                item(key = keys[i]) { BoardLineRow(net, l, columns, Modifier.animateItem(boardFadeIn, boardGlide, boardFadeOut)) {} }
+            }
+        }
     }
 }
 
@@ -472,11 +628,32 @@ private class BoardLine(
     val opens: Boolean, val key: String, val line: Schedules.Line? = null,
 )
 
+// The time of day, every second: the clock a board's minutes count down by, as a trip's page does, so the same bus reads
+// the same minutes on both. The rows themselves stay those of the last live refresh.
+@Composable
+internal fun rememberClockSec(): Int {
+    val ms = rememberNow()
+    return remember(ms / 1000) { secOfDay(ms) }
+}
+
+internal fun secOfDay(ms: Long): Int {
+    val c = java.util.Calendar.getInstance(ISRAEL).apply { timeInMillis = ms }
+    return c.get(java.util.Calendar.HOUR_OF_DAY) * 3600 + c.get(java.util.Calendar.MINUTE) * 60 + c.get(java.util.Calendar.SECOND)
+}
+
+// A row's minutes by the clock now. Rows come from the refresh at shownAt, so one whose time passed since says "now"
+// until the next refresh takes it off. A clock that went past midnight since goes on counting on the rows' day (a day
+// further when it is half a day behind them; the second the clock can trail the refresh by is not midnight).
+internal fun countdown(shown: Int, shownAt: Int, clock: Int): String? {
+    val now = if (shownAt - clock > 43_200) clock + 86_400 else clock
+    return relative(shown, now.coerceIn(shownAt, maxOf(shownAt, shown)))
+}
+
 // shared: rows of the week standing in for a provider's are keyed as the provider's are, by line and time, so the same
 // departure keeps its row when the provider's day comes.
-private fun boardLine(net: Net, row: BoardRow, live: List<LiveAt>, trains: TrainsToday, t0: Int, shared: Boolean = false): BoardLine {
+private fun boardLine(net: Net, row: BoardRow, live: List<LiveAt>, trains: TrainsToday, t0: Int, clock: Int, shared: Boolean = false): BoardLine {
     val (c, dep, shown, own) = row
-    val soon = relative(shown, t0)
+    val soon = countdown(shown, t0, clock)
     val time = soon ?: hhmm(shown)
     val tomorrow = soon == null && shown >= 86_400
     row.sched?.let { d ->
@@ -600,7 +777,7 @@ private fun BoardLineRow(net: Net, l: BoardLine, columns: BoardColumns, modifier
 // like the search results; from Kav's server, also the timetable trip it is, for a train that ends somewhere else
 // than the timetable says, where, and a train's platform. own: one the timetable has no trip for, on a row of its own
 // with its line's mode (type), operator (agency, the ministry's id) and where it goes (to).
-private class LiveAt(
+internal class LiveAt(
     val number: String, val static: Int, val rt: Int, val dep: Transit.Departure, val trip: Int = -1, val to: String? = null,
     val platform: String = "", val own: Boolean = false, val type: Int = 3, val agency: Int = -1,
 )
@@ -608,7 +785,7 @@ private class LiveAt(
 // What the live source says at a stop: its live times and, at a station, what it says of the timetable's trains today:
 // from Kav's server, the ministry's buses due there that are under way, each on the timetable trip it is. Null when it
 // can't be asked.
-private suspend fun stopLive(net: Net, stop: Int, asked: KavLive.Board? = null): Pair<List<LiveAt>, TrainsToday>? {
+internal suspend fun stopLive(net: Net, stop: Int, asked: KavLive.Board? = null): Pair<List<LiveAt>, TrainsToday>? {
     val station = net.stopType[stop] == 2
     val code = net.code.getOrElse(stop) { 0 }
     if (code <= 0) return null
@@ -616,14 +793,51 @@ private suspend fun stopLive(net: Net, stop: Int, asked: KavLive.Board? = null):
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis() / 1000
             val board = asked ?: KavLive.stops(listOf(code))
-            KavLive.boardTimes(net, stop, board, now).map { b ->
-                LiveAt(b.due.number, b.static, b.rt, Transit.Departure(
-                    KavLive.tripIdOf(b.due.key), b.due.expected - (b.rt - b.static), rtUtc = b.due.expected,
-                ), b.trip, b.to, b.due.platform, own = b.trip < 0, type = board.lines[b.due.route]?.type ?: 3,
-                    agency = board.lines[b.due.route]?.agency ?: -1)
-            } to if (station) KavLive.trainsToday(net, stop, board, now) else TrainsToday()
+            liveAtStop(net, stop, board, now) to if (station) KavLive.trainsToday(net, stop, board, now) else TrainsToday()
         }
     }.getOrNull()
+}
+
+internal fun liveAtStop(net: Net, stop: Int, board: KavLive.Board, now: Long): List<LiveAt> =
+    KavLive.boardTimes(net, stop, board, now).map { b ->
+        LiveAt(b.due.number, b.static, b.rt, Transit.Departure(
+            KavLive.tripIdOf(b.due.key), b.due.expected - (b.rt - b.static), rtUtc = b.due.expected,
+        ), b.trip, b.to, b.due.platform, own = b.trip < 0, type = board.lines[b.due.route]?.type ?: 3,
+            agency = board.lines[b.due.route]?.agency ?: -1)
+    }
+
+// A line's next departure at a stop as its line page lists it: when (seconds of the day) and, for a live one, the live
+// departure that marks it.
+internal class LineNext(val at: Int, val live: Transit.Departure?)
+
+// The line's rows of the stop's board (boardRows), so the two never give the same bus two times: today's trips from half
+// an hour back, each at its live time where there is one, from t0 on, soonest first. routes: the week's routes that are
+// the line; today: the day of the week, 0 Sunday.
+internal fun lineNext(net: Net, stop: Int, routes: Set<Int>, t0: Int, live: List<LiveAt>, today: Int, limit: Int = 3): List<LineNext> {
+    val yesterday = (today + 6) % 7
+    val out = ArrayList<LineNext>()
+    for (i in net.dStart[stop] until net.dStart[stop + 1]) {
+        val st = net.dConn[i]
+        val t = net.tripOf(st)
+        if (net.tripRoute[t] !in routes) continue
+        val dep = net.stDep[st]
+        for (d in listOfNotNull(dep.takeIf { net.runsOn(t, today) }, (dep - 86_400).takeIf { dep >= 86_400 && net.runsOn(t, yesterday) })) {
+            if (d < t0 - 1800) continue
+            val at = live.at(net, t, d)
+            if ((at?.rt ?: d) >= t0) out.add(LineNext(at?.rt ?: d, at?.dep))
+        }
+    }
+    return out.sortedBy { it.at }.take(limit)
+}
+
+// The same for a provider's line at a stop (its times there today, seconds of the day), as scheduleRows has them on the
+// stop's board: each with the live time of the same number's bus about then.
+internal fun providerNext(times: List<Int>, number: String, t0: Int, live: List<LiveAt>, limit: Int = 3): List<LineNext> {
+    val used = HashSet<LiveAt>()
+    return times.filter { it >= t0 - 1800 }.map { dep ->
+        val at = live.firstOrNull { it !in used && it.number == number && kotlin.math.abs(it.static - dep) <= 120 }?.also { used.add(it) }
+        LineNext(at?.rt ?: dep, at?.dep)
+    }.filter { it.at >= t0 }.sortedBy { it.at }.take(limit)
 }
 
 // A row's live time: the trip itself where it's known, else the line's number, at about the same time (a train works
@@ -731,6 +945,7 @@ private fun SavedStopRow(
     val rows = remember(stop, t0, live, day) {
         day?.departures?.let { scheduleRows(it, day.midnight, t0, live, 3) } ?: boardRows(net, stop, t0, live, 3)
     }
+    val clock = rememberClockSec()
     Column(
         Modifier
             .fillMaxWidth()
@@ -765,7 +980,7 @@ private fun SavedStopRow(
                         LineBadge(net, -1, label = d.number, type = d.line.type, operator = d.line.operator, dense = true)
                         Spacer(Modifier.width(6.dp))
                         LiveText(
-                            relative(shown, t0) ?: hhmm(shown), style = K.type.subhead.tabular,
+                            countdown(shown, t0, clock) ?: hhmm(shown), style = K.type.subhead.tabular,
                             color = row.liveAt?.let { depColour(it.dep) } ?: K.scheduled, maxLines = 1,
                         )
                     }
@@ -773,7 +988,7 @@ private fun SavedStopRow(
                     Row(Modifier.glide(), verticalAlignment = Alignment.CenterVertically) {
                         LineBadge(net, -1, label = own.number, type = own.type, agency = own.agency, dense = true)
                         Spacer(Modifier.width(6.dp))
-                        LiveText(relative(shown, t0) ?: hhmm(shown), style = K.type.subhead.tabular, color = depColour(own.dep), maxLines = 1)
+                        LiveText(countdown(shown, t0, clock) ?: hhmm(shown), style = K.type.subhead.tabular, color = depColour(own.dep), maxLines = 1)
                     }
                 } else {
                     val t = net.tripOf(c)
@@ -783,7 +998,7 @@ private fun SavedStopRow(
                         LineBadge(net, net.tripRoute[t], label = train?.number, dense = true)
                         Spacer(Modifier.width(6.dp))
                         LiveText(
-                            relative(shown, t0) ?: hhmm(shown), style = K.type.subhead.tabular,
+                            countdown(shown, t0, clock) ?: hhmm(shown), style = K.type.subhead.tabular,
                             color = if (at != null) depColour(at.dep) else K.scheduled, maxLines = 1,
                         )
                     }
@@ -806,6 +1021,24 @@ private fun StopListRow(net: Net, stop: Int, distance: String?, town: Boolean, f
         leading = { StationThumb(net, stop) }, onClick = onClick,
     )
 }
+
+// An extension's stop in a list: its name as its provider gives it, and whose it is (PLAN.md 7.1, "by …"). No photo is
+// asked for it: its place goes to nobody.
+@Composable
+private fun ExtStopListRow(stop: Int, distance: String?, first: Boolean, last: Boolean, onClick: () -> Unit) {
+    val entry = Extensions.knownStop(stop)
+    val ns = entry?.first ?: RefTable.ref(stop)?.namespace
+    ListRow(
+        entry?.second?.name ?: T("Stop", "תחנה"), Modifier.groupItem(first, last, inset = RowInset),
+        subtitle = listOfNotNull(entry?.second?.code?.ifEmpty { null }?.let { T.ltr(it) }, ns?.let { byWords(Extensions.nameOf(it)) })
+            .joinToString(" · ").ifBlank { null },
+        value = distance,
+        leading = { StopGlyphOrPhoto(-1, null, kind = modeOf(entry?.second?.mode ?: 3), photo = null) }, onClick = onClick,
+    )
+}
+
+// "by <extension>", set apart as theirs.
+internal fun byWords(name: String) = T("by \u2068$name\u2069", "מאת \u2068$name\u2069")
 
 // Where a row's text starts, past its 40 dp photo.
 private val RowInset = 68.dp

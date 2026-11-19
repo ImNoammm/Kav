@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: also trust certificates the tester added on the device, so an extension source served on the
+     isolated emulator by a local test server (with its own test authority) can be read over https. Release builds have
+     no network security config and trust the system's authorities alone. -->
+<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

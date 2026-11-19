@@ -74,11 +74,11 @@ From the Ministry of Transport's timetable, Tel Aviv's weekend lines and OpenStr
   <span v-if="lastBuilt">{{ ' ' }}Last built: {{ lastBuilt }}</span>
 </p>
 
-| File | What's in it | Size | Licence | Data from |
+| File | What's in it | Size | License | Data from |
 | --- | --- | --- | --- | --- |
 | [`stops.csv.gz`](https://kavapp.link/data/v1/stops.csv.gz) | Every stop and station: code, names in Hebrew, English and Arabic, city, platform, position, the routes that call there | 2.1 MB | CC BY 4.0 | {{ freshness('stops.csv.gz') }} |
-| [`routes.csv.gz`](https://kavapp.link/data/v1/routes.csv.gz) | Every route (a line one way): operator, number, where it goes from and to, direction, kind, colour | 0.4 MB | CC BY 4.0, `color` GPL-3.0 | {{ freshness('routes.csv.gz') }} |
-| [`operators.csv.gz`](https://kavapp.link/data/v1/operators.csv.gz) | Every operator, with its English name and colour | 1 KB | CC BY 4.0, `color` GPL-3.0 | {{ freshness('operators.csv.gz') }} |
+| [`routes.csv.gz`](https://kavapp.link/data/v1/routes.csv.gz) | Every route (a line one way): operator, number, where it goes from and to, direction, kind, color | 0.4 MB | CC BY 4.0, `color` GPL-3.0 | {{ freshness('routes.csv.gz') }} |
+| [`operators.csv.gz`](https://kavapp.link/data/v1/operators.csv.gz) | Every operator, with its English name and color | 1 KB | CC BY 4.0, `color` GPL-3.0 | {{ freshness('operators.csv.gz') }} |
 | [`roads.geojson.gz`](https://kavapp.link/data/v1/roads.geojson.gz) | The road each bus, light rail and cable car route takes | 28 MB | CC BY 4.0 | {{ freshness('roads.geojson.gz') }} |
 | [`rail-roads.geojson.gz`](https://kavapp.link/data/v1/rail-roads.geojson.gz) | The trains' roads, along OpenStreetMap's tracks | 0.4 MB | ODbL 1.0 | {{ freshness('rail-roads.geojson.gz') }} |
 | [`fares.csv.gz`](https://kavapp.link/data/v1/fares.csv.gz) | The official fare between every pair of stops the ministry prices | 2.9 MB | CC BY 4.0 | {{ freshness('fares.csv.gz') }} |
@@ -124,7 +124,7 @@ are in.
  "licences": {"CC-BY-4.0": {"name": "Creative Commons Attribution 4.0", "url": "https://creativecommons.org/licenses/by/4.0/"}}}
 ```
 
-- `files`: each file with its size, sha256, rows (features for GeoJSON), licence, the credit that licence asks for
+- `files`: each file with its size, sha256, rows (features for GeoJSON), `licence`, the credit that license asks for
   (its own sources'), where it comes from and what Kav changed.
 - `sources`: the ministry's timetable as it was that night (`published` is the time inside its zip, `from` and `to` the
   days its calendars cover), the OpenStreetMap extract the trains were matched on (its sha256), and the others used.
@@ -160,7 +160,7 @@ Before a night is signed and published, the gate (`tools/open_data.py check`) ch
 - every route, operator, road and fare a file names is in the others, the roads cover 95% of the ministry's lines and
   of its trains, and 75% of the stops have a line calling at them;
 - every stop is in Israel or the West Bank: within 2 km of [Natural Earth](https://www.naturalearthdata.com)'s
-  outline, whose lines are good to about a kilometre and a half;
+  outline, whose lines are good to about a kilometer and a half;
 - against last night's stops, none moved more than 1 km, and no more than 0.1% of them more than 50 m. The
   ministry's own feed, night to night from 16 July to 13 November 2026, moved one stop 751 m at most, and never more
   than 0.026% of the stops over 50 m in a night.
@@ -207,11 +207,11 @@ One row for each route: a line, one way, one variant, as the ministry's timetabl
 | `from_he`, `from_city_he`, `to_he`, `to_city_he` | Where it starts and ends, read out of that name as Kav shows it |
 | `from_en`, `from_city_en`, `to_en`, `to_city_en` | The same in the ministry's English, where it has it |
 | `headsign_he` | The destination its trips most often show |
-| `mot_line_id`, `direction`, `variant` | The ministry's catalogue number for the line (shared by both ways and every variant), the direction and the variant, from its `route_desc`. A train route has only the first |
+| `mot_line_id`, `direction`, `variant` | The ministry's catalog number for the line (shared by both ways and every variant), the direction and the variant, from its `route_desc`. A train route has only the first |
 | `type` | The GTFS route type as Kav reads it: `3` bus, `0` light rail, `2` train, `5` cable car, `7` the Carmelit, `711` shuttle, `715` on demand bus, `8` share taxi |
 | `kind` | The same in a word: `bus`, `light_rail`, `train`, `cable_car`, `funicular`, `shuttle`, `on_demand_bus`, `share_taxi` |
 | `mot_color` | The ministry's own `route_color` (hex, no `#`), where it gives one |
-| `color` | The colour Kav draws the line in (hex, no `#`): the mode's for trains, light rail and the rest, else the operator's |
+| `color` | The color Kav draws the line in (hex, no `#`): the mode's for trains, light rail and the rest, else the operator's |
 
 ```csv
 route_id,agency_id,operator_he,number,name_he,from_he,from_city_he,to_he,to_city_he,from_en,from_city_en,to_en,to_city_en,headsign_he,mot_line_id,direction,variant,type,kind,mot_color,color
@@ -220,12 +220,12 @@ route_id,agency_id,operator_he,number,name_he,from_he,from_city_he,to_he,to_city
 
 ### operators.csv.gz
 
-`agency_id`, `name_he`, `name_en`, `url`, `phone`, `color`: the ministry's operators, with the English names and colours
-Kav uses. The operators' colours are Sammy Zaionz's.
+`agency_id`, `name_he`, `name_en`, `url`, `phone`, `color`: the ministry's operators, with the English names and colors
+Kav uses. The operators' colors are Sammy Zaionz's.
 
 ### roads.geojson.gz and rail-roads.geojson.gz
 
-A FeatureCollection with one LineString for each road, to five decimals (about a metre). Each feature lists every route
+A FeatureCollection with one LineString for each road, to five decimals (about a meter). Each feature lists every route
 whose trips most often take that road.
 
 ```json
@@ -235,7 +235,7 @@ whose trips most often take that road.
 
 The ministry's timetable has no roads for trains. `rail-roads.geojson.gz` has them, made by matching its trains to
 OpenStreetMap's tracks with [pfaedle](https://github.com/ad-freiburg/pfaedle). That makes it OpenStreetMap data, under
-its own licence.
+its own license.
 
 ### fares.csv.gz and fares.json.gz
 
@@ -297,11 +297,11 @@ Kav's app shows how late a line usually runs. There is no punctuality file.
 
 - **Stops, routes, operators, roads and fares**: Kav publishes them under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), but for one column: the `color` column in `routes.csv.gz`
-  and `operators.csv.gz` is the operator and line colours from Kav's source code, contributed by Sammy Zaionz, and is
-  under that code's licence, GPL-3.0; everything else in those two files is under CC BY 4.0. That is Kav's licence for its own work on the data; it
+  and `operators.csv.gz` is the operator and line colors from Kav's source code, contributed by Sammy Zaionz, and is
+  under that code's license, GPL-3.0; everything else in those two files is under CC BY 4.0. That is Kav's license for its own work on the data; it
   doesn't speak for the ministry. Credit each file as its `credit` in the manifest says: the ministry, Tel Aviv-Yafo
   Municipality for the files with its weekend lines (stops, routes, operators, roads), Sammy Zaionz for the operators'
-  colours (routes and operators), and Kav. The ministry
+  colors (routes and operators), and Kav. The ministry
   publishes its timetable under [terms of use](https://www.gov.il/he/pages/gtfs_general_transit_feed_specifications) of
   its own, which also apply to what comes from it: it takes no responsibility for the data, and may change the terms.
   Tel Aviv's open data may be shared and adapted for any purpose, with credit
@@ -318,12 +318,12 @@ Kav's app shows how late a line usually runs. There is no punctuality file.
     (section 4.5 b). OSMF's [produced work guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Produced_Work_-_Guideline)
     draws the line: a result meant for taking the data back out is a database.
 - **`busy.csv.gz` and `fleet.csv.gz`**: the ministry's data is under the
-  [Data.gov.il database use licence](https://data.gov.il/terms-of-use), listed as `data-gov-il` in the manifest.
+  [Data.gov.il database use license](https://data.gov.il/terms-of-use), listed as `data-gov-il` in the manifest.
   It permits copying, redistribution, technical changes and derived works for commercial and non-commercial use,
   with source credit. Credit: Israel Ministry of Transport, data.gov.il; Kav (kavapp.link).
   The busy file also uses the ministry's timetable under its [GTFS terms](https://www.gov.il/he/pages/gtfs_general_transit_feed_specifications).
   These are Kav's processed files, supplied as is, without state endorsement. The portal prohibits misleading use
-  and privacy infringement; its full terms and exclusions apply. Neither file is labelled CC BY by Kav.
+  and privacy infringement; its full terms and exclusions apply. Neither file is labeled CC BY by Kav.
 - **Kav's code**, including the generator (`tools/open_data.py`): [GPL-3.0](/docs/license).
 
 The files are made as they are. Check anything that matters against the ministry's own.

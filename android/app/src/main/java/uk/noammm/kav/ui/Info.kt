@@ -1,6 +1,7 @@
 package uk.noammm.kav.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -33,15 +34,17 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 
 // A section's header with its explanation kept behind a small (i) at its end: the text slides open under the header
-// in a card, like the Live screen's, when asked for, instead of sitting in grey under every control.
+// in a card, like the Live screen's, when asked for, instead of sitting in grey under every control. Its own height eases
+// after the card's, so what's under it follows softly as it opens and closes, the way Trip planning's always did. It looks
+// and sits as SectionHeader does; the (i) overlaps the row rather than making it taller.
 @Composable
 fun InfoHeader(text: String, info: String, modifier: Modifier = Modifier) {
     var open by rememberSaveable(text) { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().padding(bottom = K.gap2)) {
-        Row(Modifier.fillMaxWidth().padding(start = K.gap4, top = K.gap4), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, style = K.type.caption, modifier = Modifier.weight(1f))
+    Column(modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+        Row(Modifier.fillMaxWidth().padding(start = K.gap4, top = K.gap6, bottom = K.gap2), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = K.type.header, modifier = Modifier.weight(1f))
             Box(
-                Modifier.size(40.dp).clip(CircleShape)
+                Modifier.overlapsHeight().size(40.dp).clip(CircleShape)
                     .clickable(role = Role.Button, onClickLabel = T("About $text", "על $text")) { open = !open },
                 contentAlignment = Alignment.Center,
             ) {

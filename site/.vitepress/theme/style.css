@@ -594,3 +594,427 @@ pre {
   outline-offset: -8px;
   border-radius: 6px;
 }
+
+/* Extensions: the add-source page, the community list and the badge maker. */
+
+/* A name someone else typed, in whichever direction its own letters go. */
+.kav-name {
+  unicode-bidi: isolate;
+}
+
+.kav-source {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.kav-source__tile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 24px;
+  font-weight: 600;
+  object-fit: cover;
+}
+
+.kav-add__actions {
+  margin: 28px 0 8px;
+}
+
+.kav-add__button {
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.kav-add__button:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+.kav-add__button:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+.vp-doc .kav-add__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 10px;
+  border-radius: 999px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.kav-add__chip svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.kav-add__chip--kav svg {
+  color: var(--vp-c-brand-1);
+}
+
+.kav-add__chip--third svg {
+  color: #9a6a00;
+}
+
+.dark .kav-add__chip--third svg {
+  color: #e7c17a;
+}
+
+/* The developer page's line for an AI agent, with its Copy button. */
+.kav-agent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 12px 12px 12px 16px;
+  border-radius: var(--kav-radius);
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc .kav-agent code {
+  flex: 1;
+  padding: 0;
+  background: none;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.kav-agent .kav-add__button {
+  flex: none;
+}
+
+/* The add-source page, laid out like Morphe's: centered, no card, the buttons stacked full width. */
+.kav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100dvh - var(--vp-nav-height) - 220px);
+  padding: 16px 0;
+}
+
+.kav-add__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+
+.kav-add__avatar {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin-bottom: 24px;
+}
+
+.kav-add__picture {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--vp-c-bg-soft);
+}
+
+/* Kav's own icon keeps its app-icon shape: a circle would cut the arrow. */
+.kav-add__picture--app {
+  border-radius: 26px;
+}
+
+.kav-add__picture--letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 48px;
+  font-weight: 600;
+}
+
+.kav-add__mark {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background: var(--vp-c-text-1);
+  border: 3px solid var(--vp-c-bg);
+  box-sizing: border-box;
+}
+
+.kav-add__mark svg {
+  width: 24px;
+  height: 24px;
+  fill: var(--vp-c-bg);
+}
+
+.vp-doc .kav-add__name {
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.vp-doc .kav-add__owner {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+  overflow-wrap: anywhere;
+}
+
+.vp-doc .kav-add__trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+}
+
+.kav-add__trust svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.vp-doc .kav-add__trust--kav {
+  color: var(--vp-c-brand-1);
+}
+
+.vp-doc .kav-add__trust--third {
+  color: #9a6a00;
+}
+
+.dark .vp-doc .kav-add__trust--third {
+  color: #e7c17a;
+}
+
+.vp-doc .kav-add__question {
+  margin: 20px 0 24px;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
+.kav-add__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 16px 32px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 17px;
+  font-weight: 600;
+  text-decoration: none !important;
+  transition: transform 0.3s ease, background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.kav-add__btn + .kav-add__btn {
+  margin-top: 12px;
+}
+
+.kav-add__btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.kav-add__btn:active {
+  transform: scale(0.97);
+}
+
+.kav-add__btn--primary {
+  background: var(--kav-button-bg);
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px -10px var(--kav-button-bg);
+}
+
+.kav-add__btn--primary:hover {
+  background: var(--kav-button-hover);
+}
+
+.kav-add__btn--secondary {
+  background: transparent;
+  border-color: var(--vp-c-divider);
+  color: var(--vp-c-text-2) !important;
+}
+
+.kav-add__btn--secondary:hover {
+  border-color: var(--vp-c-text-2);
+  color: var(--vp-c-text-1) !important;
+}
+
+.kav-add__btn:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 3px;
+}
+
+.kav-add__scan {
+  margin: 28px 0 32px;
+}
+
+.kav-add__qr {
+  display: inline-grid;
+  place-items: center;
+  width: 208px;
+  aspect-ratio: 1;
+  padding: 12px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.18);
+  line-height: 0;
+}
+
+.kav-add__qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.vp-doc .kav-add__hint {
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .kav-add__link {
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+
+.vp-doc .kav-sources {
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-doc .kav-sources > li {
+  margin: 0;
+  padding: 20px 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.kav-source__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.vp-doc .kav-source__body p {
+  margin: 0;
+}
+
+.vp-doc .kav-source__name {
+  font-size: 19px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-doc .kav-source__meta {
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+}
+
+.kav-source__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 10px;
+}
+
+.kav-source__actions .kav-button {
+  min-height: 40px;
+  padding: 8px 18px;
+  font-size: 15px;
+}
+
+.vp-doc .kav-source__actions a:not(.kav-button) {
+  font-size: 15px;
+}
+
+.kav-badge-maker label {
+  display: block;
+  margin: 16px 0 6px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.kav-badge-maker input {
+  width: 100%;
+  max-width: 520px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  font-size: 16px;
+}
+
+.kav-badge-maker input:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 1px;
+}
+
+.kav-badge-maker__preview {
+  margin: 20px 0 8px;
+}
+
+.kav-badge-maker__preview img {
+  height: 40px;
+}
+
+.vp-doc .kav-badge-maker pre {
+  margin: 6px 0 0;
+  padding: 12px 16px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: var(--vp-code-block-bg);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.kav-badge-maker__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 500;
+}

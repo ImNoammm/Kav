@@ -18,6 +18,7 @@ export const he: LocaleSpecificConfig<DefaultTheme.Config> & { label: string } =
         { text: 'מדריכים', items: [
           guide('סקירה כללית', ''),
           guide('למפתחים', 'data'),
+          guide('תוספים', 'extensions'),
           { text: 'איך Kav עובדת', link: '/he/docs/how-it-works' },
           guide('לבנות מהקוד', 'building'), guide('רישיון', 'license'),
         ] },

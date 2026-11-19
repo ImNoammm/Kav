@@ -76,6 +76,8 @@ internal fun HomeScreen(
         return@AnimatedContent
     }
     fun save(list: List<Favourite>) = model.saveFavourites(ctx, list)
+    // The rider's chosen extension Home body (ExtPages.kt), null when none is chosen.
+    val ext = rememberExtHome(model)
     val recentNames = remember(recentTrips) {
         recentTrips.map { it.to.name.substringBefore("/").trim() }.filter { it.isNotBlank() }.distinct().take(2)
     }
@@ -103,10 +105,17 @@ internal fun HomeScreen(
                 }
             }, estimate = K.gap3 + 52.dp, fade = 28.dp) { topSpace, backdrop ->
             LazyColumn(
-                Modifier.fillMaxSize().then(backdrop),
+                Modifier.fillMaxSize().then(backdrop).watchTouch(ext),
                 contentPadding = PaddingValues(start = K.gap4, end = K.gap4, top = topSpace + K.gap4,
                     bottom = K.gap6 + LocalBottomBarInset.current),
             ) {
+                // An extension's Home body, under Kav's search, with the trip under way and the way back above it.
+                val journey = model.activeJourney
+                if (ext != null && ext.covers(journey != null)) {
+                    extHomeItems(model, ext, journey?.let { j -> { JourneyCard(model, j, onResume) } })
+                    return@LazyColumn
+                }
+                ext?.let { extHomeStrip(it) }
                 item(key = "favourites") {
                     FavouriteStrip(
                         favourites,
@@ -124,8 +133,11 @@ internal fun HomeScreen(
                 if (model.activeJourney == null) item(key = "suggestions") {
                     HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4))
                 }
-                // Where paying for a ride was: a plain note that it's gone for now.
-                item(key = "payments") { NoteCard(payRemovedNote(), listMotion().padding(top = K.gap4)) }
+                // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
+                if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
+                // Paying and the tickets, in one card as before 4.3.2: set up, turned on with something missing, or offered
+                // to a rider who never turned it on (PayCard).
+                if (Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer) item(key = "payments") { PayCard(listMotion().padding(top = K.gap4)) }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
                 if (recentTrips.isNotEmpty()) item(key = "recent") {
                     Column(listMotion().padding(top = K.gap4).fillMaxWidth().panel(K.rCard)
@@ -184,7 +196,7 @@ private val SAVED_STARTS = setOf("Saved start", "נקודת ההתחלה השמ�
 private val RECENT_INSET = K.gap4 + 24.dp + K.gap3
 
 @Composable
-private fun RecentTripRow(trip: RecentTrip, onClick: () -> Unit) {
+internal fun RecentTripRow(trip: RecentTrip, onClick: () -> Unit) {
     ListRow(
         trip.to.name,
         subtitle = trip.from?.name?.takeUnless { it in SAVED_STARTS }?.let { T("from ", "מ־") + it }
@@ -353,9 +365,3 @@ private fun TypingCaret() {
     )
     Box(Modifier.padding(start = 1.dp).size(1.5.dp, 20.dp).graphicsLayer { alpha = on }.background(K.accentInk))
 }
-
-// Shown on Home and under a trip's rides, where paying for a ride was.
-internal fun payRemovedNote() = T(
-    "Paying in Kav has been removed for now. We're looking into ways to bring it back.",
-    "התשלום בתוך Kav הוסר בינתיים. אנחנו בודקים דרכים להחזיר אותו.",
-)

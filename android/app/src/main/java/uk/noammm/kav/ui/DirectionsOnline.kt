@@ -44,6 +44,8 @@ private data class OpenTrip(
     val backHome: Boolean = false,
     // The stops on the way it was planned through, kept with the trip so it's planned through them again.
     val stopovers: List<Transit.Place> = emptyList(),
+    // Opened from a list leaving at a time: that time, whose minute its boarding times start from as the card's; else 0.
+    val asked: Long = 0,
 )
 
 private enum class Sort(val labelText: () -> String) {
@@ -81,7 +83,7 @@ internal fun startedNow(trip: Transit.Itinerary, now: Long): Transit.Itinerary {
     if (trip.rides.isNotEmpty() || late <= LEFT_S) return trip
     return Transit.Itinerary(
         trip.guid, trip.group, trip.legs.map { it.copy(dep = it.dep + late, arr = it.arr + late) }, trip.dep + late, trip.arr + late,
-        trip.fare, trip.currency, trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId,
+        trip.fare, trip.currency, trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId, trip.singleFares, trip.provider,
     )
 }
 
@@ -124,6 +126,17 @@ fun DirectionsOnline(model: KavModel) {
     val leaving = remember { androidx.compose.animation.core.Animatable(0f) }
     var planning by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // The rider's route rules (extensions, ext/Pipeline.kt): a line on what they did to the routes, a required one that
+    // failed, Kav's routes kept unchecked for the one fallback the rider may ask for, and whether they're still judging.
+    var ruleNote by remember { mutableStateOf<String?>(null) }
+    // The routes the rider's rules left out of this search (Pipeline.Checked.hiddenRoutes), and whether the rider asked
+    // to see them this once (Pipeline.showOnce). What the notice says and how it looks is drawn from
+    // Pipeline.hiddenNotice(hiddenRoutes); setting showHidden is its one tap. Both go with the next search.
+    var hiddenRoutes by remember { mutableStateOf<List<uk.noammm.kav.ext.Pipeline.Hidden>>(emptyList()) }
+    var showHidden by remember { mutableStateOf(false) }
+    var ruleFailure by remember { mutableStateOf<uk.noammm.kav.ext.Pipeline.Failure?>(null) }
+    var unchecked by remember { mutableStateOf<List<Transit.Itinerary>>(emptyList()) }
+    var checking by remember { mutableStateOf(false) }
     // Bumped by Try again after a plan failed, to plan the same trip again.
     var planAgain by remember { mutableIntStateOf(0) }
     var resolved by remember { mutableStateOf(Transit.Resolved()) }
@@ -135,6 +148,8 @@ fun DirectionsOnline(model: KavModel) {
     var whenOpen by remember { mutableStateOf(false) }
     var orderOpen by remember { mutableStateOf(false) }
     var linkTrip by remember { mutableStateOf<List<TripLink.Ride>?>(null) }
+    // The recent trip opened, whose planner plans it again when it was an extension.
+    var recent by remember { mutableStateOf<RecentTrip?>(null) }
     // The latest route's rides, when it's opened after its first bus left: planned again for now on the planner chosen,
     // it opens on the soonest departure of the same lines, else on the list of routes.
     var againTrip by remember { mutableStateOf<List<TripLink.Ride>?>(null) }
@@ -263,16 +278,19 @@ fun DirectionsOnline(model: KavModel) {
         }
     }
 
-    // The inputs the results on screen were planned for: anything else is still being planned, never "no routes".
-    val planKey = listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planner)
+    // The inputs the results on screen were planned for: anything else is still being planned, never "no routes". The
+    // planner settings too, so routes planned for other settings are planned again, never shown for these.
+    val settings = KavPlan.settings
+    val planKey = listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planner, settings)
     var plannedFor by remember { mutableStateOf<List<Any?>?>(null) }
-    LaunchedEffect(showResults, fromLL, toLL, departAt, timeType, filters, stopovers, openingLink, planAgain, planner) {
+    LaunchedEffect(showResults, fromLL, toLL, departAt, timeType, filters, stopovers, openingLink, planAgain, planner, settings) {
         if (!showResults || openingLink) { planning = false; return@LaunchedEffect }
         if (departAt != 0L && departAt < System.currentTimeMillis() && timeType != Transit.TIME_LAST) {
             departAt = 0L; timeType = Transit.TIME_DEPARTURE
             return@LaunchedEffect
         }
         raw = emptyList(); resolved = Transit.Resolved(); error = null
+        ruleNote = null; ruleFailure = null; unchecked = emptyList(); checking = false; hiddenRoutes = emptyList(); showHidden = false
         launch { leaving.snapTo(0f); leaving.animateTo(1f, androidx.compose.animation.core.tween(150)) }
         if (fromLL == null || toLL == null) { planning = false; return@LaunchedEffect }
         if (metres(fromLL.first, fromLL.second, toLL.first, toLL.second) < TOO_CLOSE_M) {
@@ -287,16 +305,20 @@ fun DirectionsOnline(model: KavModel) {
             val link = linkTrip
             val types = routeTypesFor(filters)
             val taxi = ResultFilter.TAXI in filters
-            val kav = if (link == null && planner in tabs) {
-                every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain), planner, tabs) { by ->
+            // A recent trip an extension planned is planned again by that extension only: if it's gone, it says so.
+            val pinned = recent?.takeIf { it.to === toPlace && it.from === fromPlace && it.planner.isNotEmpty() }
+                ?.let { uk.noammm.kav.ext.Extensions.address(it.planner) }
+            val kav = if (link == null && planner in tabs && pinned == null) {
+                every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain, settings), planner, tabs,
+                    if (departAt == 0L) LEAVE_NOW_KEPT_MS else Long.MAX_VALUE) { by ->
                     val at = KavPlan.plannerOf(by) ?: throw java.io.IOException("no planner answering")
-                    KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at)
+                    KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at, settings)
                 }.also { kept = it.isCompleted }.await().getOrThrow()
             } else {
                 kept = false
-                val at = (if (link != null) KavPlan.linkPlanner() else KavPlan.planner())
+                val at = pinned ?: (if (link != null) KavPlan.linkPlanner() else KavPlan.planner())
                     ?: throw java.io.IOException("no planner answering")
-                withContext(Dispatchers.IO) { KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at) }
+                withContext(Dispatchers.IO) { KavPlan.plan(fromLL, toLL, departAt, timeType, types, taxi, stopovers, at, settings = settings) }
             }
             val res = kav.plan
             plan = res
@@ -308,6 +330,21 @@ fun DirectionsOnline(model: KavModel) {
                 }
             }
             resolved = kav.resolved
+            val q = uk.noammm.kav.ext.Pipeline.Query(
+                way = when (timeType) { Transit.TIME_ARRIVAL -> 'a'; Transit.TIME_LAST -> 'l'; else -> 'd' },
+                atS = (if (departAt > 0) departAt else System.currentTimeMillis()) / 1000, nowS = System.currentTimeMillis() / 1000,
+                settings = settings.letters, locale = T.lang.code, stays = stopovers.map { it.stayMin * 60L },
+            )
+            // The rider's route rules judge the routes once Kav's are on screen, so a slow extension never holds them
+            // up; their changes come within the pipeline's deadline (PLAN.md section 4).
+            if (uk.noammm.kav.ext.Hooks.hasRules() && raw.isNotEmpty()) {
+                planning = false; plannedFor = planKey; checking = true
+                val kavRoutes = raw
+                val checked = withContext(Dispatchers.IO) { uk.noammm.kav.ext.Hooks.check(kavRoutes, resolved, q) }
+                checking = false
+                if (checked.failure != null) { unchecked = kavRoutes; raw = emptyList(); ruleFailure = checked.failure }
+                else { raw = checked.routes; ruleNote = rulesSaid(checked); hiddenRoutes = checked.hiddenRoutes }
+            }
             model.activeJourney?.takeIf { active -> raw.any { it === active.trip } }?.let {
                 model.activeJourney = it.copy(resolved = Transit.Resolved(
                     it.resolved.lines + resolved.lines, it.resolved.stops + resolved.stops,
@@ -324,7 +361,7 @@ fun DirectionsOnline(model: KavModel) {
             if (dest != null && !isHere(dest) && found.isNotEmpty()) {
                 val start = fromPlace?.takeUnless(::isHere)
                     ?: Place(T("Saved start", "נקודת ההתחלה השמורה"), "", fromLL.first, fromLL.second)
-                val trip = RecentTrip(start, dest, System.currentTimeMillis(), stopovers)
+                val trip = RecentTrip(start, dest, System.currentTimeMillis(), stopovers, found.first().provider)
                 withContext(Dispatchers.IO) { runCatching { Prefs.rememberTrip(ctx, trip) } }
             }
             // Open only after this search and its stop/line details have arrived. A separate effect
@@ -361,6 +398,16 @@ fun DirectionsOnline(model: KavModel) {
                     T("Kav's planner would not plan this trip.", "התכנון של Kav לא תכנן את הנסיעה הזו.")
                 }
             }
+            planning = false
+        } catch (e: uk.noammm.kav.ext.ProviderProblem) {
+            android.util.Log.i("KavPlan", "extension planner: ${e.message}")
+            error = if (e.off) T(
+                "Extensions are off while Kav is in safe mode, so the extension you chose to plan with wasn't asked. Turn them back on in Settings › Extensions.",
+                "התוספים כבויים כל עוד Kav במצב בטוח, ולכן התוסף שבחרתם לתכנון לא נשאל. אפשר להפעיל אותם שוב בהגדרות › תוספים.",
+            ) else if (e.missing) T(
+                "The extension that planned this trip isn't installed, so it wasn't planned again.",
+                "התוסף שתכנן את הנסיעה הזו לא מותקן, ולכן היא לא תוכננה שוב.",
+            ) else plannerProblemWords(ctx, e)
             planning = false
         } catch (e: Exception) {
             android.util.Log.e("KavPlan", "online plan failed", e)
@@ -400,7 +447,7 @@ fun DirectionsOnline(model: KavModel) {
                 if (wait) kotlinx.coroutines.delay(resolved.pollSecs.coerceIn(15, 120) * 1000L)
                 wait = true
                 // From the server live locations come from; any other routes stay as they were kept.
-                if (!otherTrips.all { KavPlan.owns(it) }) break
+                if (!otherTrips.all { KavPlan.refreshes(it) }) break
                 val refreshed = withContext(Dispatchers.IO) { KavPlan.live(otherTrips, resolved) }
                 resolved = Transit.Resolved(
                     refreshed.lines + resolved.lines, refreshed.stops + resolved.stops,
@@ -417,7 +464,7 @@ fun DirectionsOnline(model: KavModel) {
     var openLive by remember { mutableStateOf<Pair<Transit.Itinerary, Transit.Resolved>?>(null) }
     LaunchedEffect(open?.trip, model.activeJourney?.trip, lifecycle, KavLive.source) {
         val chosen = open ?: return@LaunchedEffect
-        if (model.activeJourney?.trip === chosen.trip || raw.any { it === chosen.trip } || !KavPlan.owns(chosen.trip)) return@LaunchedEffect
+        if (model.activeJourney?.trip === chosen.trip || raw.any { it === chosen.trip } || !KavPlan.refreshes(chosen.trip)) return@LaunchedEffect
         var known = openLive?.takeIf { it.first === chosen.trip }?.second ?: chosen.resolved
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
             while (true) {
@@ -433,8 +480,8 @@ fun DirectionsOnline(model: KavModel) {
         timeType == Transit.TIME_DEPARTURE &&
             nothingOnShabbat(if (departAt > 0) departAt / 1000 else System.currentTimeMillis() / 1000, raw)
     }
-    val shown = remember(raw, sort, filters, resolved) {
-        val kept = filterResults(raw, filters, resolved)
+    val shown = remember(raw, sort, filters, resolved, showHidden, hiddenRoutes) {
+        val kept = filterResults(if (showHidden) uk.noammm.kav.ext.Pipeline.showOnce(raw, hiddenRoutes) else raw, filters, resolved)
         when (sort) {
             Sort.RECOMMENDED -> kept
             Sort.FASTEST -> kept.sortedBy { it.durationMin }
@@ -448,7 +495,8 @@ fun DirectionsOnline(model: KavModel) {
             Sort.LOWEST_CO2 -> kept.sortedWith(compareBy({ uk.noammm.kav.data.Emissions.grams(it, resolved).let { g -> if (g < 0) Int.MAX_VALUE else g } }, { it.durationMin }))
         }
     }
-    // The first route's time, and the last one shown, which Earlier and Later keep while new routes load.
+    // The first route's time, and the last one shown: once there was one, Earlier and Later stay while new routes load,
+    // with the time those are for between them (loadingTime()).
     val firstTime = shown.firstOrNull()?.let { clockFormat().format(java.util.Date(it.dep * 1000)) }
     var shiftTime by remember { mutableStateOf("") }
     SideEffect { firstTime?.let { shiftTime = it } }
@@ -458,6 +506,7 @@ fun DirectionsOnline(model: KavModel) {
     }
 
     val under by underSearch(picking != null)
+    VeilMaps { under > 0f && under < 1f }
     androidx.compose.animation.AnimatedContent(
         targetState = Triple(open, showResults, linkTrip != null || openingLink),
         modifier = Modifier.fillMaxSize().graphicsLayer { alpha = under },
@@ -467,8 +516,9 @@ fun DirectionsOnline(model: KavModel) {
         },
         label = "directions",
     ) { (chosen, displayingResults, opening) ->
+        VeilMaps()
         if (chosen != null) {
-            // A walk started late sets out now: it shows in the place of the trip as it was opened.
+            // A trip under way planned again on the way (Replan) shows its new route in the old one's place.
             val trip = model.activeJourney?.takeIf { chosen.trip in it.before }?.trip ?: chosen.trip
             val active = model.activeJourney?.takeIf { it.trip === trip }
             val detailResolved = active?.resolved
@@ -485,6 +535,8 @@ fun DirectionsOnline(model: KavModel) {
                 trip, detailResolved,
                 fromLabel = active?.fromLabel ?: chosen.fromLabel,
                 toLabel = chosen.toLabel,
+                // Once started, the trip's times are the journey's, not the search's.
+                asked = if (active == null) chosen.asked else 0L,
                 onBack = { open = null; if (chosen.resume || chosen.backHome) showResults = false },
                 startInNavigation = chosen.resume || trip !== chosen.trip,
                 onStart = {
@@ -494,6 +546,7 @@ fun DirectionsOnline(model: KavModel) {
                         model.activeJourney = ActiveJourney(
                             leaving, detailResolved, chosen.fromLabel, chosen.toLabel,
                             fromHere = startsHere(chosen.trip, model, fromIsHere), stopovers = chosen.stopovers,
+                            // Shown in the place of the trip as it was opened, as a trip planned again is.
                             before = if (leaving === chosen.trip) emptyList() else listOf(chosen.trip),
                         )
                     }
@@ -521,6 +574,7 @@ fun DirectionsOnline(model: KavModel) {
             },
             onSetFavourite = { f -> model.settingFavourite = f },
             onTrip = { t ->
+                recent = t
                 hereOrigin = null; stopovers = t.stopovers; linkError = null; fromPlace = t.from; toPlace = t.to
                 departAt = 0L; timeType = Transit.TIME_DEPARTURE
                 linkTrip = null; lastLink = null
@@ -541,8 +595,11 @@ fun DirectionsOnline(model: KavModel) {
                     // Its first bus has left: the route as it can be ridden now, through the same stops on the way. A route
                     // from where the rider was is planned from where they are.
                     hereOrigin = null; stopovers = journey.stopovers; linkTrip = null
-                    fromPlace = if (journey.fromLabel in HERE) null else Place(journey.fromLabel, "", start.first, start.second)
-                    toPlace = Place(journey.toLabel, "", end.first, end.second)
+                    val from = if (journey.fromLabel in HERE) null else Place(journey.fromLabel, "", start.first, start.second)
+                    val to = Place(journey.toLabel, "", end.first, end.second)
+                    fromPlace = from; toPlace = to
+                    // Planned again by the planner that planned it, when that was an extension (as a recent trip is).
+                    recent = RecentTrip(from, to, 0L, journey.stopovers, journey.trip.provider)
                     departAt = 0L; timeType = Transit.TIME_DEPARTURE
                     againTrip = journey.trip.rides.map { TripLink.Ride(it.lineId, it.tripId, it.dep) }
                     showResults = true
@@ -671,6 +728,21 @@ fun DirectionsOnline(model: KavModel) {
                         listMotion().padding(K.gap4),
                     )
                 }
+                ruleFailure != null && error == null -> {
+                    tabsRow()
+                    item(key = "rule-failed") {
+                        Column(listMotion().padding(K.gap4)) {
+                            Note(ruleFailed(ruleFailure!!))
+                            Text(T("Try again", "נסו שוב"), color = K.accentInk,
+                                modifier = Modifier.clickable { planAgain++ }.padding(vertical = K.gap3))
+                            // The one fallback, asked for by the rider: Kav's routes, said not to be checked.
+                            Text(T("Show routes without this check", "הצגת המסלולים בלי הבדיקה הזו"), color = K.accentInk,
+                                modifier = Modifier.clickable {
+                                    ruleNote = notChecked(ruleFailure!!); raw = unchecked; ruleFailure = null
+                                }.padding(vertical = K.gap3))
+                        }
+                    }
+                }
                 error != null -> {
                     tabsRow()
                     item(key = "error") {
@@ -705,7 +777,7 @@ fun DirectionsOnline(model: KavModel) {
                     }
                 }
                 planning || plannedFor != planKey -> {
-                    if (timeType != Transit.TIME_LAST && shiftTime.isNotEmpty()) shiftRow(shiftTime)
+                    if (timeType != Transit.TIME_LAST && shiftTime.isNotEmpty()) shiftRow(loadingTime(departAt))
                     tabsRow()
                     item(key = "finding") { LoadingBlock(T("Finding routes", "מחפשים מסלולים"), Modifier.animateItem(
                         fadeInSpec = androidx.compose.animation.core.tween(200, delayMillis = 60),
@@ -714,7 +786,15 @@ fun DirectionsOnline(model: KavModel) {
                 }
                 shown.isEmpty() -> {
                     tabsRow()
-                    item(key = "empty") {
+                    val hid = uk.noammm.kav.ext.Pipeline.hiddenNotice(hiddenRoutes).takeIf { raw.isEmpty() && !nothingOnShabbat }
+                    // Every route found was left out by the rider's own rules: that, not "none found".
+                    if (hid != null) {
+                        item(key = "hidden-routes") {
+                            HiddenRoutesNotice(hid.count, hid.by, hiddenReasons(hiddenRoutes), showing = showHidden,
+                                modifier = listMotion().padding(K.gap4)) { showHidden = true }
+                        }
+                        ruleNote?.let { note -> item(key = "rules") { NoteCard(note, listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) } }
+                    } else item(key = "empty") {
                         NoteCard(
                             if (raw.isEmpty() && nothingOnShabbat) SHABBAT_NOTHING
                             else if (raw.isEmpty()) T("No routes found for this trip.", "לא נמצאו מסלולים לנסיעה הזו.")
@@ -726,6 +806,9 @@ fun DirectionsOnline(model: KavModel) {
                 else -> {
                     if (timeType != Transit.TIME_LAST) shiftRow(firstTime ?: shiftTime)
                     tabsRow()
+                    ruleNote?.let { note ->
+                        item(key = "rules") { NoteCard(note, listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) }
+                    }
                     // Late at night or on Shabbat there may only be walking and cycling. Routes the planner found after
                     // Shabbat or a holiday ends say so on their own cards.
                     if (raw.none { t -> t.legs.any { it.kind == Transit.LegKind.RIDE } }) item(key = "no-transit") {
@@ -814,12 +897,16 @@ fun DirectionsOnline(model: KavModel) {
                             // The taxi card orders its ride with Gett, between the search's own From and To.
                             val taxi = shown[i].legs.firstOrNull { it.kind == Transit.LegKind.TAXI }?.takeIf { plan.isTaxiCard(shown[i]) }
                             Box(Modifier.popIn(i, raw to sort)) {
-                                ItineraryCard(shown[i], resolved, footer = taxi?.let { leg ->
+                                // Leaving at a time, a card lists no bus from before it: the rider didn't ask about those.
+                                ItineraryCard(shown[i], resolved, if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L, footer = resultFooter(model, taxi?.let { leg ->
                                     { OrderGett(gettLink(leg, pickupName, dropoffName), Modifier.fillMaxWidth()) }
-                                }) {
+                                }, shown[i], resolved, remember(shown[i].provider) { plannerName(shown[i].provider) })) {
+                                    // Not before the rider's required rules have judged it.
+                                    if (checking) return@ItineraryCard
                                     open = OpenTrip(
                                         shown[i], resolved, fromPlace?.name ?: T("Current location", "המיקום הנוכחי"),
                                         toPlace?.name ?: T("Destination", "יעד"), stopovers = stopovers,
+                                        asked = if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L,
                                     )
                                 }
                             }
@@ -827,6 +914,13 @@ fun DirectionsOnline(model: KavModel) {
                     }
                     if (taxiLink != null && taxiAt == shown.size) item(key = "taxi") {
                         Column(listMotion().padding(horizontal = K.gap4)) { TaxiRow(taxiLink) }
+                    }
+                    // Routes the rider's extensions left out: said under the routes, with the tap that shows them once.
+                    uk.noammm.kav.ext.Pipeline.hiddenNotice(hiddenRoutes)?.let { n ->
+                        item(key = "hidden-routes") {
+                            HiddenRoutesNotice(n.count, n.by, hiddenReasons(hiddenRoutes), showing = showHidden,
+                                modifier = listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) { showHidden = true }
+                        }
                     }
                 }
             }
@@ -954,3 +1048,62 @@ private fun whenLabel(departAt: Long, timeType: Int): String {
         else -> T("Depart ", "יציאה ") + stamp
     }
 }
+
+// The time between Earlier and Later while new routes load: the one they are asked for, now when leaving now, not the
+// last list's.
+internal fun loadingTime(departAt: Long, nowMs: Long = System.currentTimeMillis()): String =
+    clockFormat().format(java.util.Date(if (departAt > 0L) departAt else nowMs))
+
+// What the rider's route rules did to a search, in a line; null when they changed nothing worth saying.
+// Why the hidden routes were left out, as their extensions said it, each reason once.
+private fun hiddenReasons(hidden: List<uk.noammm.kav.ext.Pipeline.Hidden>): List<String> = hidden.mapNotNull { it.reason }.distinct()
+
+private fun rulesSaid(c: uk.noammm.kav.ext.Pipeline.Checked): String? {
+    val walkOnly = c.snapshot.transfer == null
+    val lines = listOfNotNull(
+        c.notCatchable.takeIf { it > 0 }?.let { n ->
+            if (walkOnly) T.count(n, "1 route isn't catchable with your walking settings", "מסלול אחד לא אפשרי לפי הגדרות ההליכה שלכם",
+                "routes aren't catchable with your walking settings", "מסלולים לא אפשריים לפי הגדרות ההליכה שלכם")
+            else T.count(n, "1 route isn't catchable with your walking and transfer rules", "מסלול אחד לא אפשרי לפי כללי ההליכה וההחלפות שלכם",
+                "routes aren't catchable with your walking and transfer rules", "מסלולים לא אפשריים לפי כללי ההליכה וההחלפות שלכם")
+        },
+        c.hidden.takeIf { it > 0 && c.hiddenRoutes.isEmpty() }?.let { n ->
+            T.count(n, "1 route hidden by your extensions' rules", "מסלול אחד הוסתר לפי הכללים של התוספים שלכם",
+                "routes hidden by your extensions' rules", "מסלולים הוסתרו לפי הכללים של התוספים שלכם") +
+                // The reasons as the extensions gave them, each set apart as theirs, as their route tags are.
+                c.reasons.takeIf { it.isNotEmpty() }?.joinToString("; ", prefix = ": ") { (by, why) ->
+                    T("\u2068$why\u2069 · by \u2068$by\u2069", "\u2068$why\u2069 · מאת \u2068$by\u2069")
+                }.orEmpty()
+        },
+        c.skipped.filter { it !in c.unsent }.takeIf { it.isNotEmpty() }?.let { s ->
+            val it = s.joinToString(", ") { x -> x.label }
+            if (s.size == 1) T("Shown without \u2068$it\u2069: it didn't answer in time.", "המסלולים מוצגים בלי \u2068$it\u2069, כי הוא לא ענה בזמן.")
+            else T("Shown without \u2068$it\u2069: they didn't answer in time.", "המסלולים מוצגים בלי \u2068$it\u2069, כי הם לא ענו בזמן.")
+        },
+        // Not theirs to answer: Kav's message about these routes was too large to send.
+        c.unsent.takeIf { it.isNotEmpty() }?.let { s ->
+            val it = s.joinToString(", ") { x -> x.label }
+            if (s.size == 1) T("Shown without \u2068$it\u2069: Kav couldn't ask it about these routes.", "המסלולים מוצגים בלי \u2068$it\u2069, כי Kav לא הצליחה לשאול אותו על המסלולים האלה.")
+            else T("Shown without \u2068$it\u2069: Kav couldn't ask them about these routes.", "המסלולים מוצגים בלי \u2068$it\u2069, כי Kav לא הצליחה לשאול אותם על המסלולים האלה.")
+        },
+    )
+    return lines.takeIf { it.isNotEmpty() }?.joinToString(". ")
+}
+
+private fun ruleName(f: uk.noammm.kav.ext.Pipeline.Failure): String = when (f.slot) {
+    uk.noammm.kav.ext.Pipeline.WALK -> T("Your walking rules", "כללי ההליכה שלכם")
+    uk.noammm.kav.ext.Pipeline.TRANSFER -> T("Your transfer rules", "כללי ההחלפות שלכם")
+    else -> T("Your route filter", "מסנן המסלולים שלכם")
+}
+
+// A required rule that failed (PLAN.md 3.6): the search says so, and never shows routes judged without it by itself.
+private fun ruleFailed(f: uk.noammm.kav.ext.Pipeline.Failure): String =
+    if (f.why == "missing") T("Can't use ${ruleName(f).replaceFirstChar { it.lowercase() }} (\u2068${f.pinned.label}\u2069): the extension isn't installed or is off, so no routes are shown.",
+        "אי אפשר להשתמש ב${ruleName(f)} (\u2068${f.pinned.label}\u2069): התוסף לא מותקן או כבוי, ולכן לא מוצגים מסלולים.")
+    else if (f.why == "undeliverable") T("Can't use ${ruleName(f).replaceFirstChar { it.lowercase() }} (\u2068${f.pinned.label}\u2069): Kav couldn't ask it about these routes, so no routes are shown.",
+        "אי אפשר להשתמש ב${ruleName(f)} (\u2068${f.pinned.label}\u2069): Kav לא הצליחה לשאול אותו על המסלולים האלה, ולכן לא מוצגים מסלולים.")
+    else T("Can't use ${ruleName(f).replaceFirstChar { it.lowercase() }} (\u2068${f.pinned.label}\u2069) right now, so no routes are shown.",
+        "אי אפשר להשתמש כרגע ב${ruleName(f)} (\u2068${f.pinned.label}\u2069), ולכן לא מוצגים מסלולים.")
+
+private fun notChecked(f: uk.noammm.kav.ext.Pipeline.Failure): String =
+    T("Not checked with ${ruleName(f).replaceFirstChar { it.lowercase() }} (\u2068${f.pinned.label}\u2069).", "המסלולים לא נבדקו לפי ${ruleName(f)} (\u2068${f.pinned.label}\u2069).")

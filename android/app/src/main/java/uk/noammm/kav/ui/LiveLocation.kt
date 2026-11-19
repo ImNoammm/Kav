@@ -208,9 +208,9 @@ private fun StatusBlock(
                 fontSize = 14.sp, color = K.dim, modifier = Modifier.padding(top = K.gap1),
             )
         }
-        if (a != null && a.sampleUtc > 0) {
+        if (a != null && a.sampleUtc > 0) updatedLine(a, headline, now)?.let { line ->
             Text(
-                updatedLabel(a),
+                line,
                 fontSize = 14.sp, color = K.dim, modifier = Modifier.padding(top = K.gap1),
             )
         }
@@ -227,6 +227,7 @@ private fun StatusBlock(
             Fact(T("Arriving", "הגעה"), whenLabel(a.rtUtc, now))
         }
         a?.let { KavLive.plateOf(it.vehicleId) }?.let { Fact(T("Number plate", "מספר רישוי"), it) }
+        a?.let { rememberBusKind(it.vehicleId) }?.let { Fact(T("Bus", "אוטובוס"), it) }
     }
 }
 

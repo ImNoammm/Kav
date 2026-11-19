@@ -27,6 +27,10 @@ import uk.noammm.kav.ui.ARRIVED_END_S
 import androidx.core.location.LocationRequestCompat
 import uk.noammm.kav.ui.Step
 import uk.noammm.kav.ui.boardingChoice
+import uk.noammm.kav.ui.replanAlert
+import uk.noammm.kav.ui.firedAfterSwitch
+import uk.noammm.kav.data.Transit
+import uk.noammm.kav.ui.RavPass
 
 class TripService : Service() {
 
@@ -36,6 +40,7 @@ class TripService : Service() {
     // Too rough for the notice, but the trip's steps allow for how rough a fix is.
     private var rough: Fix? = null
     private var shown: TripNotice? = null
+    private var shownPay: TripPay? = null
     private var postedAt = 0L
 
     private var cached: Pair<ActiveJourney, Int>? = null
@@ -55,6 +60,9 @@ class TripService : Service() {
 
     private val fired = HashSet<String>()
     private var firedFor = ""
+    // The trip's legs as the alerts last saw them, and the last alert given, to tell a trip gone on with a new route.
+    private var alertedLegs: List<Transit.Leg>? = null
+    private var lastAlert = ""
     private val watch = object : Runnable {
         override fun run() {
             alertIfDue()
@@ -93,6 +101,7 @@ class TripService : Service() {
         tracking = null
         if (running === this) running = null
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        PayEntry.sync(this)
         super.onDestroy()
     }
 
@@ -106,6 +115,7 @@ class TripService : Service() {
             start(first, special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         if (!located && !start(first, special)) return false
         foreground = true
+        PayEntry.sync(this)
         if (located) tracking = trackLocation(this, ::onFix, ::onRough, every = need.every, quality = need.quality)
         return true
     }
@@ -207,13 +217,28 @@ class TripService : Service() {
             firedFor = trip
             fired.clear()
             sent.getString(trip, null)?.let { fired.addAll(it.split(',')) }
+        } else alertedLegs?.takeIf { it !== journey.trip.legs && it != journey.trip.legs }?.let { was ->
+            // Gone on with a new route under its own name (Replan): the alert of the failure behind it leaves the shade.
+            val kept = firedAfterSwitch(fired, was, journey.trip.legs)
+            fired.clear(); fired.addAll(kept)
+            sent.edit().clear().putString(trip, fired.joinToString(",")).apply()
+            if (lastAlert.startsWith("replan-")) NotificationManagerCompat.from(this).cancel(ALERT_ID)
         }
+        alertedLegs = journey.trip.legs
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
         val now = System.currentTimeMillis() / 1000
-        val due = tripAlert(journey, step, latest, now)?.takeIf { it.key !in fired } ?: return
+        val due = listOfNotNull(
+            replanAlert(journey, step, latest, now),
+            tripAlert(journey, step, latest, now),
+            transferAlert(journey, step, TicketStore.kept, now * 1000),
+        ).firstOrNull { it.key !in fired } ?: return
         fired.add(due.key)
+        lastAlert = due.key
         sent.edit().clear().putString(trip, fired.joinToString(",")).apply()
-        alert(this, due.title, due.text)
+        // Getting off a train with its entrance still open in Kav: the exit ticket, one tap away.
+        val exit = due.key.startsWith("ride-") && PayEntry.chosen(this) && exitTicketDue(journey, step, TicketStore.kept, now * 1000)
+        alert(this, due.title, if (exit) due.text + T(" · Make your exit ticket", " · צרו את כרטיס היציאה") else due.text,
+            if (exit) T("Exit ticket", "כרטיס יציאה") to PayEntry.pay(this, RavPass.Section.TRAIN) else null)
         val spoken = if (due.turn) Prefs.spokenTurns(this) else Prefs.spokenAlerts(this)
         if (spoken && Speaker.mayTalk(this)) Speaker.sayAfterSound(this, due.spoken)
     }
@@ -243,6 +268,14 @@ class TripService : Service() {
         cachedAt = JourneyFile.mtime(this)
     }
 
+    // The Pay or Show ticket the notification offers now, with paying turned on (set up or not: PayEntry.chosen).
+    private fun payNow(): TripPay? {
+        if (!PayEntry.chosen(this)) return null
+        val (journey, step) = journey() ?: return null
+        TicketStore.load(this)
+        return tripPay(journey, step, TicketStore.kept, System.currentTimeMillis())
+    }
+
     private fun notice(): TripNotice? {
         val (journey, step) = journey() ?: return null
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
@@ -258,10 +291,12 @@ class TripService : Service() {
             return
         }
         val n = notice() ?: run { finish(); return }
-        if (n == shown) return
+        val pay = runCatching { payNow() }.getOrNull()
+        if (n == shown && pay == shownPay) return
         shown = n
+        shownPay = pay
         postedAt = System.currentTimeMillis()
-        try { NotificationManagerCompat.from(this).notify(ID, build(this, n)) } catch (_: SecurityException) {}
+        try { NotificationManagerCompat.from(this).notify(ID, build(this, n, pay)) } catch (_: SecurityException) {}
     }
 
     private fun end() {
@@ -290,6 +325,7 @@ class TripService : Service() {
         private const val ALERT_MS = 5_000L
 
         private var running: TripService? = null
+        val showing get() = running != null
 
         fun show(ctx: Context) {
             running?.let { it.track(); it.post(); return }
@@ -304,7 +340,7 @@ class TripService : Service() {
             NotificationManagerCompat.from(ctx).cancel(ALERT_ID)
         }
 
-        fun alert(ctx: Context, title: String, text: String) {
+        fun alert(ctx: Context, title: String, text: String, action: Pair<String, Intent>? = null) {
             if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
             ensureAlerts(ctx)
             val n = NotificationCompat.Builder(ctx, ALERTS)
@@ -316,6 +352,7 @@ class TripService : Service() {
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .apply { action?.let { (label, i) -> addAction(0, label, PayEntry.pending(ctx, i, 4)) } }
                 .build()
             runCatching { NotificationManagerCompat.from(ctx).notify(ALERT_ID, n) }
         }
@@ -360,13 +397,18 @@ class TripService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        private fun build(ctx: Context, n: TripNotice): Notification {
+        private fun build(ctx: Context, n: TripNotice, pay: TripPay? = null): Notification {
             val accent = Prefs.accent(ctx)
-            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) live(ctx, n, accent) else compat(ctx, n, accent)
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) live(ctx, n, accent, pay) else compat(ctx, n, accent, pay)
         }
 
+        // "Pay" or "Show ticket", through Kav's own screen (PayEntry).
+        private fun payAction(ctx: Context, pay: TripPay): Pair<String, PendingIntent> =
+            if (pay.ticket != null) T("Show ticket", "הצגת הכרטיס") to PayEntry.pending(ctx, PayEntry.ticket(ctx, pay.ticket), 5)
+            else T("Pay", "תשלום") to PayEntry.pending(ctx, PayEntry.pay(ctx, pay.section, pay.ride), 5)
+
         @RequiresApi(Build.VERSION_CODES.BAKLAVA)
-        private fun live(ctx: Context, n: TripNotice, accent: Int): Notification {
+        private fun live(ctx: Context, n: TripNotice, accent: Int, pay: TripPay?): Notification {
             val style = Notification.ProgressStyle()
                 .setStyledByProgress(false)
                 .setProgressSegments(n.parts.map { (length, colour) -> Notification.ProgressStyle.Segment(length).setColor(colour) })
@@ -380,6 +422,7 @@ class TripService : Service() {
                 .setLargeIcon(Icon.createWithBitmap(plateIcon(n.glyph, n.tint)))
                 .setStyle(style)
                 .setShortCriticalText(n.chip)
+                .apply { pay?.let { payAction(ctx, it) }?.let { (label, pi) -> addAction(Notification.Action.Builder(null as Icon?, label, pi).build()) } }
                 .addAction(Notification.Action.Builder(null as Icon?, T("End trip", "סיום נסיעה"), act(ctx, ACT_END)).build())
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))
@@ -395,7 +438,7 @@ class TripService : Service() {
                 .build()
         }
 
-        private fun compat(ctx: Context, n: TripNotice, accent: Int): Notification =
+        private fun compat(ctx: Context, n: TripNotice, accent: Int, pay: TripPay?): Notification =
             NotificationCompat.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_trip_notice)
                 .setContentTitle(n.title)
@@ -403,6 +446,7 @@ class TripService : Service() {
                 .setSubText(n.arrive)
                 .setLargeIcon(plateIcon(n.glyph, n.tint))
                 .setProgress(n.max, n.progress, false)
+                .apply { pay?.let { payAction(ctx, it) }?.let { (label, pi) -> addAction(0, label, pi) } }
                 .addAction(0, T("End trip", "סיום נסיעה"), act(ctx, ACT_END))
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))

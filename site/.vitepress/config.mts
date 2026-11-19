@@ -19,7 +19,8 @@ export default defineConfig({
   // Light or dark as the device is, with no switch of its own.
   appearance: 'force-auto',
   lastUpdated: false,
-  srcExclude: ['README.md'],
+  // extensions/ holds the community list's data and notes (extensions/README.md), not pages.
+  srcExclude: ['README.md', 'extensions/**'],
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico', sizes: '32x32' }],
     ['link', { rel: 'icon', href: '/img/icon.svg', type: 'image/svg+xml' }],
@@ -71,9 +72,26 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/docs/' },
             { text: 'For developers', link: '/docs/data' },
+            { text: 'Extensions', link: '/docs/extensions' },
             { text: 'How Kav works', link: '/docs/how-it-works' },
             { text: 'Building from source', link: '/docs/building' },
             { text: 'License', link: '/docs/license' },
+          ],
+        },
+        {
+          text: 'Making extensions',
+          collapsed: true,
+          items: [
+            { text: 'Kotlin and Java', link: '/docs/extensions/native' },
+            { text: 'The Kotlin starter', link: '/docs/extensions/starter' },
+            { text: 'Hooks', link: '/docs/extensions/hooks' },
+            { text: 'Screens', link: '/docs/extensions/screens' },
+            { text: 'The bundle format', link: '/docs/extensions/format' },
+            { text: 'What riders see', link: '/docs/extensions/what-riders-see' },
+            { text: 'The words a rider meets', link: '/docs/extensions/riders-wording' },
+            { text: 'Testing', link: '/docs/extensions/testing' },
+            { text: 'The source template', link: '/docs/extensions/template' },
+            { text: 'For your agent', link: '/docs/extensions/agent' },
           ],
         },
         {

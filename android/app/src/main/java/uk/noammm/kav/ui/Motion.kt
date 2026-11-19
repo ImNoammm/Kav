@@ -79,6 +79,7 @@ fun LanguageSwitch(content: @Composable () -> Unit) {
         dip.animateTo(1f, tween(MED, easing = LinearOutSlowInEasing))
     }
     val drift = if (T.rtl) -1f else 1f
+    VeilMaps { dip.value < 1f }
     Box(
         Modifier.fillMaxSize().graphicsLayer {
             val p = dip.value

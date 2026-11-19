@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- See res/xml/debug_network.xml: debug builds only. -->
+    <application android:networkSecurityConfig="@xml/debug_network">
+        <!-- ColdStartTest's empty screen (ext/SpeedHold.kt): started from adb on a hidden display. -->
+        <activity android:name=".ext.SpeedHold" android:exported="true" android:noHistory="true" android:excludeFromRecents="true" android:theme="@android:style/Theme.Material.NoActionBar" />
+    </application>
+</manifest>

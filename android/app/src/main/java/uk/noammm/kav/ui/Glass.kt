@@ -51,6 +51,14 @@ fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null): Mod
     return liquidPane(liquid, radius, glass).border(0.5.dp, K.separator, RoundedCornerShape(radius))
 }
 
+// A floating part over a map as panels over the live map look (liquidPane): the cards' shade, see-through, and its
+// hairline. Solid, the cards' own shade.
+fun Modifier.seeThrough(radius: Dp): Modifier {
+    if (!liquidGlassReady || !K.liquid) return panel(radius)
+    val shape = RoundedCornerShape(radius)
+    return clip(shape).background(K.surface.copy(alpha = LIVE_SHADE)).border(0.5.dp, K.separator, shape)
+}
+
 // A card on the page: its own shade and a hairline. solid: one that floats over others, a sheet or a menu.
 fun Modifier.panel(radius: Dp = K.rCard, solid: Boolean = false): Modifier {
     val shape = RoundedCornerShape(radius)

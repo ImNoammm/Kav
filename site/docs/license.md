@@ -15,6 +15,8 @@ change it and share it. If you share a changed version, it has to stay under the
   [Protomaps](https://protomaps.com) build, drawn with [MapLibre](https://maplibre.org). Satellite photos from Esri.
 - Timetables and live buses from the Israel Ministry of Transport. Trips are planned on that timetable and OpenStreetMap
   by [OpenTripPlanner](https://github.com/opentripplanner/OpenTripPlanner).
+- How busy, Kav's own, counts the Ministry of Transport's Rav-Kav taps by line and hour, from
+  [data.gov.il](https://data.gov.il/dataset/tikufim-2021).
 - The liquid glass shaders come from Kyant0's [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)
   (Apache License 2.0).
 - The place search recipe is [Vela Maps](https://github.com/PimpinPumpkin/Vela)' (GPL-3.0), and Google alerts and How busy
@@ -22,7 +24,9 @@ change it and share it. If you share a changed version, it has to stay under the
 - English line alerts are translated by Helsinki-NLP's
   [opus-mt-tc-big-he-en](https://huggingface.co/Helsinki-NLP/opus-mt-tc-big-he-en) (OPUS-MT, CC-BY 4.0), run with
   [CTranslate2](https://github.com/OpenNMT/CTranslate2) (MIT).
-- The operator colours come from [@szaionz](https://github.com/szaionz)'s route_colors branch.
+- The operator colors come from [@szaionz](https://github.com/szaionz)'s route_colors branch.
+- What kind of bus a live bus is comes from the Ministry of Transport's file of the operators' buses, from
+  [data.gov.il](https://data.gov.il/dataset/bus_fleet).
 - The self-hosted server's setup page uses [htmx](https://htmx.org) (0BSD) and Kazuhiko Arase's
   [QR Code Generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT).
 - This site is built with [VitePress](https://vitepress.dev) (MIT).

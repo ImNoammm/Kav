@@ -1,7 +1,13 @@
 package uk.noammm.kav.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -21,17 +27,24 @@ import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.Source
 
 // Every planner's routes for one search (KavPlan.everyPlanner): asked all at once, so a tab opens on its routes as soon
-// as they're in. Another search, or Try again, asks them all again.
-internal class EveryPlanner(private val scope: CoroutineScope) {
+// as they're in. Another search, or Try again, asks them all again; so does the same search leaving now once its routes
+// are older than it keeps them (LEAVE_NOW_KEPT_MS).
+internal class EveryPlanner(private val scope: CoroutineScope, private val clock: () -> Long = System::currentTimeMillis) {
     private var search: List<Any?>? = null
+    private var askedAt = 0L
     private val asked = HashMap<Source, Deferred<Result<KavPlan.Planned>>>()
 
-    // The routes of planner for search, with every tab's planner asked too. Called on the main thread.
-    fun routes(search: List<Any?>, planner: Source, tabs: List<Source>, ask: (Source) -> KavPlan.Planned): Deferred<Result<KavPlan.Planned>> {
-        if (search != this.search) {
+    // The routes of planner for search, with every tab's planner asked too. Called on the main thread. keepMs: how long
+    // the same search's routes are kept.
+    fun routes(
+        search: List<Any?>, planner: Source, tabs: List<Source>, keepMs: Long = Long.MAX_VALUE, ask: (Source) -> KavPlan.Planned,
+    ): Deferred<Result<KavPlan.Planned>> {
+        val now = clock()
+        if (search != this.search || now - askedAt > keepMs) {
             asked.values.forEach { it.cancel() }
             asked.clear()
             this.search = search
+            askedAt = now
         }
         fun start(s: Source) = asked.getOrPut(s) { scope.async(Dispatchers.IO) { runCatching { ask(s) } } }
         val wanted = start(planner)
@@ -39,6 +52,9 @@ internal class EveryPlanner(private val scope: CoroutineScope) {
         return wanted
     }
 }
+
+// How long a search leaving now keeps its routes: they're planned from the minute asked, and a bus can go by in less.
+internal const val LEAVE_NOW_KEPT_MS = 120_000L
 
 // A tab for each planner, right under Earlier and Later.
 @Composable
@@ -48,8 +64,18 @@ internal fun PlannerTabs(tabs: List<Source>, planner: Source, onPick: (Source) -
 
 // Settings: every planner's routes, a tab each, in the order set here. Results open on the tab of the planner chosen
 // above. Each search then goes to every planner with a tab, which the text says; a planner taken off the tabs isn't asked.
+// Shown only when there are two planners to make tabs of (your own server set up too), sliding in when there are.
 @Composable
 internal fun EveryPlannerChoice() {
+    AnimatedVisibility(
+        KavPlan.offeredTabs().size > 1,
+        enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+        exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+    ) { Column { EveryPlannerRows() } }
+}
+
+@Composable
+private fun EveryPlannerRows() {
     val ctx = LocalContext.current
     InfoHeader(
         T("Routes from every planner", "מסלולים מכל המתכננים"),

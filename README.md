@@ -40,7 +40,14 @@ Installing, using Kav and running your own server are all covered on
 - Plans a trip, gives you a few ways there, and walks you through the one you
   pick. The step moves on by itself as you walk and ride, the map turns with
   you, and if you leave the app the current step follows you in a small
-  floating window.
+  floating window. If you miss a bus, can't make a change or go off the route,
+  it offers a new route from where you are.
+- Route cards show what a trip costs by the Ministry of Transport's fares, with
+  a day pass where that's cheaper, and are ordered by how likely they are to
+  work, from how late the buses really ran.
+- Routes for you: your walking pace, how much you'll walk, fewer changes and the
+  time you want at a stop shape the routes you get. Departure or arrival times
+  you use a lot can be kept and planned with in one tap.
 - Up to three stops on the way, each one passed by or stayed at for as long
   as you say.
 - Shows where your bus actually is. The trip stays in the notification shade
@@ -58,7 +65,8 @@ Installing, using Kav and running your own server are all covered on
 - Separate choices for trip planning, live locations and timetables. Pick
   Kav or your own server for each. The timetable kept on the
   phone remains available without signal.
-- OLED black, light and dark, with liquid glass or solid bars.
+- OLED black, light and dark, or following the phone's dark mode, with liquid
+  glass or solid bars.
 - Kav's own map, kept on the phone, with its places and streets named in Hebrew
   or English, and road numbers drawn as Israel's route markers. Or satellite
   photos, or one of OpenFreeMap's four maps, loaded online or downloaded to the
@@ -67,15 +75,28 @@ Installing, using Kav and running your own server are all covered on
 - Detours, delays and moved stops on your rides, from Kav's server, Google or
   your own server, in Hebrew or English, off until you turn them on. Kav's server
   sends the whole country's list, so it never learns your lines.
-- How busy your next bus usually is, as Google Maps predicts it, on unless you turn it off in setup or Settings.
+- How busy your next bus usually is, from Kav's server by the Ministry of
+  Transport's count of Rav-Kav taps, or as Google Maps predicts it, or not at
+  all: your choice in setup or Settings. A live bus's card says what kind of bus
+  it is.
+- A line's page says how late it usually runs at that time of the week.
 - Your own HTTP or SOCKS5 proxy for everything Kav asks for, so the services it
   talks to see the proxy instead of you.
-- Favourite places on the home screen, and backups of your places and settings
+- Favorite places on the home screen, and backups of your places and settings
   to a `.kav` file.
 - Private search, on by default, keeps your exact location out of searches:
-  Google or OpenStreetMap's Photon search sees only the centre of the town
+  Google or OpenStreetMap's Photon search sees only the center of the town
   you're in, or a place you pick. Choose the search provider in setup or Settings.
-- Paying for rides inside Kav is not offered.
+- Pay with Rav-Pass: "Pay for a ride" opens the Rav-Pass app on its bus
+  scanner or its train or light rail section, a button over it brings you back,
+  and Kav reads your ticket off Rav-Pass's screen to show it in Kav, every
+  passenger's code included, with a ride history on your phone. You can't pay
+  inside Kav, and Kav tells Rav-Pass nothing about you or the ride.
+- Extensions: Android code other people make for Kav, added from a GitHub
+  repository or a bundle file. They can add cards, tabs, map styles, route rules
+  and more, each with settings of its own. Kav's own six come in off. Making one?
+  Start at [kavapp.link/docs/extensions](https://kavapp.link/docs/extensions), or
+  give your AI agent [the agent file](https://kavapp.link/docs/extensions/agent.txt).
 - Reports a driver, a bus, an inspector or a train to the Ministry of Transport
   on its own form. Kav fills it in from your ride, and you check it and send it
   yourself. Your details stay on the phone and only go into that form.
@@ -90,7 +111,7 @@ GitHub builds every APK there from the code in this repo, and you can check the
 one you downloaded with the [GitHub CLI](https://cli.github.com):
 
 ```sh
-gh attestation verify kav-4.0.apk --repo ImNoammm/kav
+gh attestation verify kav-5.0.apk --repo ImNoammm/kav
 ```
 
 Setup downloads the map (about 176 MB once) and timetable (about 6 MB) from
@@ -148,6 +169,8 @@ your own server (below): Kav's server only answers the APKs from Releases.
 
 - Map data © OpenStreetMap contributors, from the Protomaps build, drawn with
   MapLibre. Satellite photos from Esri.
+- How busy, Kav's own, counts the Ministry of Transport's Rav-Kav taps by line and hour
+  ([data.gov.il, tikufim-2021](https://data.gov.il/dataset/tikufim-2021)).
 - The OpenFreeMap maps: tiles, fonts and sprite from
   [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, © OpenStreetMap
   contributors). Their styles come from OSM Bright (© MapTiler, OpenMapTiles
@@ -163,6 +186,8 @@ your own server (below): Kav's server only answers the APKs from Releases.
 - The liquid glass shaders come from Kyant0's
   [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) (Apache
   License 2.0).
+- What kind of bus a live bus is comes from the Ministry of Transport's file of
+  the operators' buses ([data.gov.il, bus_fleet](https://data.gov.il/dataset/bus_fleet)).
 - Timetables and live buses from the Israel Ministry of Transport. Trips are
   planned on that timetable and OpenStreetMap by
   [OpenTripPlanner](https://github.com/opentripplanner/OpenTripPlanner).
@@ -200,7 +225,7 @@ your own server (below): Kav's server only answers the APKs from Releases.
   Link customization also offers 3 or 30 days. Expired trips are deleted
   automatically. The preview loads Leaflet from unpkg and map tiles from Esri.
   Both receive the viewer's IP, and Esri sees the map area.
-- The operator colours come from [@szaionz](https://github.com/szaionz)'s
+- The operator colors come from [@szaionz](https://github.com/szaionz)'s
   route_colors branch.
 - The self-hosted server's setup page uses [htmx](https://htmx.org) (0BSD) and
   Kazuhiko Arase's [QR Code Generator](https://github.com/kazuhikoarase/qrcode-generator)

@@ -24,6 +24,16 @@ internal fun rememberLineDepartures(ride: Transit.Leg, wait: Transit.Leg?, r: Tr
     var found by remember(ride) { mutableStateOf(synchronized(lastFound) { lastFound[keyOf(ride)] }) }
     LaunchedEffect(ride, upcoming, now / 20, KavLive.origin) {
         if (upcoming) return@LaunchedEffect
+        // An extension's stop: its own publisher's board, never Kav's server or the ministry's timetable, whose stop with
+        // the same code is another stop.
+        if (uk.noammm.kav.ext.RefTable.isHandle(ride.fromStop)) {
+            val theirs = withContext(Dispatchers.IO) { uk.noammm.kav.ext.Extensions.lineDepartures(ride, now) }
+            val next = (theirs as? uk.noammm.kav.ext.Outcome.Ok)?.value.orEmpty()
+                .filter { it.timeUtc >= now - 60 }.sortedBy { it.timeUtc }.take(3)
+            synchronized(lastFound) { lastFound[keyOf(ride)] = next }
+            found = next
+            return@LaunchedEffect
+        }
         val net = try { uk.noammm.kav.loadNet(ctx) } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The quick settings tile (PayTile.kt), as Android lists it before Kav names it itself. -->
+    <string name="pay_tile">Pay for a ride</string>
+</resources>

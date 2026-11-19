@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
@@ -252,6 +253,33 @@ internal fun ringedMark(mode: Mode, fill: Color, outer: Float, inner: Float, den
         }
     }
 
+// A vehicle's mark id on the map, the same as it moves, so the map glides it (TileMap).
+internal fun vehicleMarkId(a: Transit.Arrival) = "v" + a.vehicleId.ifEmpty { a.tripId.toString() }.replace(':', '.')
+
+// Vehicles merged where they'd lie on one another (LiveGroups): a vehicle's ring a size up, how many in its middle, in
+// the freshest one's colour. Big enough to cover theirs and their arrows while they glide in under it.
+internal fun groupMark(count: Int, fill: Color, density: Density): Pair<String, ImageBitmap> =
+    with(density) {
+        val o = GROUP_MARK_R.dp.toPx()
+        val bg = MapInk.icons.bg
+        val label = if (count > 99) "99+" else count.toString()
+        val name = "kav-group-$label-${fill.toArgb()}-${bg.toArgb()}"
+        icon(name, 2 * o, 2 * o, density, LayoutDirection.Ltr) {
+            drawCircle(bg, o, Offset(o, o))
+            drawCircle(fill, o - 2.dp.toPx(), Offset(o, o))
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = bg.toArgb()
+                textAlign = android.graphics.Paint.Align.CENTER
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                textSize = (if (label.length > 2) 11f else 14f).dp.toPx()
+            }
+            val baseline = o - (paint.descent() + paint.ascent()) / 2
+            drawContext.canvas.nativeCanvas.drawText(label, o, baseline, paint)
+        }
+    }
+
+internal const val GROUP_MARK_R = 17f
+
 // Which way a bus is heading: an arrowhead just outside its ring, drawn pointing north for the map to turn.
 internal fun headingMark(fill: Color, outer: Float, density: Density): Pair<String, ImageBitmap> =
     with(density) {
@@ -336,7 +364,7 @@ internal fun vehicleGeometry(
         val f = fade(a)
         val tint = if (a.vehicleStatus == 2) MapInk.icons.problem else mapFreshColour(freshnessOf(a.sampleUtc, now))
         // The vehicle, the same as it moves, so the map glides it (TileMap).
-        val id = "v" + a.vehicleId.ifEmpty { a.tripId.toString() }.replace(':', '.')
+        val id = vehicleMarkId(a)
         track(a)?.takeIf { it.size >= 2 }?.let { tracks[id] = it }
         halos += MapDot(a.lat, a.lon, tint.copy(alpha = .2f * k), VEHICLE_HALO_R, id = "$id:halo", fade = f)
         val (name, image) = ringedMark(mode, tint, 11f, 9f, density)
@@ -482,5 +510,6 @@ fun RouteMap(
         ),
         rider = rider.markers.firstOrNull(),
         riderHeading = heading,
+        extOn = "trip", name = "trip page",
     )
 }

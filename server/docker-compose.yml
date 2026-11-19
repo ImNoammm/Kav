@@ -22,20 +22,23 @@ services:
       - ALERTS_URL=https://moran.mot.gov.il/Channels/HTTPChannel/DeveloperQuery/SpecialMessages?Key=${MOT_KEY}
       # Their English, from kav-translate, each text once.
       - TRANSLATE_URL=http://kav-translate:5000
-      - TRANSLATIONS=/history/translations.sqlite3
+      # Riders' shared trips and the alerts' English, in a folder of kav-live's alone (kav-eta is given ./history).
+      - TRANSLATIONS=/private/translations.sqlite3
+      - SHARED_TRIPS=/private/shared-trips.sqlite3
     volumes:
       - ./live.py:/app/live.py:ro
       - ./alerts.py:/app/alerts.py:ro
       - ./mot-ca.pem:/app/mot-ca.pem:ro
       # When each bus passed each stop, kept ten weeks for the planner's predicted times.
       - ./history:/history
+      - ./private:/private
       # The planner's live updates, and the route directions they name trips by.
       - ./otp/realtime:/realtime
       # Kav's own predicted arrivals (kav-eta), which the planner and the app get instead of the ministry's.
       - ./eta/out:/eta:ro
     user: "1000:1000"
     read_only: true
-    mem_limit: 1g
+    mem_limit: 2g
     logging:
       options:
         max-size: 1m
