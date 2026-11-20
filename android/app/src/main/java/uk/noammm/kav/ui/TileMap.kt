@@ -855,7 +855,7 @@ private class MapCamera {
         if (points.isEmpty() || viewport.w <= 0 || viewport.h <= 0) return
         // Moved by hand, the map only reframes for something new to show, not for a resize.
         val reframe = value == null || followed || previousFocus != focus ||
-            (!manual && (previousViewport != viewport || previousPadding != padding || previousMaxZoom != maxZoom))
+            (!manual && !placed && (previousViewport != viewport || previousPadding != padding || previousMaxZoom != maxZoom))
         followed = false
         val current = destination ?: value
         val changed = points.filterIndexed { index, point -> previousPoints.getOrNull(index) != point }
@@ -866,7 +866,7 @@ private class MapCamera {
         previousMaxZoom = maxZoom
         if (reframe) {
             reset(points, viewport, padding, if (keepZoom) current?.zoom ?: maxZoom else maxZoom, scope)
-        } else if (!manual && current != null && changed.any { !viewport.contains(it, current) }) {
+        } else if (!manual && !placed && current != null && changed.any { !viewport.contains(it, current) }) {
             val area = viewport.inset(padding)
             val scale = current.pxPerWorld
             val bounds = listOf(
@@ -880,6 +880,7 @@ private class MapCamera {
     fun reset(points: List<WorldPoint>, viewport: Viewport, padding: Float, maxZoom: Float, scope: CoroutineScope) {
         if (points.isEmpty()) return
         manual = false
+        placed = false
         val frame = fitCamera(points, viewport, padding, maxZoom)
         framedZoom = frame.zoom
         moveTo(frame, scope)
@@ -890,6 +891,7 @@ private class MapCamera {
     fun centre(point: WorldPoint, scope: CoroutineScope) {
         val current = destination ?: value ?: return
         manual = false
+        placed = false
         val zoom = maxOf(current.zoom, framedZoom ?: current.zoom)
         moveTo(current.copy(worldX = point.x, worldY = point.y, zoom = zoom, rotation = 0f), scope)
     }
@@ -967,6 +969,26 @@ private class MapCamera {
     }
 
     fun resume() { manual = false }
+
+    // Restore the camera and manual state after a Live card closes. Keep the reference height too, so resizing
+    // around the closing card doesn't shift the restored position.
+    private var kept: Triple<Camera, Boolean, Float>? = null
+    private var returnMotion: Job? = null
+    suspend fun awaitReturn() { returnMotion?.join() }
+    private var placed = false
+    fun keep(height: Float) { if (kept == null) kept = (destination ?: value)?.let { Triple(it, manual, if (ref > 0f) ref else height) } }
+    fun back(height: Float, scope: CoroutineScope) {
+        val (place, hand, from) = kept ?: return
+        kept = null
+        val to = if (ref > 0f) ref else height
+        moveTo(place.copy(worldY = place.worldY + (to - from) / 2 / place.pxPerWorld), scope)
+        placed = true
+        // Restore manual mode after the move, or onLook reports the starting zoom and hides Live's stops.
+        manual = false
+        val going = animation
+        returnMotion = going
+        if (hand) if (going?.isActive == true) going.invokeOnCompletion { if (it == null) manual = true } else manual = true
+    }
 
     // Moved there as a hand would have (a merged mark tapped, LiveGroups): the map then stays where it's put.
     fun zoomAt(lat: Double, lon: Double, zoom: Float, scope: CoroutineScope) {
@@ -1460,7 +1482,10 @@ fun TileMap(
     // merges its crowded vehicles by (LiveGroups).
     onZoom: ((Float) -> Unit)? = null,
     zoomTo: MapZoomTo? = null,
+    // A Live card temporarily moves the camera. Clearing it restores the camera kept by MapCamera.keep.
+    away: Any? = null,
     moved: Boolean = false,
+    showRouteControl: Boolean = false,
     keepZoom: Boolean = false,
     status: (@Composable () -> Unit)? = null,
     controls: (@Composable () -> Unit)? = null,
@@ -1473,6 +1498,8 @@ fun TileMap(
     warming: Boolean = false,
     // The map goes with the rider (recenterOn) as they move, centred on them, until a hand moves it.
     followRider: Boolean = false,
+    // Where the rider is, on maps that offer heading-up as a control.
+    headingUpOn: Pair<Double, Double>? = null,
     // Which of Kav's maps this is for native extensions' shapes ("live", "trip"; ext/NativeMap.kt), null for none.
     extOn: String? = null,
     // What the map is, in its log lines ("trip view", "trip page", "Live").
@@ -1483,6 +1510,12 @@ fun TileMap(
     val layoutDirection = LocalLayoutDirection.current
     val scope = rememberCoroutineScope()
     val camera = remember { MapCamera() }
+    var headingUp by remember { mutableStateOf(false) }
+    val headingTarget = headingUpOn?.let { (lat, lon) ->
+        riderHeading?.takeIf { it.isFinite() && lat.isFinite() && lon.isFinite() }?.let { Follow(lat, lon, it) }
+    }
+    val headingFollow = headingTarget.takeIf { headingUp && away == null }
+    val cameraFollow = follow ?: headingFollow
     var inViewport by remember { mutableStateOf(true) }
     camera.duration = moveMs
     val worldPoints = remember(points) {
@@ -2419,19 +2452,26 @@ fun TileMap(
         // made again at each frame's size; with its room to grow (reserve) it's that size before and after too.
         val viewH = if (settle != null) maxOf(base, framing.h) else h + with(density) { reserve.toPx() }
 
-        val withRider = followRider && !camera.manual && recenterOn != null
-        LaunchedEffect(worldPoints, framing, focusKey, padFraction, fitMaxZoom, follow == null, keepZoom, withRider) {
+        val withRider = followRider && cameraFollow == null && !camera.manual && recenterOn != null
+        LaunchedEffect(worldPoints, framing, focusKey, padFraction, fitMaxZoom, cameraFollow == null, keepZoom, withRider, away != null) {
             val ref = if (settle != null) framing.h else 0f
             if (ref != camera.ref) camera.rebase(if (camera.ref > 0f) camera.ref else h, if (ref > 0f) ref else h, ref, scope)
-            if (follow == null && !withRider) camera.update(worldPoints, framing, focusKey, padFraction, fitMaxZoom, keepZoom, scope)
+            // Kept before the frame for what took it moves it.
+            if (away != null) camera.keep(h)
+            if (cameraFollow == null && !withRider) camera.update(worldPoints, framing, focusKey, padFraction, fitMaxZoom, keepZoom, scope)
         }
         LaunchedEffect(withRider, recenterOn) {
             val me = recenterOn?.takeIf { withRider && it.first.isFinite() && it.second.isFinite() } ?: return@LaunchedEffect
             camera.centre(WorldPoint(Geo.x(me.second), Geo.y(me.first)), scope)
         }
-        LaunchedEffect(focusKey) { camera.resume() }
-        LaunchedEffect(follow, viewport, camera.manual) {
-            if (follow != null && !camera.manual) camera.follow(follow, viewport, scope)
+        LaunchedEffect(focusKey, away == null) {
+            camera.resume()
+            // After the frame above, so the map goes straight back instead of to that frame first.
+            if (away == null) camera.back(h, scope)
+        }
+        LaunchedEffect(cameraFollow, viewport, camera.manual) {
+            if (headingFollow != null) camera.awaitReturn()
+            if (cameraFollow != null && !camera.manual) camera.follow(cameraFollow, viewport, scope)
         }
         val anchor = viewport.anchor
         val look by rememberUpdatedState(onLook)
@@ -2448,9 +2488,10 @@ fun TileMap(
                 if (c == null) return@collectLatest
                 kotlinx.coroutines.delay(600)
                 val (sw, sh) = mapSize
-                val proj = MapProjection(c.worldX, c.worldY, c.pxPerWorld, sw, sh)
-                val mid = proj.latLon(Offset(sw / 2, sh / 2))
-                val corner = proj.latLon(Offset(0f, 0f))
+                val proj = MapProjection(c.worldX, c.worldY, c.pxPerWorld, sw, camera.ref.takeIf { it > 0f } ?: sh)
+                val pivot = liveViewport.anchor
+                val mid = proj.latLon(unrotate(Offset(sw / 2, sh / 2), pivot, c.rotation))
+                val corner = proj.latLon(unrotate(Offset.Zero, pivot, c.rotation))
                 look?.invoke(mid, metres(mid.first, mid.second, corner.first, corner.second) / 1000.0)
             }
         }
@@ -2620,9 +2661,28 @@ fun TileMap(
         ) {
             Box(Modifier.weight(1f)) { status?.invoke() }
             controls?.invoke()
+            val showHeadingControl = headingTarget != null && follow == null && away == null && mapReady
+            if (showHeadingControl) {
+                val turning = headingUp && !camera.manual
+                CompositionLocalProvider(LocalLiquidBackdrop provides null) {
+                    KavIconButton(
+                        Icons.Rounded.Navigation,
+                        if (turning) T("Show north up", "הציגו את הצפון למעלה")
+                        else T("Follow my direction", "סובבו את המפה לפי הכיוון שלי"),
+                        {
+                            headingUp = !turning
+                            if (!turning) {
+                                look?.invoke(null, 0.0)
+                                camera.resume()
+                            }
+                        },
+                        floating = true, tint = if (turning) K.accent else K.text, size = 44.dp,
+                    )
+                }
+            }
             // Moved away: one round button brings the map back, following again or centred as it was.
             androidx.compose.animation.AnimatedVisibility(
-                camera.manual || moved,
+                !showHeadingControl && (camera.manual || moved),
                 enter = androidx.compose.animation.fadeIn(tween(160)) + androidx.compose.animation.scaleIn(initialScale = .8f),
                 exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.scaleOut(targetScale = .8f),
             ) {
@@ -2634,10 +2694,11 @@ fun TileMap(
                     KavIconButton(
                         when {
                             follow != null -> Icons.Rounded.Navigation
-                            me != null -> Icons.Rounded.MyLocation
+                            me != null || showRouteControl -> Icons.Rounded.MyLocation
                             else -> Icons.Rounded.CenterFocusStrong
                         },
-                        if (follow != null) T("Follow", "עקבו") else T("Recenter", "מירכוז"),
+                        if (showRouteControl) T("Show whole route", "הציגו את כל המסלול")
+                        else if (follow != null) T("Follow", "עקבו") else T("Recenter", "מירכוז"),
                         {
                             look?.invoke(null, 0.0)
                             when {

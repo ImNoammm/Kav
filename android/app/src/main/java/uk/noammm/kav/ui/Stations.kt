@@ -449,6 +449,8 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
         LazyColumn(Modifier.fillMaxSize(), state = boardState, contentPadding = PaddingValues(
             start = K.gap1, end = K.gap1, bottom = LocalBottomBarInset.current + K.gap4,
         )) {
+            // Keep extension controls above a departure list that can run into tomorrow.
+            if (code > 0) item(key = "ext-slots") { StopSlots(model, "il.mot/gtfs/stop/$code", net.stopName(stop)) }
             // A stop the week on the phone has nothing for, the first time its provider is asked: the board's rows as
             // shapes, until its times fill them in.
             if (standIn && lines.isEmpty()) items(5, key = { "skeleton-$it" }) { i ->
@@ -477,8 +479,6 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                     }
                 }
             }
-            // Extensions' rows under the stop's own (ExtSlots.kt), only those the rider switched on.
-            if (code > 0) item(key = "ext-slots") { StopSlots(model, "il.mot/gtfs/stop/$code", net.stopName(stop)) }
         }
     }
     if (alerting) AlertSheet(model, net, stop) { alerting = false }

@@ -187,8 +187,9 @@ fun LiveScreen(model: KavModel) {
 @android.annotation.SuppressLint("ProduceStateDoesNotAssignValue")
 private fun LiveScreenForSource(model: KavModel) {
     val ctx = LocalContext.current
-    val here = model.here ?: (32.0759 to 34.7745)
-    val located = model.here != null
+    val riderAt = model.here
+    val here = riderAt ?: (32.0759 to 34.7745)
+    val located = riderAt != null
     var locGranted by remember { mutableStateOf(hasLocationPermission(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         if (granted.values.any { it }) {
@@ -597,7 +598,7 @@ private fun LiveScreenForSource(model: KavModel) {
         ) {
             CompositionLocalProvider(LocalLiquidBackdrop provides liveLiquid) {
                 LiveMap(
-                    here, model.heading, near, vehicles, open, openStop, openVehicle, lineStops, route, onRoad, model.liveShow,
+                    here, riderAt, model.heading, near, vehicles, open, openStop, openVehicle, lineStops, route, onRoad, model.liveShow,
                     stopsAway = !stopsOn,
                     keep = (focus as? LiveFocus.Vehicle)?.tripId,
                     onKept = { mapKept = it },
@@ -819,6 +820,7 @@ private fun lineLook(
 @Composable
 private fun LiveMap(
     center: Pair<Double, Double>,
+    riderAt: Pair<Double, Double>?,
     heading: Float?,
     stops: List<Transit.Stop>,
     vehicles: List<Tracked>,
@@ -980,8 +982,8 @@ private fun LiveMap(
         }.let { it.copy(images = images) }
     }
     // The rider as navigation draws them, an arrow the way the phone faces, gliding from fix to fix as the vehicles do.
-    val me = remember(center, heading != null, density, K.look, MapInk.icons) {
-        riderArrowGeometry(center, heading?.let { 0f }, density)
+    val me = remember(riderAt, heading != null, density, K.look, MapInk.icons) {
+        riderArrowGeometry(riderAt, heading?.let { 0f }, density)
     }
     // The stop picked, drawn as it is on the map (Kav's ring, or an extension's pin, square or dot in its colour) a size
     // up: a mark in the live layer, which fades it in, and out when it's let go (kept there at no alpha). The last few
@@ -1025,6 +1027,7 @@ private fun LiveMap(
         onLook = onLook,
         onZoom = { mapZoom = it },
         zoomTo = zoomTo,
+        away = focus,
         moved = !following,
         live = live,
         rider = me.markers.firstOrNull(),

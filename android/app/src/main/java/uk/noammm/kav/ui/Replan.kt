@@ -27,6 +27,12 @@ internal class Failure(
     val next: Long = 0,
 )
 
+internal fun retainedFailure(held: Pair<Int, Failure>?, step: Int, failing: Failure?): Pair<Int, Failure>? = when {
+    failing?.kind == Broken.OFF_ROUTE -> null
+    failing != null -> step to failing
+    else -> held?.takeIf { it.first == step && it.second.kind != Broken.OFF_ROUTE }
+}
+
 // A bus counts as past the rider's stop this far along its road beyond it, by a report at most BUS_FRESH_S old, on the
 // road (ON_ROAD_M), with the rider at least BEHIND_M behind it.
 private const val PAST_STOP_M = 200.0

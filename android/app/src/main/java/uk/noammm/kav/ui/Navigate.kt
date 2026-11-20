@@ -308,13 +308,12 @@ fun NavigateScreen(
         }
     }
     val scope = rememberCoroutineScope()
-    // A plan that stopped working (planFailure): its card stays for the step it came on, until the trip moves on or the
-    // rider keeps the route, so a prediction crossing the line and back doesn't make it come and go.
+    // Keep timetable failures for this step. An off-route warning clears when the rider returns.
     val failing = remember(trip, r, chosen, currentStep, fix, now / 5) {
         if (journey == null) null else planFailure(steps, currentStep, trip, r, chosen, fix, now)
     }
     var held by remember(trip) { mutableStateOf<Pair<Int, Failure>?>(null) }
-    SideEffect { if (failing != null) held = currentStep to failing else if (held?.first != currentStep) held = null }
+    SideEffect { held = retainedFailure(held, currentStep, failing) }
     var kept by remember(trip) { mutableStateOf(emptySet<String>()) }
     val failure = (failing ?: held?.takeIf { it.first == currentStep }?.second)?.takeIf { it.key !in kept }
     var replanning by remember(trip) { mutableStateOf(false) }
@@ -343,15 +342,17 @@ fun NavigateScreen(
             val compact = contentHeight < 480.dp
             val panelWidth = (maxWidth * .46f).coerceIn(240.dp, 340.dp).coerceAtMost(maxWidth * .60f)
             val cardHeight = (contentHeight * .30f).coerceIn(160.dp, 240.dp)
+            var headerHeight by remember { mutableIntStateOf(0) }
+            val mapTop = with(LocalDensity.current) { headerHeight.toDp() }.coerceAtLeast(if (compact) 96.dp else 138.dp)
             NavigateMap(trip, r, steps.getOrNull(pager.settledPage), chosen, waitingFor, here, seen, model.heading, now,
                 following = following, tapped = tappedBus, onTap = { tappedBus = it },
                 riding = steps.getOrNull(currentStep) is Step.Ride,
                 modifier = Modifier.fillMaxSize().glassBackdrop(liquid),
-                contentPadding = if (compact) PaddingValues(top = 96.dp, end = panelWidth, bottom = bottomInset + 12.dp)
-                    else PaddingValues(top = 138.dp, bottom = cardHeight + 88.dp + bottomInset),
+                contentPadding = if (compact) PaddingValues(top = mapTop, end = panelWidth, bottom = bottomInset + 12.dp)
+                    else PaddingValues(top = mapTop, bottom = cardHeight + 88.dp + bottomInset),
                 attribution = compact)
 
-            Column(Modifier.align(Alignment.TopStart)
+            Column(Modifier.align(Alignment.TopStart).onSizeChanged { headerHeight = it.height }
                 .then(if (compact) Modifier.width(maxWidth - panelWidth) else Modifier.fillMaxWidth())) {
                 Row(
                     Modifier.fillMaxWidth().padding(K.gap3).glassSurface()
@@ -1257,7 +1258,11 @@ private fun NavigateMap(
     }
 
     // Walking, the arrow is the way the phone faces; riding, the way the vehicle goes.
-    val arrow = if (follow == null) null else if (step is Step.Ride) follow.bearing else heading
+    val arrow = when (step) {
+        is Step.Walk -> heading
+        is Step.Ride -> follow?.bearing
+        else -> null
+    }
     val nowSec = System.currentTimeMillis() / 1000
     fun tintOf(v: Transit.Arrival) = if (v.vehicleStatus == 2) MapInk.icons.problem else mapFreshColour(freshnessOf(v.sampleUtc, nowSec))
     val vehicleMarks = vehicles.map { v -> v to ringedMark(vehicleModes[v.tripId] ?: Mode.BUS, tintOf(v), 12f, 10f, density) }
@@ -1281,8 +1286,10 @@ private fun NavigateMap(
     Box(Modifier.fillMaxSize()) {
         TileMap(framedPoints, modifier, focusKey = step to chosenRide?.tripId, name = "trip view",
             fitMaxZoom = if (step is Step.Walk || step is Step.Arrive) 18.4f else Geo.MAX_Z.toFloat(),
-            recenterOn = remember(shownHere, legs) { recentreOn(shownHere, legs.map { it.shape }) },
+            recenterOn = if (step is Step.Ride) null else remember(shownHere, legs) { recentreOn(shownHere, legs.map { it.shape }) },
+            showRouteControl = step is Step.Ride && follow == null,
             contentPadding = contentPadding, follow = follow,
+            riderHeading = heading, headingUpOn = shownHere.takeIf { following && !riding && step is Step.Walk },
             geometry = geometry, live = live, attribution = attribution,
             onTap = { at, proj ->
                 onTap(vehicles.map { it to (proj.point(it.lat, it.lon) - at).getDistance() }

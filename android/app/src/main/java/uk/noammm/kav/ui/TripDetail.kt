@@ -205,7 +205,10 @@ fun TripDetailScreen(
                     planFromNavigation,
                     enter = forward().targetContentEnter,
                     exit = backward().initialContentExit,
-                ) { Box(Modifier.fillMaxSize().background(K.bg)) { plan() } }
+                ) {
+                    VeilMaps()
+                    Box(Modifier.fillMaxSize().background(K.bg)) { plan() }
+                }
             }
             else -> plan()
         }

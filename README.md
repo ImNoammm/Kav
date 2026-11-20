@@ -92,14 +92,18 @@ Installing, using Kav and running your own server are all covered on
   and Kav reads your ticket off Rav-Pass's screen to show it in Kav, every
   passenger's code included, with a ride history on your phone. You can't pay
   inside Kav, and Kav tells Rav-Pass nothing about you or the ride.
-- Extensions: Android code other people make for Kav, added from a GitHub
-  repository or a bundle file. They can add cards, tabs, map styles, route rules
-  and more, each with settings of its own. Kav's own six come in off. Making one?
-  Start at [kavapp.link/docs/extensions](https://kavapp.link/docs/extensions), or
-  give your AI agent [the agent file](https://kavapp.link/docs/extensions/agent.txt).
 - Reports a driver, a bus, an inspector or a train to the Ministry of Transport
   on its own form. Kav fills it in from your ride, and you check it and send it
   yourself. Your details stay on the phone and only go into that form.
+
+## Extensions
+
+Extensions are Android code other people make for Kav, added from a GitHub
+repository or a bundle file. They can add cards, tabs, map styles, route rules
+and more, each with settings of its own. Kav's own six come in off.
+
+Making one? Start at [kavapp.link/docs/extensions](https://kavapp.link/docs/extensions),
+or give your AI agent [the agent file](https://kavapp.link/docs/extensions/agent.txt).
 
 ## Getting it
 
@@ -111,8 +115,33 @@ GitHub builds every APK there from the code in this repo, and you can check the
 one you downloaded with the [GitHub CLI](https://cli.github.com):
 
 ```sh
-gh attestation verify kav-5.0.apk --repo ImNoammm/kav
+gh attestation verify kav-5.0.1.apk --repo ImNoammm/kav
 ```
+
+### If Play Protect blocks installation
+
+Kav's optional Rav-Pass ticket reader uses Android's accessibility service.
+Google's [fraud protection](https://developers.google.com/android/play-protect/warning-dev-guidance)
+can block a sideloaded app that declares this capability, even before you enable
+the reader. This protection applies in selected markets.
+
+If a warning offers **More details > Install anyway**, that lets you request
+installation despite that warning. It does not guarantee installation will succeed.
+If **App blocked to protect your device** appears with only **Got it**, there is
+no install override in that dialog, even if an earlier prompt offered one.
+
+If you trust the APK from the official links above and choose to proceed, you can
+try temporarily turning off scanning:
+
+1. Open **Play Store > profile picture > Play Protect**, then tap the **Settings** gear at the top right.
+2. Turn off **Scan apps with Play Protect**, then reopen the APK and retry.
+3. Turn scanning back on immediately afterward, whether installation worked or not.
+
+This reduces protection for all apps while it is off. The switch may be unavailable,
+and it is not a guaranteed workaround for every device or block. See
+[Google's instructions](https://support.google.com/googleplay/answer/2812853).
+
+### Maps and timetable
 
 Setup downloads the map (about 176 MB once) and timetable (about 6 MB) from
 GitHub. Both stay on the phone for offline use. GitHub builds the timetable

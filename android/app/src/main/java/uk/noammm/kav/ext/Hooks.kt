@@ -77,16 +77,21 @@ object Hooks {
         val r = Selections.rules
         if (r.empty || SafeMode.active || !ensure()) return Snapshot.NONE
         refresh()
-        fun pin(rule: Selections.Rule?, required: Boolean = rule?.required == true): Pinned? = rule?.let {
-            val i = byNs[it.namespace.key]
+        val installed = hub?.registry?.installed.orEmpty()
+        val active = byNs
+        fun pin(rule: Selections.Rule?, required: Boolean = rule?.required == true): Pinned? = rule?.takeUnless { switchedOff(it, installed, active) }?.let {
+            val i = active[it.namespace.key]
             val ok = i != null && i.manifest.contributions.any { c -> c.id == it.contribution }
             Pinned(it.namespace, it.contribution, if (ok) i!!.sha256 else "", i?.manifest?.release ?: 0, required,
-                // Switched off, it's still named by its own name in what the search says.
-                i?.displayName ?: hub?.registry?.installed?.firstOrNull { x -> x.namespace == it.namespace }?.displayName ?: it.namespace.dataset,
+                i?.displayName ?: installed.firstOrNull { x -> x.namespace == it.namespace }?.displayName ?: it.namespace.dataset,
                 i?.manifest?.tags.orEmpty())
         }
         return Snapshot(pin(r.walk), pin(r.transfer), r.filters.mapNotNull { pin(it) }, pin(r.rank, false), r.annotate.mapNotNull { pin(it, false) })
     }
+
+    // Ignore disabled extensions, including required rules. Missing extensions still report a failure.
+    internal fun switchedOff(rule: Selections.Rule, installed: List<Registry.Installed>, active: Map<String, Registry.Installed>): Boolean =
+        rule.namespace.key !in active && installed.any { it.namespace == rule.namespace && !it.enabled }
 
     // Whether the rider chose any route rules: when not, a search costs nothing more.
     fun hasRules() = !Selections.rules.empty && !SafeMode.active

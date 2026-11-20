@@ -345,20 +345,23 @@ def naim_lines(data):
             for r in csv.DictReader(io.StringIO(text))}
 
 
+def naim_gtfs():
+    """The weekend lines' GTFS (bytes): the copy the planner's rebuild keeps in the shared folder first, as the city's
+    site answers a server abroad with a maintenance page."""
+    kept = os.path.join(REALTIME, "naim-gtfs.zip") if REALTIME else ""
+    if kept and os.path.exists(kept):
+        with open(kept, "rb") as f:
+            return f.read()
+    with urllib.request.urlopen(urllib.request.Request(NAIM_URL, headers={"User-Agent": "kav-server"}), timeout=60) as r:
+        return r.read()
+
+
 def load_lines():
     text = zipfile.ZipFile(Remote(GTFS_URL)).read("routes.txt").decode("utf-8-sig")
     found = parse_routes(text)
     busy_held["lines"] = ministry_lines(text)
-    # The copy the planner's rebuild keeps in the shared folder first: the city's site answers a server abroad with a
-    # maintenance page.
-    kept = os.path.join(REALTIME, "naim-gtfs.zip") if REALTIME else ""
     try:
-        if kept and os.path.exists(kept):
-            with open(kept, "rb") as f:
-                data = f.read()
-        else:
-            with urllib.request.urlopen(urllib.request.Request(NAIM_URL, headers={"User-Agent": "kav-server"}), timeout=60) as r:
-                data = r.read()
+        data = naim_gtfs()
         naim_held["lines"] = naim_lines(data)
         naim_held.update(naim_trips(data))
     except Exception as e:
@@ -838,7 +841,18 @@ def load_shapes():
     found = shapes_from(zipfile.ZipFile(Remote(GTFS_URL, chunk=4 << 20)))
     # The feed has no road for any train: the planner's rebuild matches them to OpenStreetMap's tracks (otp/rail_shapes.py).
     found.update({r: p for r, p in rail_shapes().items() if r not in found})
+    # Weekend routes use the city's GTFS, with route ids shifted by NAIM_OFFSET.
+    try:
+        found.update(naim_shapes(naim_gtfs()))
+    except Exception as e:
+        log("weekend lines' roads failing:", repr(e))
     return found
+
+
+def naim_shapes(data):
+    """The weekend lines' roads from their GTFS (bytes), by route id NAIM_OFFSET up."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        return {NAIM_OFFSET + route: path for route, path in shapes_from(z).items()}
 
 
 def rail_shapes():

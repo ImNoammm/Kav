@@ -49,6 +49,7 @@ object Native {
     }
 
     private val loaded = ConcurrentHashMap<String, Loaded>()
+    private val starting = ConcurrentHashMap<String, Loaded>()
 
     // Extensions whose code is built against an API this Kav no longer has (an older package of it): not loaded and not
     // counted as a crash; Kav asks their source for a newer release (ExtApp).
@@ -75,7 +76,10 @@ object Native {
     // Switched off, revoked, blocked or uninstalled: Kav stops calling its code for the rest of this run (its cards,
     // screens, hooks and map things go). What its code started on its own runs until Kav closes; it loads again, if on,
     // at the next start.
-    fun retire(identity: String) { if (loaded.remove(identity) != null) NativeMap.drop(identity) }
+    fun retire(identity: String) = synchronized(loaded) {
+        val pending = starting.remove(identity)
+        if (loaded.remove(identity) != null || pending != null) NativeMap.drop(identity)
+    }
 
     // Its hook (Hooks), on a thread of Kav's and under the crash guard: null when it
     // provides none, else its answer, or a failure ("crashed", or "late" past deadlineMs, the call left to finish).
@@ -105,7 +109,7 @@ object Native {
     internal fun forget() { loaded.clear() }
 
     // Which loaded extension a class is, for the crash guard: the one whose loader defined it.
-    internal fun ownerOf(className: String): String? = loaded.values.firstOrNull { l ->
+    internal fun ownerOf(className: String): String? = (loaded.values.asSequence() + starting.values.asSequence()).firstOrNull { l ->
         runCatching { Class.forName(className, false, l.loader).classLoader === l.loader }.getOrDefault(false)
     }?.identity
 
@@ -117,7 +121,7 @@ object Native {
         if (SafeMode.active) return
         for (i in hub.registry.installed) {
             loaded[i.identity]?.takeIf { it.sha256 != i.sha256 }?.let { retire(i.identity) }
-            if (!hub.active(i) || loaded.containsKey(i.identity)) continue
+            if (!hub.active(i) || loaded.containsKey(i.identity) || starting.containsKey(i.identity)) continue
             // Built for a newer API than this Kav has: its calls would fail, so it isn't started.
             if (i.manifest.api > Kav.API) { Log.i(TAG, "${i.identity}: needs API ${i.manifest.api}, this Kav has ${Kav.API}"); continue }
             val s = of(i.manifest) ?: continue
@@ -133,31 +137,52 @@ object Native {
     const val START_MS = 5_000L
 
     private fun load(ctx: Context, hub: Hub, i: Registry.Installed, s: Spec) {
-        val src = File(hub.registry.packageDir(i.identity) ?: return, s.dex)
-        // Android 14 and newer load only a read-only file: a copy of its own in Kav's code cache, per package digest.
-        val dir = File(ctx.codeCacheDir, "ext-native/${i.sha256}").apply { mkdirs() }
-        val dex = File(dir, "classes.dex")
-        if (!dex.isFile) {
-            val tmp = File(dir, "classes.dex.tmp")
-            src.copyTo(tmp, overwrite = true)
-            if (!tmp.renameTo(dex)) throw java.io.IOException("couldn't place its code")
-        }
-        dex.setReadOnly()
-        val loader = dalvik.system.DexClassLoader(dex.path, null, null, Native::class.java.classLoader)
+        val registry = hub.registry
+        val dex = verifiedDex(registry.packageDir(i.identity) ?: return, i.sha256, s.dex)
+        val loader = dalvik.system.InMemoryDexClassLoader(java.nio.ByteBuffer.wrap(dex), Native::class.java.classLoader)
         val l = Loaded(i.identity, i.displayName, loader, i.sha256)
-        loaded[i.identity] = l
-        // Its map calls are taken from this run on (an earlier run's, switched off or replaced, are not).
-        NativeMap.live(i.identity, l)
-        val entry = try { loader.loadClass(s.entry) } catch (e: Throwable) {
-            if ((e !is LinkageError && e !is ClassNotFoundException) || !olderApi(e)) throw e
-            loaded.remove(i.identity); NativeMap.drop(i.identity); outdated += i.identity
-            Log.i(TAG, "${i.identity}: built for an older Kav ($e)")
-            return
+        synchronized(registry) {
+            val current = registry.get(i.identity) ?: return
+            if (current.sha256 != i.sha256 || !hub.active(current)) return
+            synchronized(loaded) {
+                if (loaded.containsKey(i.identity) || starting.putIfAbsent(i.identity, l) != null) return
+                NativeMap.live(i.identity, l)
+            }
         }
-        outdated -= i.identity
-        val ext = entry.getDeclaredConstructor().newInstance() as KavExtension
-        ext.start(Api(ctx.applicationContext, hub, i, l))
-        Log.i(TAG, "${i.identity}: started, ${l.cards.size} cards, ${l.screens.size} screens")
+        try {
+            val entry = try { loader.loadClass(s.entry) } catch (e: Throwable) {
+                if ((e !is LinkageError && e !is ClassNotFoundException) || !olderApi(e)) throw e
+                outdated += i.identity
+                Log.i(TAG, "${i.identity}: built for an older Kav ($e)")
+                return
+            }
+            outdated -= i.identity
+            val ext = entry.getDeclaredConstructor().newInstance() as KavExtension
+            ext.start(Api(ctx.applicationContext, hub, i, l))
+            synchronized(loaded) {
+                // A switch or update may have retired it while start() was running.
+                if (!starting.remove(i.identity, l)) return
+                loaded[i.identity] = l
+            }
+            Log.i(TAG, "${i.identity}: started, ${l.cards.size} cards, ${l.screens.size} screens")
+        } finally {
+            synchronized(loaded) {
+                if (starting.remove(i.identity, l)) NativeMap.drop(i.identity)
+            }
+        }
+    }
+
+    // Hash the installed files in Bundle.Ext's order, retaining the same dex bytes that go to ART.
+    internal fun verifiedDex(dir: File, digest: String, dexName: String): ByteArray {
+        val files = dir.walkTopDown().filter { it.isFile }.associateBy { it.relativeTo(dir).invariantSeparatorsPath }
+        var dex: ByteArray? = null
+        val listed = files.keys.sorted().joinToString("\n") { name ->
+            val bytes = files.getValue(name).readBytes()
+            if (name == dexName) dex = bytes
+            "$name ${sha256(bytes).hex()}"
+        }
+        if (sha256(listed.toByteArray()).hex() != digest) throw TrustError("its files changed since they were checked")
+        return dex ?: throw TrustError("native: its dex isn't in the package")
     }
 
     // What an extension is given: plain types, Android's own classes.

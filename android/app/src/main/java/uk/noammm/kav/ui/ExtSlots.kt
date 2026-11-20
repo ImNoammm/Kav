@@ -67,7 +67,7 @@ internal fun StopSlots(model: KavModel, ref: String, name: String) {
     val ids = picked(Slots.Kind.STOP)
     if (ids.isEmpty()) return
     val about = remember(ref) { JSONObject().put("stop", ref).put("name", name) }
-    Column(Modifier.padding(horizontal = K.gap3)) {
+    Column(Modifier.padding(start = K.gap3, end = K.gap3, bottom = K.gap2)) {
         for (id in ids) key(id) { SlotPiece(model, id, Slots.Kind.STOP, about, top = K.gap3) }
     }
 }
