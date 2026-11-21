@@ -226,7 +226,7 @@ internal fun NativeCard(model: KavModel, identity: String, on: String, about: JS
 // or nothing when it makes none (or failed: the crash guard counts it).
 @Composable
 internal fun ResultLine(model: KavModel, identity: String, about: JSONObject) {
-    if (uk.noammm.kav.ext.SafeMode.active || ExtNative.ready < 0 || !Native.isLoaded(identity)) return
+    if (uk.noammm.kav.ext.SafeMode.active || ExtNative.ready < 0 || ExtUi.tick < 0 || !Native.isLoaded(identity)) return
     ExtNative.model = model
     val card = Native.card(identity, "results") ?: return
     val ctx = androidx.compose.ui.platform.LocalContext.current
