@@ -49,7 +49,7 @@ kav.card("results") { context, about ->
 }
 ```
 
-- A card shows once the extension is on, under "by &lt;its name>", in the order the extensions were switched on. The
+- A card shows once the extension is on, in the order the extensions were switched on. The
   rider can turn each one off, and back on, at the end of its row under "It can" on the extension's page in
   Settings › Extensions.
 - Kav calls `create` on the main thread each time the screen shows the card. Make the view quickly and load anything

@@ -101,7 +101,7 @@ private fun bySpoken(name: String) = T("By $name, a third-party extension, not m
 @Composable
 private fun kavOwn(): Palette = palette(K.look)
 
-// "by <extension>": small grey words on what an extension puts on one of Kav's own screens (a card, a line, a row),
+// "by <extension>": small grey words on what an extension puts on one of Kav's own screens (a line, a row, a route),
 // so a rider can tell whose it is. Its own pages don't carry it: their header names them.
 @Composable
 internal fun ByLabel(name: String, modifier: Modifier = Modifier) {

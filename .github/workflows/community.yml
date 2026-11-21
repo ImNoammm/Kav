@@ -1,5 +1,3 @@
-# NOT ENABLED. GitHub runs only the workflows in .github/workflows/, and this one is kept here, in site/extensions/,
-# until Noam moves it there (see README.md beside it). Nothing below has been run.
 name: Community list
 
 # Each night, the community list of extension sources (site/scripts/community.mjs, kavapp.link/community): every
@@ -23,8 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The developer kit, whose bundle reader decides what is listed. ITS REPOSITORY IS NOT PUBLIC YET: this address is
-      # where it is expected to be (KIT in site/.vitepress/theme/sources.js).
+      # The developer kit, whose bundle reader decides what is listed (KIT in site/.vitepress/theme/sources.js).
       - uses: actions/checkout@v7
         with:
           repository: ImNoammm/kav-extension-kit
@@ -53,6 +50,19 @@ jobs:
             site/.vitepress/dist
             site/extensions/community.log
 
-      # Getting the built site onto kavapp.link: today the site is copied to the server by hand, so this step needs a
-      # decision and a secret first (for example an rsync over SSH with a key that can write only to the site's folder).
-      # Until then the built site is the artifact above, to download and deploy as now.
+      # Onto kavapp.link, with a key the server lets write only into the site's folder (rrsync -wo). The server's host
+      # key is pinned; an unverified one is never accepted. A build without its home page never replaces the site.
+      - name: Deploy
+        env:
+          DEPLOY_KEY: ${{ secrets.KAV_SITE_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KAV_SITE_KNOWN_HOSTS }}
+          TARGET: ${{ secrets.KAV_SITE_TARGET }}
+        run: |
+          test -s site/.vitepress/dist/index.html
+          umask 077
+          mkdir -p .cache/ssh
+          trap 'rm -f .cache/ssh/key' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > .cache/ssh/key
+          printf '%s\n' "$KNOWN_HOSTS" > .cache/ssh/known_hosts
+          rsync -a --delete -e "ssh -i .cache/ssh/key -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/ssh/known_hosts" \
+            site/.vitepress/dist/ "$TARGET"

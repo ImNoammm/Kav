@@ -125,7 +125,7 @@ const api = readdirSync(apiDir).filter((f) => f.endsWith('.java')).sort()
 const agent = [
   '# Building a Kav extension',
   '',
-  `Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: ${SITE}/docs/extensions/agent. For Kav 5 and newer, API level 2.`,
+  `Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: ${SITE}/docs/extensions/agent. For Kav 5 and newer, API level 3.`,
   '',
   '## What a Kav extension is',
   '',

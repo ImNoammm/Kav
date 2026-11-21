@@ -61,7 +61,7 @@ GPL-3.0. See [LICENSE](/docs/license).
   "version": "1.0.0",
   "release": 1,
   "minKav": 45,
-  "api": 2,
+  "api": 3,
   "description": "A card on Kav's Home and a screen of its own, written in Kotlin.",
   "native": {
     "dex": "classes.dex",

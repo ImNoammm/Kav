@@ -1,6 +1,6 @@
 # Extensions on kavapp.link
 
-What the site does for Kav's extensions (PLAN.md sections 7 and 9). None of it is live yet.
+What the site does for Kav's extensions (PLAN.md sections 7 and 9).
 
 | Page | File |
 |---|---|
@@ -53,9 +53,7 @@ KAV_KIT=<kit checkout> node --test scripts/*.test.mjs           # the tests, aga
 
 ### The nightly workflow
 
-`community.yml` here runs the script each night and builds the site. It is **not enabled**: GitHub runs workflows only
-from `.github/workflows/`. To turn it on, once the kit's repository is public at the address in `sources.js` (`KIT`):
-
-1. move `community.yml` to `.github/workflows/`;
-2. decide how the built site reaches the server (the site is copied by hand today; the workflow uploads it as an
-   artifact until then).
+`.github/workflows/community.yml` runs the script each night with the kit from its public repository (`KIT` in
+`sources.js`), builds the site and puts it on kavapp.link. It writes with a key the server allows into the site's
+folder alone (`rrsync -wo /opt/stacks/kav-site/www`), from the secrets `KAV_SITE_DEPLOY_KEY`, `KAV_SITE_KNOWN_HOSTS`
+and `KAV_SITE_TARGET`. Run it by hand from the Actions tab to refresh the list sooner.

@@ -62,6 +62,7 @@ export default defineConfig({
     nav: [
       { text: 'Download', link: '/download' },
       { text: 'Docs', link: '/docs/', activeMatch: '^/docs/' },
+      { text: 'Extensions', link: '/community' },
       { text: 'Privacy', link: '/privacy-policy' },
     ],
     socialLinks: [{ icon: 'github', link: GITHUB, ariaLabel: 'Kav on GitHub' }],
@@ -72,7 +73,6 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/docs/' },
             { text: 'For developers', link: '/docs/data' },
-            { text: 'Extensions', link: '/docs/extensions' },
             { text: 'How Kav works', link: '/docs/how-it-works' },
             { text: 'Building from source', link: '/docs/building' },
             { text: 'License', link: '/docs/license' },
@@ -80,8 +80,8 @@ export default defineConfig({
         },
         {
           text: 'Making extensions',
-          collapsed: true,
           items: [
+            { text: 'Extensions', link: '/docs/extensions' },
             { text: 'Kotlin and Java', link: '/docs/extensions/native' },
             { text: 'The Kotlin starter', link: '/docs/extensions/starter' },
             { text: 'Hooks', link: '/docs/extensions/hooks' },

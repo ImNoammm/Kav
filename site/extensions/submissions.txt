@@ -5,3 +5,4 @@
 # checks. Most sources won't need a line, as the kav-extension topic and the site's Submit button reach the script
 # without one. To unlist a source, add it to exclusions.txt.
 github.com/ImNoammm/kav-extensions
+github.com/yair-654/yairs-kav-extensions

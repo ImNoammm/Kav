@@ -26,7 +26,7 @@ import uk.noammm.kav.ext.SafeMode
 import uk.noammm.kav.ext.Slots
 
 // An extension's cards on Kav's own screens (ext/Slots.kt), the views its code makes (ExtNative.kt). Each sits where
-// Kav puts it, in the order the rider switched them on, under "by <extension>" in Kav's own colours.
+// Kav puts it, in the order the rider switched them on.
 
 private fun picked(k: Slots.Kind): List<String> = ExtShown.slots.filter { it.endsWith("|${k.key}") }.map { it.substringBeforeLast('|') }
 

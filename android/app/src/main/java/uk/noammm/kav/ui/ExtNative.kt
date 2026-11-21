@@ -219,10 +219,7 @@ internal fun NativeCard(model: KavModel, identity: String, on: String, about: JS
             modifier = Modifier.padding(start = K.gap4, end = K.gap4, top = K.gap4, bottom = K.gap1))
         androidx.compose.runtime.CompositionLocalProvider(LocalInCard provides true) { view() }
     }
-    else Column(Modifier.fillMaxWidth().padding(top = top), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(K.gap1)) {
-        if (name.isNotEmpty()) ByLabel(name)
-        view()
-    }
+    else Column(Modifier.fillMaxWidth().padding(top = top)) { view() }
 }
 
 // A results card's line under one route of a search's results, beside its name: the view its code makes for that route,

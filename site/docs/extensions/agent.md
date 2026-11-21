@@ -9,7 +9,7 @@ editLink: false
 
 # For your agent
 
-Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: https://kavapp.link/docs/extensions/agent. For Kav 5 and newer, API level 2.
+Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: https://kavapp.link/docs/extensions/agent. For Kav 5 and newer, API level 3.
 
 ## What a Kav extension is
 
@@ -144,7 +144,7 @@ declares it too:
 ### The API
 
 Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
-one; `kav.apiVersion()` says which level the Kav in front of you has (2 is Kav 5). Plain types only: text, numbers,
+one; `kav.apiVersion()` says which level the Kav in front of you has (3 is Kav 5). Plain types only: text, numbers,
 JSON as text, and Android's own `Context`, `View` and `Bitmap`.
 
 **When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
@@ -171,7 +171,7 @@ class Hello : KavExtension {
 
 | Method | What it gives |
 |---|---|
-| `Kav.API` | the API level this jar was built for (2) |
+| `Kav.API` | the API level this jar was built for (3) |
 | `apiVersion()` | the API level of the Kav that loaded you |
 | `context()` | the application's `Context` |
 | `id()` | your identity: your source and your name, `"github.<owner>.<repo>/<name>"`, or `"file.<digest>/<name>"` for a bundle added from a file |
@@ -226,7 +226,7 @@ kav.onSettings { all -> kav.log("pace is now ${JSONObject(all).optDouble("pace")
 `card`, `screen` and `home` may be called again later to replace what was registered; the next time the screen
 shows, it asks the new one.
 
-**Cards.** Kav puts each card under "by &lt;your extension's name>", where its slot is ([screens.md](https://kavapp.link/docs/extensions/screens)).
+**Cards.** Kav puts each card where its slot is ([screens.md](https://kavapp.link/docs/extensions/screens)).
 Kav calls `create` each time the screen shows the card, on the main thread, so make the view quickly and load
 anything slow on a thread of your own.
 
@@ -261,6 +261,11 @@ ui.card(c, myContent)                                     // Kav's panel around 
 ui.row(c, "info", "Where it comes from", "Your GPS", null) // icon (Kav's name, or null), title, subtitle, onClick
 ui.switchRow(c, "Miles", "Instead of km/h", on) { now -> setMiles(now) }
 ui.textField(c, "Haifa", "Your town") { text -> town = text }
+ui.textField(c, note, "Your note", multiline = true, action = null) { text -> note = text }   // API 3: Enter is a new line
+ui.textField(c, title, "Title", multiline = false, action = "next") { text -> title = text } // API 3: the keyboard's key
+ui.iconButton(c, "edit", "Edit") { edit() }               // API 3: a round button with one of Kav's icons
+val pages = ui.pages(c, listView)                         // API 3: one view at a time, in Kav's own transition
+pages.forward(noteView)                                   // slides the next view in; pages.back(listView) the one before
 ui.chip(c, "Buses", selected = true) { toggle() }
 ui.header(c, "Units")
 ui.sheet(c, "Details", detailsView)                       // a sheet over the screen
@@ -271,7 +276,7 @@ val gap = ui.dp("gap3")                                   // dp
 val size = ui.textSize("body")                            // sp
 ```
 
-- Icons for `row`: `star`, `heart`, `bus`, `train`, `walk`, `bike`, `clock`, `map`, `pin`, `info`, `warning`,
+- Icons for `row` and `iconButton`: `back`, `star`, `heart`, `bus`, `train`, `walk`, `bike`, `clock`, `map`, `pin`, `info`, `warning`,
   `check`, `plus`, `edit`, `delete`, `search`, `list`, `home`, `calendar`, `settings`. Another name shows none.
 - Colors: `bg`, `surface`, `surfaceRaised`, `fill`, `fillStrong`, `separator`, `text`, `textSecondary`,
   `textTertiary`, `surface2`, `surface3`, `surface4`, `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`,
@@ -279,6 +284,12 @@ val size = ui.textSize("body")                            // sp
 - Sizes (`dp`): `rCard`, `rSheet`, `rTile`, `rBadge`, `gap1` to `gap8`. Text styles (`textSize`): `largeTitle`,
   `title`, `headline`, `body`, `subhead`, `caption`.
 - The `Changed<T>` callbacks (`switchRow`, `textField`) are told each new value.
+- A multi-line `textField` grows as it fills and Enter makes a new line. On a one-line one, `action` is the keyboard's
+  key: `next` (on to the next field), `done`, `search` or `go`.
+- `pages(c, first)` gives a frame (`view()`) that shows one view at a time: `forward(next)` and `back(previous)` move
+  with Kav's own transition, the way its Settings pages move. Build each view fresh when you move to it.
+- The API 3 calls (the multi-line `textField`, `iconButton`, `pages`) need a Kav whose `apiVersion()` is 3 or more:
+  set `"api": 3` in the manifest when you use them.
 - `blocks` throws when Kav can't read the tree ([screens.md](https://kavapp.link/docs/extensions/screens#blocks) says what that means). Inside a
   card's or screen's `create`, an uncaught throw counts as a crash.
 
@@ -355,8 +366,8 @@ Try it in Kav itself, on a phone or an emulator with Kav 5 or newer ([testing.md
 2. Copy the `.kavb` to the device (`adb push hello-kotlin.kavb /sdcard/Download/`).
 3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. The sheet lists your extension and what
    it can do, first "Runs its own Android code: full access". Add.
-4. Switch your extension on in Settings › Extensions. It starts at once. Your Home card shows on Home, under
-   "by &lt;your extension's name>"; your screens open from your extension's page. logcat says
+4. Switch your extension on in Settings › Extensions. It starts at once. Your Home card shows on Home, with your
+   extension's name as its title; your screens open from your extension's page. logcat says
    `KavNative: <id>: started, 1 cards, 1 screens`.
 
 A bundle file never updates, and each build is a different file, so each is a different source to Kav. Remove the
@@ -394,8 +405,9 @@ import android.content.Context;
  * Kav, with Kav's permissions.
  */
 public interface Kav {
-    /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen. */
-    int API = 2;
+    /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
+     *  3: KavUi's multi-line textField, iconButton and pages. */
+    int API = 3;
 
     int apiVersion();
 
@@ -595,6 +607,24 @@ public interface KavUi {
 
     /** A text field, with its placeholder. */
     View textField(Context context, String value, String placeholder, Changed<String> onChange);
+
+    /** A text field of one line, or of several when multiline (Enter makes a new line and the field grows as it fills).
+     *  action: the keyboard's key on a one-line field, "next" (on to the next field), "done", "search" or "go". API 3. */
+    View textField(Context context, String value, String placeholder, boolean multiline, String action, Changed<String> onChange);
+
+    /** A round button with one of Kav's icon names, and its label for screen readers. API 3. */
+    View iconButton(Context context, String icon, String label, Runnable onClick);
+
+    /** A frame showing one view at a time, moving to another with Kav's own transition: forward slides the next one in,
+     *  back the one before. API 3. */
+    Pages pages(Context context, View first);
+
+    /** The views of pages(): view() is the frame to put in a layout. */
+    interface Pages {
+        View view();
+        void forward(View next);
+        void back(View previous);
+    }
 
     /** A chip, lit when selected. */
     View chip(Context context, String label, boolean selected, Runnable onClick);
@@ -1039,7 +1069,7 @@ kav.card("results") { context, about ->
 }
 ```
 
-- A card shows once the extension is on, under "by &lt;its name>", in the order the extensions were switched on. The
+- A card shows once the extension is on, in the order the extensions were switched on. The
   rider can turn each one off, and back on, at the end of its row under "It can" on the extension's page in
   Settings › Extensions.
 - Kav calls `create` on the main thread each time the screen shows the card. Make the view quickly and load anything
@@ -1657,7 +1687,7 @@ on this phone" (שומר מידע בטלפון הזה).
 Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by
 Kav." ("נוצר על ידי Kav.") for Kav's own source. Your reason follows a line after "From the publisher:" ("מהמפרסם:").
 
-A card or page of yours on Kav's screens shows under "by &lt;its name>" ("מאת &lt;its name>").
+A route your planner gave, a line of yours under a search's route and a stop of yours in Kav's lists show "by &lt;its name>" ("מאת &lt;its name>"). A Home card of yours has your extension's name as its title. A card on a trip's page or a stop board has no label.
 
 ### When something of yours hides routes or does not run
 
@@ -1781,7 +1811,7 @@ in Settings › Extensions.
   "version": "1.0.0",
   "release": 1,
   "minKav": 45,
-  "api": 2,
+  "api": 3,
   "description": "A card on Kav's Home and a screen of its own, written in Kotlin.",
   "native": { "dex": "classes.dex", "entry": "org.example.hello.Hello" },
   "contributions": [

@@ -1,6 +1,8 @@
 import type { DefaultTheme, LocaleSpecificConfig } from 'vitepress'
 
 const guide = (text: string, page: string) => ({ text, link: `/he/docs/${page}` })
+// The extension kit's pages are in English only, so these open the English page.
+const kit = (text: string, page: string) => ({ text, link: `/docs/extensions/${page}` })
 
 export const he: LocaleSpecificConfig<DefaultTheme.Config> & { label: string } = {
   label: 'עברית',
@@ -11,6 +13,7 @@ export const he: LocaleSpecificConfig<DefaultTheme.Config> & { label: string } =
     nav: [
       { text: 'להורדה', link: '/he/download' },
       { text: 'מדריכים', link: '/he/docs/', activeMatch: '^/he/docs/' },
+      { text: 'תוספים', link: '/he/community' },
       { text: 'פרטיות', link: '/he/privacy-policy' },
     ],
     sidebar: {
@@ -18,9 +21,15 @@ export const he: LocaleSpecificConfig<DefaultTheme.Config> & { label: string } =
         { text: 'מדריכים', items: [
           guide('סקירה כללית', ''),
           guide('למפתחים', 'data'),
-          guide('תוספים', 'extensions'),
           { text: 'איך Kav עובדת', link: '/he/docs/how-it-works' },
           guide('לבנות מהקוד', 'building'), guide('רישיון', 'license'),
+        ] },
+        { text: 'יצירת תוספים', items: [
+          guide('תוספים', 'extensions'),
+          kit('Kotlin ו-Java', 'native'), kit('תבנית ההתחלה ל-Kotlin', 'starter'), kit('ה-hooks', 'hooks'),
+          kit('מסכים', 'screens'), kit('הפורמט של קובץ החבילה', 'format'), kit('מה המשתמשים רואים', 'what-riders-see'),
+          kit('המילים שהמשתמשים פוגשים', 'riders-wording'), kit('בדיקות', 'testing'), kit('התבנית למקור', 'template'),
+          kit('בשביל הסוכן שלכם', 'agent'),
         ] },
         { text: 'שרת משלכם', items: [
           guide('הרצה על השרת שלי', 'self-hosting'), guide('ה-API של השרת', 'api'),
