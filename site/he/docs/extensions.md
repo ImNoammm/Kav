@@ -58,6 +58,14 @@ Android, אפילו אם ה-`start` שלו לא עושה כלום.
 ב-GitHub. תוסף אפשר לנסות רק בטלפון או באמולטור עם Kav 5 ומעלה. הערכה דורשת Node.js 22.2 ומעלה, JDK, את ה-Android SDK,
 ול-Kotlin גם את המהדר של Kotlin. היא לא פונה לרשת.
 
+מורידים אותה מ-<a href="https://github.com/ImNoammm/kav-extension-kit">github.com/ImNoammm/kav-extension-kit</a>:
+
+```sh
+git clone https://github.com/ImNoammm/kav-extension-kit
+cd kav-extension-kit
+npm link        # puts kavx on your PATH
+```
+
 - <a href="/docs/extensions/native">Kotlin ו-Java</a>: בנייה, כל פונקציה בממשק, מנגנון ההגנה מקריסות, יומנים ואיך
   מנסים בטלפון
 - <a href="/docs/extensions/starter">תבנית ההתחלה ל-Kotlin</a>

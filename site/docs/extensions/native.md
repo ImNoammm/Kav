@@ -22,6 +22,8 @@ Taken from Kav 5's code: `android/app/src/main/java/kav/kavapp/api/` (the API) a
 
 ## What you need
 
+- **The kit**: `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on
+  your `PATH`.
 - **Node.js** 22.2 or newer, for `kavx`.
 - **A JDK**, 17 or newer. Set `JAVA_HOME`, or have `java` and `javac` on your `PATH`.
 - **The Android SDK**, with one platform (`platforms;android-36`) and the build tools (`build-tools;36.0.0` or

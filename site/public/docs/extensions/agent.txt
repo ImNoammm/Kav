@@ -21,7 +21,7 @@ Everything an AI coding agent needs to build an extension for Kav, the Android t
 
 - Kav's API jar: https://kavapp.link/docs/extensions/kav-api.jar (a few KB). Or compile the four Java files under "The API" below yourself.
 - A JDK, the Android SDK (its `android.jar` and `d8`) and, for Kotlin, the Kotlin compiler.
-- The developer kit's `kavx` command line does every step (check, bundle, verify). Without it, follow "Kotlin and Java" and "The bundle format" below by hand.
+- The developer kit's `kavx` command line does every step (check, bundle, verify): `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on your PATH. Without it, follow "Kotlin and Java" and "The bundle format" below by hand.
 - A phone or an emulator with Kav 5 or newer to try it.
 
 ## Kotlin and Java extensions
@@ -41,6 +41,8 @@ Taken from Kav 5's code: `android/app/src/main/java/kav/kavapp/api/` (the API) a
 
 ### What you need
 
+- **The kit**: `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on
+  your `PATH`.
 - **Node.js** 22.2 or newer, for `kavx`.
 - **A JDK**, 17 or newer. Set `JAVA_HOME`, or have `java` and `javac` on your `PATH`.
 - **The Android SDK**, with one platform (`platforms;android-36`) and the build tools (`build-tools;36.0.0` or

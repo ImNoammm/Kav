@@ -146,7 +146,7 @@ const agent = [
   '',
   `- Kav's API jar: ${SITE}${JAR} (a few KB). Or compile the four Java files under "The API" below yourself.`,
   '- A JDK, the Android SDK (its `android.jar` and `d8`) and, for Kotlin, the Kotlin compiler.',
-  '- The developer kit\'s `kavx` command line does every step (check, bundle, verify). Without it, follow "Kotlin and Java" and "The bundle format" below by hand.',
+  '- The developer kit\'s `kavx` command line does every step (check, bundle, verify): `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on your PATH. Without it, follow "Kotlin and Java" and "The bundle format" below by hand.',
   '- A phone or an emulator with Kav 5 or newer to try it.',
   '',
   ...DOCS.filter(([f]) => f === 'native.md').map(([f]) => nested(readFileSync(join(kit, 'docs', f), 'utf8'))),

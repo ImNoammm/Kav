@@ -61,6 +61,14 @@ for your source with a workflow that builds the bundle and attaches it to a GitH
 on a phone or an emulator with Kav 5 or newer. The kit needs Node.js 22.2 or newer, a JDK, the Android SDK and, for
 Kotlin, the Kotlin compiler. It makes no network calls.
 
+Get it from <a href="https://github.com/ImNoammm/kav-extension-kit">github.com/ImNoammm/kav-extension-kit</a>:
+
+```sh
+git clone https://github.com/ImNoammm/kav-extension-kit
+cd kav-extension-kit
+npm link        # puts kavx on your PATH
+```
+
 - <a href="/docs/extensions/native">Kotlin and Java</a>: building, every API method, the crash guard, logs, trying it
   on a phone
 - <a href="/docs/extensions/starter">The Kotlin starter</a>
