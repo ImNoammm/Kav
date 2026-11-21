@@ -40,7 +40,7 @@ const submit = computed(() => {
         <img v-if="s.image" class="kav-source__tile" :src="withBase('/community/' + s.image)" alt="" width="56" height="56" loading="lazy">
         <div v-else class="kav-source__tile" aria-hidden="true">{{ Array.from(s.name)[0]?.toUpperCase() }}</div>
         <div class="kav-source__body">
-          <p class="kav-source__name"><span dir="auto" class="kav-name">{{ s.name }}</span></p>
+          <p class="kav-source__name"><span dir="auto" class="kav-name">{{ s.name }}</span><span class="kav-source__count">{{ count(s.extensions) }}</span></p>
           <p class="kav-source__meta">
             <span class="kav-add__chip" :class="s.key === KAV ? 'kav-add__chip--kav' : 'kav-add__chip--third'">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -49,7 +49,6 @@ const submit = computed(() => {
               </svg>
               {{ s.key === KAV ? t('Made by Kav', 'נוצר על ידי Kav') : t('Third-party', 'צד שלישי') }}
             </span>
-            {{ count(s.extensions) }}
           </p>
           <div class="kav-source__actions">
             <a class="kav-button kav-button--primary" :href="withBase((he ? '/he' : '') + '/add-source') + '?' + s.add">{{ t('Add to Kav', 'הוספה ל-Kav') }}</a>

@@ -924,7 +924,7 @@ pre {
 
 .vp-doc .kav-sources > li {
   margin: 0;
-  padding: 20px 0;
+  padding: 24px 0;
   border-top: 1px solid var(--vp-c-divider);
 }
 
@@ -938,14 +938,35 @@ pre {
 }
 
 .vp-doc .kav-source__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
   font-size: 19px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.vp-doc .kav-source__meta {
+.kav-source__count {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .kav-source__body .kav-source__meta {
+  margin-top: 8px;
   font-size: 15px;
   color: var(--vp-c-text-2);
+}
+
+/* On the page's own background the chip is just its icon and words, lined up with the name. */
+.vp-doc .kav-source__meta .kav-add__chip {
+  padding: 0;
+}
+
+/* A source's own picture fills its circle; the tinted circle is only for the letter. */
+img.kav-source__tile {
+  background: none;
 }
 
 .kav-source__actions {
@@ -953,7 +974,7 @@ pre {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .kav-source__actions .kav-button {
