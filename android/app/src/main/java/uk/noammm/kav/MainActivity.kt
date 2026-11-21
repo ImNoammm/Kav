@@ -1047,7 +1047,8 @@ private fun Shell(model: KavModel) {
     }
 
     // Kav's protected surfaces keep Kav's own look under a theme (ExtLook): Settings, the report form, navigation.
-    ExtLook.Protected(model.settingsOpen || model.report != null || model.navigating)
+    // An extension page opened from Settings sits over it in the extension's own look.
+    ExtLook.Protected((model.settingsOpen && ExtPageNav.overlay.isEmpty()) || model.report != null || model.navigating)
     var exitAsk by remember { mutableStateOf(false) }
     BackHandler(enabled = !model.navigating) {
         when {

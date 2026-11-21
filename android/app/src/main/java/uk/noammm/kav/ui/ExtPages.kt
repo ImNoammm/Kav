@@ -90,7 +90,8 @@ object ExtPageNav {
 
     fun open(e: ExtEntry) { overlay = if (overlay.size >= DEEP) overlay.dropLast(1) + e else overlay + e }
     fun back() { overlay = overlay.dropLast(1) }
-    fun close() { overlay = emptyList() }
+    // Leaving the pages for one of Kav's own screens: Settings, when a page was opened from it, closes with them.
+    fun close(model: KavModel) { overlay = emptyList(); model.settingsOpen = false }
 }
 
 private fun by(name: String) = T("by ", "מאת ") + "\u2068$name\u2069"
@@ -177,13 +178,13 @@ class ExtTripLinks(val onTrip: (RecentTrip) -> Unit, val onResume: () -> Unit)
 
 private fun linksFor(model: KavModel) = ExtTripLinks(
     onTrip = { t ->
-        ExtPageNav.close()
+        ExtPageNav.close(model)
         model.pendingFrom = t.from
         model.pendingTo = t.to
         model.tab = Tab.Directions
     },
     // The trip's resume card is on Home.
-    onResume = { ExtPageNav.close(); model.tab = Tab.Directions },
+    onResume = { ExtPageNav.close(model); model.tab = Tab.Directions },
 )
 
 // An extension's words on a Hebrew screen, each in its own direction (a first-strong isolate, as T.ltr does for names),
@@ -452,7 +453,6 @@ internal fun ExtPageOverlay(model: KavModel) {
     val tick = ExtUi.tick
     LaunchedEffect(tick) { if (tick > 0 && ExtShown.anyChosen) withContext(Dispatchers.IO) { runCatching { ExtShown.refresh(app) } } }
     val stack = ExtPageNav.overlay
-    LaunchedEffect(stack.isNotEmpty()) { if (stack.isNotEmpty()) model.settingsOpen = false }
     var last by remember { mutableStateOf<ExtEntry?>(null) }
     stack.lastOrNull()?.let { last = it }
     androidx.compose.animation.AnimatedVisibility(stack.isNotEmpty(), enter = modalIn(), exit = modalOut()) {

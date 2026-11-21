@@ -451,9 +451,18 @@ private fun troubleOf(hub: Hub, i: Registry.Installed): String? = listOfNotNull(
     if (i.problem == NativeGuard.CRASHED) T("Made Kav close", "גרם ל-Kav להיסגר") else if (i.problem.isNotEmpty()) engineWords(i.problem).replaceFirstChar { it.uppercase() } else null,
 ).takeIf { it.isNotEmpty() }?.joinToString(" · ", transform = ::iso)
 
-// Settings of its own for the rider: ones its manifest declares, or a settings view its code made.
-private fun hasSettings(i: Registry.Installed) = runCatching { PageSpecs.of(i.manifest).settings.isNotEmpty() }.getOrDefault(false) ||
-    (ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.settingsScreen(i.identity) != null)
+// Anything on its page's Settings card (ExtensionPage): what it adds (addsRows), its screens (extScreenRows), or settings
+// of its own, ones its manifest declares or a settings view its code made.
+private fun hasSettings(i: Registry.Installed): Boolean {
+    val adds = i.manifest.contributions.any { c ->
+        Slots.Kind.entries.any { it.capability == c.capability } || c.capability == Capabilities.PLAN || c.capability in Pipeline.HOOKS
+    }
+    val decl = runCatching { PageSpecs.of(i.manifest) }.getOrNull()
+    val screens = decl != null && (decl.tabs.isNotEmpty() || decl.home || decl.pages.any { it.id != PageSpecs.HOME_PAGE && it.entry && !it.tab }) ||
+        uk.noammm.kav.ext.Screens.themeOf(i) != null
+    return adds || screens || decl?.settings?.isNotEmpty() == true ||
+        (ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.settingsScreen(i.identity) != null)
+}
 
 // A row of the cards: an extension's mark, name and what it adds, a settings button while it's on and has settings (it
 // opens the extension's page, as the row does), and its switch (a spinner while it's being put on).

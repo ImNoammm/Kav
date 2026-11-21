@@ -75,7 +75,7 @@ internal fun StopBlock(model: KavModel, code: Int) {
                 s?.let { net.stopName(it) } ?: T("Stop ", "תחנה ") + T.ltr(code.toString()),
                 subtitle = s?.let { net.cityName(it) }?.ifEmpty { null },
                 leading = { Icon(Icons.Rounded.Place, null, tint = K.textSecondary, modifier = Modifier.size(22.dp)) },
-                onClick = s?.let { i -> { ExtPageNav.close(); model.openStation(i) } },
+                onClick = s?.let { i -> { ExtPageNav.close(model); model.openStation(i) } },
             )
     }
     if (LocalInCard.current) row() else ListGroup { row { row() } }
@@ -89,7 +89,7 @@ internal fun DeparturesBlock(model: KavModel, code: Int, limit: Int) {
         if (net != null) rows = withContext(Dispatchers.Default) { runCatching { scheduledDepartures(net, code, limit, System.currentTimeMillis() / 1000) }.getOrDefault(emptyList()) }
     }
     val s = net?.let { stopIndex(it, code) }
-    val open = s?.let { i -> { ExtPageNav.close(); model.openStation(i) } }
+    val open = s?.let { i -> { ExtPageNav.close(model); model.openStation(i) } }
     val body: @Composable ColumnScope.() -> Unit = {
         Text(s?.let { net.stopName(it) } ?: T.ltr(code.toString()), style = K.type.headline)
         // Scheduled, never live: Kav's green is for times measured live, and none of these is.
@@ -121,7 +121,7 @@ internal fun LineBlock(model: KavModel, number: String) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.surface)
             .clickable(role = Role.Button) {
-                ExtPageNav.close()
+                ExtPageNav.close(model)
                 model.rememberReturn(Tab.Lines)
                 model.scheduleLine = null; model.lineRoute = -1; model.lineFocusStop = -1
                 model.lineQuery = number; model.tab = Tab.Lines
@@ -159,7 +159,7 @@ internal fun ImageBlock(b: Blocks.Image) {
 // Kav's planner with the destination the page gave, planned now: the rider tapped for it. The place's name is the
 // page's, checked like any of its text.
 internal fun planTo(model: KavModel, p: Blocks.Action.Plan) {
-    ExtPageNav.close()
+    ExtPageNav.close(model)
     model.pendingFrom = null
     model.pendingTo = Transit.Place(p.name, "", p.lat, p.lon)
     model.tab = Tab.Directions

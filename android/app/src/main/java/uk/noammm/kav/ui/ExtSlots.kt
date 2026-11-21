@@ -33,7 +33,8 @@ private fun picked(k: Slots.Kind): List<String> = ExtShown.slots.filter { it.end
 // One extension's card in one slot, once its code has started; nothing in safe mode.
 @Composable
 private fun SlotPiece(model: KavModel, identity: String, k: Slots.Kind, about: JSONObject, top: Dp = 0.dp) {
-    if (!SafeMode.active && uk.noammm.kav.ext.Native.isLoaded(identity)) NativeCard(model, identity, k.key, about, top)
+    // ExtNative.ready rises when an extension switched on while Kav runs has started, so its card then appears.
+    if (!SafeMode.active && ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.isLoaded(identity)) NativeCard(model, identity, k.key, about, top)
 }
 
 // Home: a card from each extension the rider switched it on for (three at most), under Kav's own suggestions.
