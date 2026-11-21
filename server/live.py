@@ -17,8 +17,8 @@ Only Kav is answered: it signs each request with the key it's built with (KAV_AP
 Settings come from the environment: MOT_KEY, MOT_URL, MOT_URL_BACKUP (the ministry's test
 server, used when the main one fails), MOT_CA (the intermediate certificate the ministry leaves
 out of its chain), KAV_APP_KEY, GTFS_URL, OTP_URL (the planner), PLANNER (off for none), PLAN_URL (a planner of your
-own, asked instead: see plan_elsewhere()), BY_TAXI (on for a taxi to the station among the routes), PORT, and
-alerts.py's ALERTS_SOURCE and the rest.
+own, asked instead: see plan_elsewhere()), BY_TAXI (on for a taxi to the station among the routes), PORT, DEVELOPERS
+(a folder for developers.py's copy of the buses on the road), and alerts.py's ALERTS_SOURCE and the rest.
 """
 import array
 from contextlib import ExitStack, closing, contextmanager
@@ -93,6 +93,8 @@ PREDICT_URL = os.environ.get("PREDICT_URL", "")
 PREDICT_EVERY = 15
 ETA = os.environ.get("ETA", "")  # Kav's own predicted arrivals (eta/eta.py), which beat the ministry's own
 SHARED_TRIPS = os.environ.get("SHARED_TRIPS", os.path.join(HISTORY or ".", "shared-trips.sqlite3"))
+# The folder developers.py, a process of its own, reads the buses on the road from (hand_over()); none written without it.
+DEVELOPERS = os.environ.get("DEVELOPERS", "")
 KEEP_DAYS = 70
 
 SNAPSHOT_EVERY = 15  # the ministry's minimum between snapshot requests
@@ -881,6 +883,7 @@ def keep_lines():
             for route, line in found.items():
                 numbers.setdefault(line[0], []).append(route)
             catalog["lines"], catalog["numbers"] = found, numbers
+            hand_over_lines(found)
             log("lines loaded:", len(found))
             time.sleep(12 * 3600)
         except Exception as e:
@@ -3703,6 +3706,7 @@ def poll():
         try:
             snapshot = take_snapshot()
             state["snapshot"] = snapshot
+            hand_over(snapshot)
             if state["failing"]:
                 log("snapshot back from", snapshot.source)
                 state["failing"] = None
@@ -3723,6 +3727,57 @@ def poll():
                 due = max(start + SNAPSHOT_EVERY, time.time())
                 state["next"] = due
         forget_follows()
+
+
+handed = {"failed": None}
+# Buses encoded at a time for developers.py, the other threads let in between: each slice holds them up about 2.6 ms,
+# where the whole snapshot at once held them up about 14 ms.
+HAND_OVER_SLICE = 250
+
+
+def hand_over(snapshot, folder=None):
+    """The snapshot's buses for developers.py, as the ministry reported them (visits()), the weekend lines' left out: the
+    one thing a snapshot costs here for developers, a file written a slice at a time and renamed in place. Everything
+    else they're answered with is worked out in developers.py's own process. Nothing from here reaches poll()."""
+    folder = DEVELOPERS if folder is None else folder
+    if not folder:
+        return
+    try:
+        path = os.path.join(folder, "vehicles.json")
+        rows = [r for r in snapshot.rows if r[0] < RAIL_OFFSET]
+        with open(path + ".part", "wb") as f:
+            f.write(('{"at":%d,"source":%s,"v":[' % (snapshot.at, json.dumps(snapshot.source))).encode())
+            for i in range(0, len(rows), HAND_OVER_SLICE):
+                part = json.dumps(rows[i:i + HAND_OVER_SLICE], separators=(",", ":"), ensure_ascii=False)[1:-1]
+                f.write((("," if i else "") + part).encode())
+                time.sleep(0)
+            f.write(b"]}")
+        os.replace(path + ".part", path)
+        handed["failed"] = None
+    except Exception as e:
+        if handed["failed"] != repr(e):
+            log("developers' copy failing:", repr(e))
+            handed["failed"] = repr(e)
+
+
+def hand_over_lines(lines, folder=None):
+    """The ministry's routes as the catalog has them (parse_routes()), for developers.py, each time they're loaded; a
+    failure here never makes keep_lines() load them again."""
+    folder = DEVELOPERS if folder is None else folder
+    if not folder:
+        return
+    try:
+        hand_over_file(folder, "lines.json", {"at": int(time.time()),
+                                              "lines": {str(r): line for r, line in lines.items() if r < RAIL_OFFSET}})
+    except Exception as e:
+        log("developers' lines failing:", repr(e))
+
+
+def hand_over_file(folder, name, doc):
+    path = os.path.join(folder, name)
+    with open(path + ".part", "wb") as f:
+        f.write(json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode())
+    os.replace(path + ".part", path)
 
 
 follows = {}

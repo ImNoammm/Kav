@@ -25,6 +25,8 @@ services:
       # Riders' shared trips and the alerts' English, in a folder of kav-live's alone (kav-eta is given ./history).
       - TRANSLATIONS=/private/translations.sqlite3
       - SHARED_TRIPS=/private/shared-trips.sqlite3
+      # Its copy of the buses on the road for kav-developers.
+      - DEVELOPERS=/developers
     volumes:
       - ./live.py:/app/live.py:ro
       - ./alerts.py:/app/alerts.py:ro
@@ -36,6 +38,7 @@ services:
       - ./otp/realtime:/realtime
       # Kav's own predicted arrivals (kav-eta), which the planner and the app get instead of the ministry's.
       - ./eta/out:/eta:ro
+      - ./developers:/developers
     user: "1000:1000"
     read_only: true
     mem_limit: 2g
@@ -49,6 +52,46 @@ services:
       timeout: 10s
       retries: 3
     networks: [proxy-net, kav-net]
+
+  # Live data for the developers given a key (developers.py), in a process of its own, so that they never slow a rider:
+  # it reads kav-live's copy of the buses on the road and Kav's predicted arrivals, and asks no one.
+  kav-developers:
+    image: python:3.12-slim
+    container_name: kav-developers
+    restart: unless-stopped
+    command: python3 -u /app/developers.py
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - DATA=/data
+      - ETA=/eta/now.json
+      - KEYS=/keys
+      - PORT=8080
+      # Two memory arenas, not one per busy thread: under a flood straight at it, 97 MB at the most instead of 158.
+      - MALLOC_ARENA_MAX=2
+    volumes:
+      - ./developers.py:/app/developers.py:ro
+      - ./developers:/data:ro
+      - ./eta/out:/eta:ro
+      # The keys, hashed, and each key's count of the day's requests: this container's alone.
+      - ./developer-keys:/keys
+    user: "1000:1000"
+    read_only: true
+    mem_limit: 384m
+    cpus: 0.5
+    # Last of all the containers when the machine is short of processor time (the default is 1024).
+    cpu_shares: 64
+    pids_limit: 128
+    logging:
+      options:
+        max-size: 1m
+        max-file: "2"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 5).close()"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    # Its own network, shared only with the proxy: nothing it runs can reach the internet or another container.
+    networks: [kav-dev-net]
 
   # The trip planner: OpenTripPlanner on the ministry's timetable and OpenStreetMap, rebuilt every night by
   # otp/rebuild.sh. Only kav-live reaches it.
@@ -173,3 +216,7 @@ networks:
     external: true
   kav-net:
     internal: true
+  # kav-developers and the proxy alone, internal like kav-net. Made by hand once, so that no stack's "down" removes it
+  # from under the other: docker network create --internal kav-dev-net
+  kav-dev-net:
+    external: true
