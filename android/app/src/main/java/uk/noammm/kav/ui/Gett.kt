@@ -51,7 +51,13 @@ internal fun gettLink(leg: Transit.Leg, pickupName: String? = null, dropoffName:
 
 // The ride in Gett when it's installed (the manifest's <queries> lets Android 11 and later see it), else Gett's page on
 // the Play Store. Nothing leaves the phone before this tap.
+// An extension holding "taxi" goes first (ext/Actions.kt), told Gett's link with the ride's ends in it.
 private fun openGett(context: Context, link: String) {
+    if (uk.noammm.kav.ext.Actions.take(context, "taxi") { org.json.JSONObject().put("link", link) }) return
+    openGettOwn(context, link)
+}
+
+internal fun openGettOwn(context: Context, link: String) {
     val order = Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(GETT)
     val store = Intent(Intent.ACTION_VIEW, Uri.parse(GETT_STORE))
     try {

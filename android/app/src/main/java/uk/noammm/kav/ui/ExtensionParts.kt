@@ -54,6 +54,8 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -446,6 +448,55 @@ private fun lineIcon(l: ExtUses.Line): ImageVector = when (l.what) {
     ExtUses.What.SLOT_TRIP -> Icons.Rounded.Timeline
     ExtUses.What.SLOT_STOP -> Icons.Rounded.Place
     ExtUses.What.ADDS -> addIcon(l.detail.first())
+    ExtUses.What.ACTIONS -> Icons.Rounded.TouchApp
+    ExtUses.What.PARTS -> Icons.Rounded.Dashboard
+    ExtUses.What.HOOKS -> Icons.Rounded.Build
+}
+
+// An action an extension takes over (ext/Actions.kt), as a few words.
+private fun actionWords(name: String) = when (name) {
+    "pay" -> T("paying", "תשלום")
+    "ticket.open" -> T("opening tickets", "פתיחת כרטיסים")
+    "stop.open" -> T("opening stops", "פתיחת תחנות")
+    "line.open" -> T("opening lines", "פתיחת קווים")
+    "trip.open" -> T("opening trips", "פתיחת נסיעות")
+    "trip.start" -> T("starting trips", "התחלת נסיעות")
+    "trip.end" -> T("ending trips", "סיום נסיעות")
+    "share" -> T("sharing trips", "שיתוף נסיעות")
+    "plan" -> T("trip searches", "חיפושי מסלולים")
+    "report" -> T("reports", "דיווחים")
+    "alert.open" -> T("service alerts", "הודעות שירות")
+    "taxi" -> T("taxis", "מוניות")
+    "street.open" -> "Street View"
+    "place.save" -> T("saving places", "שמירת מקומות")
+    "stop.save" -> T("saving stops", "שמירת תחנות")
+    "line.save" -> T("saving lines", "שמירת קווים")
+    "settings.open" -> T("opening Settings", "פתיחת ההגדרות")
+    "tab.open" -> T("switching tabs", "מעבר בין לשוניות")
+    else -> T.ltr(name)
+}
+
+// A part of Kav's screens (ext/Parts.kt), as a few words.
+private fun partWords(name: String) = when (name) {
+    "home.places" -> T("Home's places", "המקומות במסך הבית")
+    "home.journey" -> T("Home's trip under way", "הנסיעה הפעילה במסך הבית")
+    "home.suggestions" -> T("Home's suggestions", "ההצעות במסך הבית")
+    "home.latest" -> T("Home's latest route", "המסלול האחרון במסך הבית")
+    "home.pay" -> T("Home's pay card", "כרטיס התשלום במסך הבית")
+    "home.recent" -> T("Home's recent trips", "הנסיעות האחרונות במסך הבית")
+    "trip.header" -> T("a trip's header", "הכותרת של נסיעה")
+    "trip.map" -> T("a trip's map", "המפה של נסיעה")
+    "trip.summary" -> T("a trip's summary", "הסיכום של נסיעה")
+    "trip.timeline" -> T("a trip's steps", "השלבים של נסיעה")
+    "trip.ride" -> T("a trip's rides", "קטעי הנסיעה בתחבורה")
+    "trip.walk" -> T("a trip's walks", "קטעי ההליכה")
+    "results.route" -> T("trip results", "תוצאות החיפוש")
+    "stop.header" -> T("a stop's header", "הכותרת של תחנה")
+    "stop.board" -> T("stop boards", "לוחות תחנה")
+    "line.header" -> T("a line's header", "הכותרת של קו")
+    "settings.root" -> T("Settings", "ההגדרות")
+    "tabbar" -> T("the tab bar", "סרגל הלשוניות")
+    else -> T.ltr(name)
 }
 
 private fun addIcon(a: String): ImageVector = when (a) {
@@ -487,6 +538,9 @@ internal fun lineWords(l: ExtUses.Line): String {
             "location" -> T("Uses your location", "משתמש במיקום שלכם")
             else -> T("Has settings", "כולל הגדרות")
         }
+        ExtUses.What.ACTIONS -> T("Takes over: ", "לוקח על עצמו: ") + l.detail.joinToString(list, transform = ::actionWords)
+        ExtUses.What.PARTS -> T("Changes parts of Kav's screens: ", "משנה חלקים במסכים של Kav: ") + l.detail.joinToString(list, transform = ::partWords)
+        ExtUses.What.HOOKS -> T("Changes how Kav itself works", "משנה את האופן שבו Kav עצמה פועלת")
     }
 }
 
@@ -520,6 +574,8 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
             "slot.results" -> T("Results line", "שורה בתוצאות")
             "slot.trip" -> T("Trip page", "עמוד נסיעה")
             "slot.stop" -> T("Stop boards", "לוחות תחנה")
+            "action.pay" -> T("Paying", "תשלום")
+            uk.noammm.kav.ext.MethodHooks.CAPABILITY -> T("Changes Kav", "משנה את Kav")
             Capabilities.BOARD -> T("Timetables", "לוחות זמנים")
             else -> kindWords(it)
         }
@@ -548,6 +604,8 @@ internal fun lineLabel(l: ExtUses.Line): String {
         ExtUses.What.SLOT_TRIP -> T("Part on a trip's page", "חלק בעמוד של נסיעה")
         ExtUses.What.SLOT_STOP -> T("Row on stop boards", "שורה בלוחות תחנה")
         ExtUses.What.ADDS -> addWord(l.detail.first())
+        ExtUses.What.ACTIONS -> T("Takes over actions", "לוקח על עצמו פעולות")
+        ExtUses.What.PARTS -> T("Changes screen parts", "משנה חלקי מסכים")
         else -> lineWords(l)
     }
 }

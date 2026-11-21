@@ -152,7 +152,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         T("Paying", "תשלום"),
         when {
             PayMode.lost.isNotEmpty() -> T("Action required", "נדרשת פעולה")
-            Shown.payments -> T("With Rav-Pass", "עם רב-פס")
+            Shown.payments -> uk.noammm.kav.ext.Actions.firstName("pay")?.let { T("With \u2068$it\u2069", "עם \u2068$it\u2069") } ?: T("With Rav-Pass", "עם רב-פס")
             else -> T("Not set up", "לא מוגדר")
         },
         if (PayMode.lost.isNotEmpty()) K.problem else null,
@@ -330,8 +330,10 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                         Spacer(Modifier.height(K.gap5))
                     }
                 }
-                Column(Modifier.padding(horizontal = K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap6)) {
-                    for (group in SETTINGS_GROUPS) PartGroup(group.mapNotNull { id -> parts.firstOrNull { it.id == id } }) { page = it }
+                KavPart("settings.root", Unit, { org.json.JSONObject() }) {
+                    Column(Modifier.padding(horizontal = K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap6)) {
+                        for (group in SETTINGS_GROUPS) PartGroup(group.mapNotNull { id -> parts.firstOrNull { it.id == id } }) { page = it }
+                    }
                 }
             } else {
                 // Inside Extensions, the step the rider is on (a source, Sources), and on Sources its plus.

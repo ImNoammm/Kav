@@ -108,6 +108,13 @@ internal fun sharedPlace(name: String?, lat: Double, lon: Double) = Place(
     "", lat, lon,
 )
 
+// A search as the action "plan" is told: its ends, when it leaves or arrives (0 for now) and which way.
+private fun planArgs(from: Place?, to: Place?, fromLL: Pair<Double, Double>?, toLL: Pair<Double, Double>?, at: Long, type: Int): org.json.JSONObject {
+    fun end(p: Place?, ll: Pair<Double, Double>?) = org.json.JSONObject().put("name", p?.name ?: hereName()).put("lat", ll?.first).put("lon", ll?.second)
+    return org.json.JSONObject().put("from", end(from, fromLL)).put("to", end(to, toLL)).put("at", at / 1000)
+        .put("way", when (type) { Transit.TIME_ARRIVAL -> "arrive"; Transit.TIME_LAST -> "last"; else -> "depart" })
+}
+
 @Composable
 fun DirectionsOnline(model: KavModel) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -142,6 +149,20 @@ fun DirectionsOnline(model: KavModel) {
     var resolved by remember { mutableStateOf(Transit.Resolved()) }
 
     var open by remember { mutableStateOf<OpenTrip?>(null) }
+    // A trip page opened by a tap: an extension holding "trip.open" goes first (ext/Actions.kt).
+    var asking by remember { mutableStateOf<OpenTrip?>(null) }
+    fun openTrip(o: OpenTrip) {
+        asking = o
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "trip.open") { org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(o.trip, o.resolved)) }) open = o
+    }
+    // Kav's own search for Kav.kavAction("plan"): this search planned again, no extension asked.
+    var planOwn by remember { mutableStateOf(false) }
+    // Kav's own, for Kav.kavAction: the trip last tapped opens; the search on screen is planned.
+    DisposableEffect(Unit) {
+        uk.noammm.kav.ext.Actions.own("trip.open") { _, _ -> asking?.let { open = it } }
+        uk.noammm.kav.ext.Actions.own("plan") { _, _ -> planOwn = true; planAgain++; showResults = true }
+        onDispose { }
+    }
     var sort by remember { mutableStateOf(Sort.RECOMMENDED) }
     var departAt by remember { mutableLongStateOf(0L) }
     var timeType by remember { mutableIntStateOf(Transit.TIME_DEPARTURE) }
@@ -295,6 +316,11 @@ fun DirectionsOnline(model: KavModel) {
         if (fromLL == null || toLL == null) { planning = false; return@LaunchedEffect }
         if (metres(fromLL.first, fromLL.second, toLL.first, toLL.second) < TOO_CLOSE_M) {
             error = TOO_CLOSE; planning = false; linkTrip = null; return@LaunchedEffect
+        }
+        // An extension holding "plan" goes first: one that takes the search closes the results, and Kav plans nothing.
+        val own = planOwn.also { planOwn = false }
+        if (!own && uk.noammm.kav.ext.Actions.take(ctx, "plan") { planArgs(fromPlace, toPlace, fromLL, toLL, departAt, timeType) }) {
+            planning = false; showResults = false; return@LaunchedEffect
         }
         planning = true
         if (departAt != 0L) delay(250)
@@ -583,14 +609,14 @@ fun DirectionsOnline(model: KavModel) {
             },
             onResume = {
                 model.activeJourney?.let { journey ->
-                    open = OpenTrip(journey.trip, journey.resolved, journey.fromLabel, journey.toLabel, resume = true, stopovers = journey.stopovers)
+                    openTrip(OpenTrip(journey.trip, journey.resolved, journey.fromLabel, journey.toLabel, resume = true, stopovers = journey.stopovers))
                 }
             },
             onLatest = { journey ->
                 val start = journey.trip.legs.firstOrNull { it.shape.isNotEmpty() }?.shape?.firstOrNull()
                 val end = journey.trip.legs.lastOrNull { it.shape.isNotEmpty() }?.shape?.lastOrNull()
                 if (!departed(journey.trip) || start == null || end == null) {
-                    open = OpenTrip(journey.trip, journey.resolved, journey.fromLabel, journey.toLabel, backHome = true, stopovers = journey.stopovers)
+                    openTrip(OpenTrip(journey.trip, journey.resolved, journey.fromLabel, journey.toLabel, backHome = true, stopovers = journey.stopovers))
                 } else {
                     // Its first bus has left: the route as it can be ridden now, through the same stops on the way. A route
                     // from where the rider was is planned from where they are.
@@ -835,10 +861,10 @@ fun DirectionsOnline(model: KavModel) {
                                             ?: return@launch
                                         val (trip, r) = withContext(Dispatchers.Default) { RailTrip.of(net, journey, railway) }
                                             ?: return@launch
-                                        open = OpenTrip(
+                                        openTrip(OpenTrip(
                                             trip, r, r.stopName(trip.legs.first().fromStop).orEmpty(),
                                             r.stopName(trip.legs.last().toStop).orEmpty(),
-                                        )
+                                        ))
                                     }
                                 }
                             }
@@ -897,17 +923,19 @@ fun DirectionsOnline(model: KavModel) {
                             // The taxi card orders its ride with Gett, between the search's own From and To.
                             val taxi = shown[i].legs.firstOrNull { it.kind == Transit.LegKind.TAXI }?.takeIf { plan.isTaxiCard(shown[i]) }
                             Box(Modifier.popIn(i, raw to sort)) {
+                                KavPart("results.route", shown[i], { org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(shown[i], resolved)).put("index", i) }) {
                                 // Leaving at a time, a card lists no bus from before it: the rider didn't ask about those.
                                 ItineraryCard(shown[i], resolved, if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L, footer = resultFooter(model, taxi?.let { leg ->
                                     { OrderGett(gettLink(leg, pickupName, dropoffName), Modifier.fillMaxWidth()) }
                                 }, shown[i], resolved, remember(shown[i].provider) { plannerName(shown[i].provider) })) {
                                     // Not before the rider's required rules have judged it.
                                     if (checking) return@ItineraryCard
-                                    open = OpenTrip(
+                                    openTrip(OpenTrip(
                                         shown[i], resolved, fromPlace?.name ?: T("Current location", "המיקום הנוכחי"),
                                         toPlace?.name ?: T("Destination", "יעד"), stopovers = stopovers,
                                         asked = if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L,
-                                    )
+                                    ))
+                                }
                                 }
                             }
                         }

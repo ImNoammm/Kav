@@ -58,6 +58,16 @@ internal class StopLook(val look: StreetLook, val name: String, val detail: Stri
 
 internal object StreetViewer {
     var open by mutableStateOf<StopLook?>(null)
+    // The last one asked, for Kav's own (Kav.kavAction "street.open").
+    var asked: StopLook? = null
+}
+
+// A stop's Street View opened by a tap: an extension holding "street.open" goes first (ext/Actions.kt).
+internal fun openStreet(look: StopLook) {
+    StreetViewer.asked = look
+    if (!uk.noammm.kav.ext.Actions.take(null, "street.open") {
+            org.json.JSONObject().put("name", look.name).put("lat", look.look.at.first).put("lon", look.look.at.second)
+        }) StreetViewer.open = look
 }
 
 // Google's own panorama nearest a spot, asked the way Google's maps script asks it: no key, no account, no cookies.

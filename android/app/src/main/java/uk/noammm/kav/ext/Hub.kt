@@ -189,7 +189,8 @@ class Hub(
     fun setEnabled(identity: String, on: Boolean) {
         registry.change(identity) {
             val crashed = it.problem == NativeGuard.CRASHED
-            if (on && it.problem.isNotEmpty() && !crashed) it else it.copy(enabled = on, problem = if (on && crashed) "" else it.problem)
+            if (on && it.problem.isNotEmpty() && !crashed) it else it.copy(enabled = on, problem = if (on && crashed) "" else it.problem,
+                enabledAt = if (on && !it.enabled) now() else it.enabledAt)
         }
     }
 

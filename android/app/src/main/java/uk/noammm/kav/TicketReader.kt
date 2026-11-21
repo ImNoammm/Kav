@@ -558,6 +558,18 @@ internal object TicketStore {
         return stored to new
     }
 
+    // A ticket an extension sold (ExtTickets): kept as a read one is, with or without the reader, and its ride in the
+    // history. The same key again replaces it. One already over isn't kept.
+    fun put(ctx: Context, t: Ticket) {
+        load(ctx)
+        val now = System.currentTimeMillis()
+        if (t.overAt <= now) return
+        kept = Tickets.current(Tickets.live(kept.filter { it.key != t.key }, now) + t)
+        runCatching { save(ctx) }
+        history = RideHistory.record(history, t)
+        runCatching { saveHistory(ctx) }
+    }
+
     // Rav-Pass says it has no active ticket of these kinds (TicketReader).
     fun end(ctx: Context, kinds: Set<TicketScreens.Kind>, since: Long) {
         val left = Tickets.end(kept, kinds, since)

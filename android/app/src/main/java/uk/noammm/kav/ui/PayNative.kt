@@ -18,8 +18,8 @@ import uk.noammm.kav.data.TicketTimes
 
 // The ride a Pay tap was for, from Kav's own trip: its line and the stop the rider gets off at, shown on the button back
 // to Kav over Rav-Pass (PayOverlay), so on Rav-Pass's approve screen they pick that arrival stop and pay that fare.
-// Nothing of it goes to Rav-Pass.
-internal data class PayFor(val line: String?, val off: String?) {
+// Nothing of it goes to Rav-Pass. ride: the ride as JSON text (RavPass.ride), for an extension that takes over paying.
+internal data class PayFor(val line: String?, val off: String?, val ride: String? = null) {
     fun label(): String? = listOfNotNull(
         line?.takeIf { it.isNotBlank() }?.let { T("Line $it", "קו $it") },
         off?.takeIf { it.isNotBlank() }?.let { T("get off at $it", "ירידה ב$it") },
@@ -51,7 +51,7 @@ internal object EntranceAsk {
         return true
     }
 
-    fun bus(ctx: Context, s: RavPass.Section, ride: PayFor?) { skip = true; RavPass.open(ctx, s, ride) }
+    fun bus(ctx: Context, s: RavPass.Section, ride: PayFor?) { skip = true; RavPass.own(ctx, s, ride) }
 }
 
 @Composable
@@ -64,7 +64,7 @@ internal fun EntranceAskHost() {
         Text(T("Make the exit ticket in Rav-Pass first?", "ליצור קודם את כרטיס היציאה ברב-פס?"), style = K.type.body, color = K.textSecondary)
         Spacer(Modifier.height(K.gap4))
         KavButton(T("Exit ticket", "כרטיס יציאה"), onClick = {
-            close { EntranceAsk.pending = null; RavPass.open(ctx, RavPass.Section.TRAIN) }
+            close { EntranceAsk.pending = null; RavPass.own(ctx, RavPass.Section.TRAIN) }
         }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(K.gap2))
         KavButton(T("Pay for the bus", "תשלום על האוטובוס"), onClick = {

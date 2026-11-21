@@ -128,7 +128,7 @@ private fun RideRow(r: Ride, first: Boolean, last: Boolean) {
     val time = SimpleDateFormat("d.M  $CLOCK", Locale.US).apply { timeZone = ISRAEL }
     Row(
         Modifier.fillMaxWidth().groupItem(first, last)
-            .clickable(enabled = live != null, role = Role.Button) { TicketStore.opened = r.key }
+            .clickable(enabled = live != null, role = Role.Button) { openTicket(null, r.key) }
             .padding(horizontal = K.gap4, vertical = K.gap3),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(K.gap3),

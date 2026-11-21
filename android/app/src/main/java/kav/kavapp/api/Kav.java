@@ -9,8 +9,8 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. */
-    int API = 3;
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, kavClassLoader. */
+    int API = 4;
 
     int apiVersion();
 
@@ -73,6 +73,34 @@ public interface Kav {
     /** Kav's own look: Kav's components as views, and its theme as values. */
     KavUi ui();
 
+    // API 4. Each of these needs "api": 4 in the manifest, and the contribution it names; without them it throws.
+
+    /** Take over an action (manifest: a contribution with capability "action.<name>"): Kav calls it instead of its own, on
+     *  the main thread with the screen's Activity. args: JSON text. Return true when you handled it, false to let the next
+     *  extension, then Kav, do its own. null removes it. With several on one action, the last switched on goes first. */
+    void action(String name, Action action);
+
+    /** Run Kav's own handling of an action yourself, from inside your own handler too: no extension is asked. On the main
+     *  thread. */
+    void kavAction(String name, Context activity, String args);
+
+    /** Add a view before or after one of Kav's screen parts, or replace it (manifest: capability "part.<name>"). where:
+     *  "before", "after" or "replace". The view is asked for each time the part shows, on the main thread; about: JSON
+     *  text of what the part shows. Returning null from a replace shows Kav's own. null removes it. */
+    void part(String name, String where, Card card);
+
+    /** A ticket into Kav's own tickets and ride history, as JSON text (docs/native.md has its fields). From any thread. The
+     *  same key again updates it. It stays when the extension is switched off or removed, until it ends. */
+    void addTicket(String ticket);
+
+    /** Hook one of Kav's (or Android's) methods (manifest: capability "hooks"). before runs first and may set a result to
+     *  skip the original; after runs after it and may change the result. Either may be null. Returns an Unhook, or throws
+     *  when the method can't be hooked. Every hook is removed when the extension is switched off or blocked. */
+    Unhook hook(java.lang.reflect.Member method, MethodHook before, MethodHook after);
+
+    /** Kav's own ClassLoader, to find its classes by name. */
+    ClassLoader kavClassLoader();
+
     /** A card's view, made each time its screen shows it. about: what the screen shows, as JSON text: the trip, or the
      *  result's route ({"trip": the route as route rules get it}), or the stop ({"stop": "<ref>", "name": "..."}); {} on
      *  Home. A results card that has nothing to say for a route makes no view (null). */
@@ -98,5 +126,39 @@ public interface Kav {
     /** A hook's answer to its input, both JSON text. */
     interface Hook {
         String call(String input) throws Exception;
+    }
+
+    /** An action taken over: true when it was handled. activity: the screen's. */
+    interface Action {
+        boolean run(Context activity, String args);
+    }
+
+    /** Told each call of a hooked method, before or after the original runs. */
+    interface MethodHook {
+        void call(Call call) throws Throwable;
+    }
+
+    /** One call of a hooked method. Setting a result or an error in before skips the original. */
+    interface Call {
+        /** The object the method was called on; null for a static method. */
+        Object thisObject();
+
+        /** Its arguments, which before may change. */
+        Object[] args();
+
+        Object result();
+
+        void setResult(Object result);
+
+        Throwable error();
+
+        void setError(Throwable error);
+
+        /** The original method, with these arguments, without the hooks. */
+        Object callOriginal(Object... args) throws Throwable;
+    }
+
+    interface Unhook {
+        void unhook();
     }
 }

@@ -422,23 +422,25 @@ object Pipeline {
     private fun e6(v: Double?) = if (v == null || !v.isFinite()) 0 else Math.round(v * 1e6).toInt()
 
     // A route as JSON, in the shape route rules get it (NativeRules.search): what a trip slot is told.
-    fun routeJson(t: Transit.Itinerary, r: Transit.Resolved): JSONObject {
+    fun routeJson(t: Transit.Itinerary, r: Transit.Resolved): JSONObject =
+        JSONObject().put("provider", t.provider).put("dep", t.dep).put("arr", t.arr).put("fare", t.fare).put("accessible", t.accessible)
+            .put("tags", JSONArray(t.tags)).put("legs", JSONArray(t.legs.map { legJson(it, r) }))
+
+    // One leg of a route, as routeJson gives each.
+    fun legJson(l: Transit.Leg, r: Transit.Resolved): JSONObject {
         fun point(stop: Int, end: Pair<Double, Double>?): JSONObject {
             val s = r.stop(stop)
             return JSONObject().put("stop", if (stop >= 0) stopRef(stop, r) else JSONObject.NULL).put("name", s?.shown() ?: JSONObject.NULL)
                 .put("lat", s?.lat ?: end?.first ?: JSONObject.NULL).put("lon", s?.lon ?: end?.second ?: JSONObject.NULL)
         }
-        return JSONObject().put("provider", t.provider).put("dep", t.dep).put("arr", t.arr).put("fare", t.fare).put("accessible", t.accessible)
-            .put("tags", JSONArray(t.tags)).put("legs", JSONArray(t.legs.map { l ->
-                val ride = l.kind == Transit.LegKind.RIDE
-                val toStop = if (l.kind == Transit.LegKind.WAIT) l.fromStop else l.toStop
-                JSONObject().put("kind", l.kind.name.lowercase()).put("dep", l.dep).put("arr", l.arr).put("metres", l.meters)
-                    .put("insideMetres", l.insideMeters).put("from", point(l.fromStop, l.shape.firstOrNull())).put("to", point(toStop, l.shape.lastOrNull()))
-                    .put("line", if (ride) lineRef(l.lineId) ?: JSONObject.NULL else JSONObject.NULL)
-                    .put("lineNumber", if (ride) l.shortName.ifBlank { r.line(l.lineId)?.number.orEmpty() } else JSONObject.NULL)
-                    .put("mode", if (ride) mode(l, r) else -1).put("trip", if (ride) tripRef(l.tripId) ?: JSONObject.NULL else JSONObject.NULL)
-                    .put("stops", l.stops.size)
-            }))
+        val ride = l.kind == Transit.LegKind.RIDE
+        val toStop = if (l.kind == Transit.LegKind.WAIT) l.fromStop else l.toStop
+        return JSONObject().put("kind", l.kind.name.lowercase()).put("dep", l.dep).put("arr", l.arr).put("metres", l.meters)
+            .put("insideMetres", l.insideMeters).put("from", point(l.fromStop, l.shape.firstOrNull())).put("to", point(toStop, l.shape.lastOrNull()))
+            .put("line", if (ride) lineRef(l.lineId) ?: JSONObject.NULL else JSONObject.NULL)
+            .put("lineNumber", if (ride) l.shortName.ifBlank { r.line(l.lineId)?.number.orEmpty() } else JSONObject.NULL)
+            .put("mode", if (ride) mode(l, r) else -1).put("trip", if (ride) tripRef(l.tripId) ?: JSONObject.NULL else JSONObject.NULL)
+            .put("stops", l.stops.size)
     }
 
     // A search as route rules are sent it (Bridge), which NativeRules turns into their JSON.

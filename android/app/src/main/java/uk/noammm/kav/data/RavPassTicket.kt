@@ -293,11 +293,13 @@ internal data class Ticket(
     // Rav-Pass's quoted price in agorot on its Approve screen during the purchase Kav saw (TicketScreens.price); null when Kav
     // didn't see it.
     val price: Int? = null,
+    // When it ends, for a ticket an extension sold (ExtTickets), which says so; null for one read from Rav-Pass.
+    val endsAt: Long? = null,
 ) {
     // How long Kav keeps it. Rav-Pass shows no expiry, so by kind, from its shown time (else when it was read): a bus
     // ticket for 6 hours (longer than the longest intercity line); light rail for 3; a train entrance for 4 hours, or until
     // its exit ticket is read; an exit ticket for an hour after it was read, time enough to leave the station.
-    val overAt: Long get() = when (kind) {
+    val overAt: Long get() = endsAt ?: when (kind) {
         TicketScreens.Kind.BUS -> (shownAt ?: readAt) + 6 * HOUR
         TicketScreens.Kind.LIGHT_RAIL -> (shownAt ?: readAt) + 3 * HOUR
         TicketScreens.Kind.TRAIN_ENTRANCE -> (shownAt ?: readAt) + 4 * HOUR
@@ -312,6 +314,7 @@ internal data class Ticket(
     // up to 15 km includes rides by bus, light rail or cable car boarded within 90 minutes of its validation; a longer fare
     // includes none (null). From when Kav saw it bought, else Rav-Pass's shown time; null with neither, or for a train.
     val validUntil: Long? get() {
+        endsAt?.let { return it }
         if (kind != TicketScreens.Kind.BUS && kind != TicketScreens.Kind.LIGHT_RAIL || (band ?: NEAR_KM) > NEAR_KM) return null
         return (windowFrom ?: paidAt ?: shownAt)?.plus(TRANSFER_WINDOW)
     }
@@ -320,7 +323,7 @@ internal data class Ticket(
 
     fun json() = JSONObject().put("key", key).put("kind", kind.name).put("line", line).put("shown", shown).put("number", number)
         .put("paidAt", paidAt).put("readAt", readAt).put("shownAt", shownAt).put("expected", expected).put("returned", returned).put("from", from).put("to", to)
-        .put("band", band).put("windowFrom", windowFrom).put("price", price)
+        .put("band", band).put("windowFrom", windowFrom).put("price", price).put("endsAt", endsAt)
         .put("passengers", JSONArray(passengers.map { JSONObject().put("name", it.name).put("code", it.code).put("format", it.format) }))
 
     companion object {
@@ -341,7 +344,7 @@ internal data class Ticket(
                 o.getString("key"), TicketScreens.Kind.valueOf(o.getString("kind")), TicketScreens.clean(o.str("line")), o.str("shown"), o.str("number"),
                 passengers, o.long("paidAt"), o.getLong("readAt"), o.long("shownAt"), o.optInt("expected", passengers.size),
                 o.str("from"), o.str("to"), o.optBoolean("returned", false), o.long("band")?.toInt(), o.long("windowFrom"),
-                o.long("price")?.toInt(),
+                o.long("price")?.toInt(), o.long("endsAt"),
             )
         }.getOrNull()
 
@@ -401,7 +404,8 @@ internal object Tickets {
     // its tickets on the bus screen's cards (unverified on its Done screen), and the code's own kind is kept.
     const val ATTACH_MS = 30 * Ticket.MINUTE
     fun family(k: TicketScreens.Kind) = if (k == TicketScreens.Kind.LIGHT_RAIL) TicketScreens.Kind.BUS else k
-    private fun belongs(p: Ticket, read: Ticket) = p.paidAt != null && p.passengers.isEmpty() && family(p.kind) == family(read.kind) &&
+    // An extension's ticket (endsAt) is never one Rav-Pass's codes belong to.
+    private fun belongs(p: Ticket, read: Ticket) = p.endsAt == null && p.paidAt != null && p.passengers.isEmpty() && family(p.kind) == family(read.kind) &&
         read.readAt - p.paidAt in 0..ATTACH_MS && (p.line == null || read.line == null || p.line == read.line)
 
     // A group's next card, read on its own once the rider swipes to it (Rav-Pass's list goes across, a card a page): the

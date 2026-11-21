@@ -34,7 +34,7 @@ internal fun tripPay(journey: ActiveJourney, current: Int, kept: List<Ticket>, n
     }
     val section = RavPass.section(ride, r)
     val line = r.line(ride.lineId)?.number
-    val payFor = PayFor(line, r.stopName(ride.toStop))
+    val payFor = PayFor(line, r.stopName(ride.toStop), RavPass.ride(ride, r).toString())
     val ticket = kept.filter { it.overAt > nowMs && TicketView.matches(it, section, line, ride.dep * 1000) }.maxByOrNull { it.readAt }
     if (ticket != null) return TripPay(section, payFor, ticket.key)
     // Aboard a train or light rail, its ticket was bought at the gates: nothing to pay there.

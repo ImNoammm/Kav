@@ -204,7 +204,7 @@ private fun SuggestionsCard(model: KavModel, latest: ActiveJourney?, onLatest: (
                     AnimatedContent(
                         route, contentKey = { "${it.trip.guid}|${it.trip.dep}|${it.fromLabel}|${it.toLabel}" },
                         transitionSpec = { swap() }, label = "latestRoute",
-                    ) { LatestRouteRow(it, onLatest) }
+                    ) { KavPart("home.latest", it, { org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(it.trip, it.resolved)) }) { LatestRouteRow(it, onLatest) } }
                 } else {
                     Caption(T("Nearest station", "התחנה הקרובה"))
                     if (shown != null) AnimatedContent(shown, contentKey = { it.near }, transitionSpec = { swap() }, label = "nearest") { now ->

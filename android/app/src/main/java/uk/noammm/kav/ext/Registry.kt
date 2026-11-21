@@ -24,8 +24,8 @@ class Registry(val dir: File) {
         fun stateKey(identity: String) = sha256(identity.toByteArray()).copyOf(16).hex()
     }
 
-    // enabled: the rider's switch, off until they turn it on. problem: why it can't run, "" when it can (Manifest.OLDER,
-    // a newer Kav needed, or NativeGuard.CRASHED).
+    // enabled: the rider's switch, off until they turn it on, and enabledAt when it last was (0 before Kav kept it).
+    // problem: why it can't run, "" when it can (Manifest.OLDER, a newer Kav needed, or NativeGuard.CRASHED).
     data class Installed(
         val identity: String,
         val source: String,
@@ -35,6 +35,7 @@ class Registry(val dir: File) {
         val problem: String = "",
         val installedAt: Long = 0,
         val updatedAt: Long = 0,
+        val enabledAt: Long = 0,
     ) {
         val publisher get() = identity.substringBefore('/')
         val name get() = identity.substringAfter('/')
@@ -45,12 +46,12 @@ class Registry(val dir: File) {
 
         fun json(): JSONObject = JSONObject().put("identity", identity).put("source", source).put("sha256", sha256)
             .put("manifest", manifestJson).put("enabled", enabled).put("problem", problem)
-            .put("installedAt", installedAt).put("updatedAt", updatedAt)
+            .put("installedAt", installedAt).put("updatedAt", updatedAt).put("enabledAt", enabledAt)
 
         companion object {
             fun of(o: JSONObject) = Installed(
                 o.getString("identity"), o.getString("source"), o.getString("sha256"), o.getJSONObject("manifest"),
-                o.optBoolean("enabled"), o.optString("problem"), o.optLong("installedAt"), o.optLong("updatedAt"),
+                o.optBoolean("enabled"), o.optString("problem"), o.optLong("installedAt"), o.optLong("updatedAt"), o.optLong("enabledAt"),
             )
         }
     }
@@ -126,7 +127,8 @@ class Registry(val dir: File) {
             // judged anew.
             val why = problem(e).ifEmpty { old?.problem?.takeIf { it == NativeGuard.CRASHED && old.sha256 == e.sha256 }.orEmpty() }
             Installed(identity, source, e.sha256, e.manifest.json, enabled = old?.enabled == true, problem = why,
-                installedAt = old?.installedAt ?: nowS, updatedAt = if (old != null && old.sha256 == e.sha256) old.updatedAt else nowS)
+                installedAt = old?.installedAt ?: nowS, updatedAt = if (old != null && old.sha256 == e.sha256) old.updatedAt else nowS,
+                enabledAt = old?.enabledAt ?: 0)
         }
         val gone = list.filter { it.source == source && mine.none { m -> m.identity == it.identity } }
         for (i in list.filter { it.source == source }) if (mine.firstOrNull { it.identity == i.identity }?.sha256 != i.sha256) Native.retire(i.identity)

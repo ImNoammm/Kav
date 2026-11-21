@@ -33,6 +33,7 @@ internal object PayEntry {
     private const val EXTRA_SECTION = "uk.noammm.kav.PAY"
     private const val EXTRA_LINE = "uk.noammm.kav.PAY_LINE"
     private const val EXTRA_OFF = "uk.noammm.kav.PAY_OFF"
+    private const val EXTRA_RIDE = "uk.noammm.kav.PAY_RIDE"
 
     // THE check for every way in here: paying is on. Off, none of them shows.
     fun on(ctx: Context): Boolean = uk.noammm.kav.ui.PayMode.on(ctx)
@@ -45,7 +46,7 @@ internal object PayEntry {
     fun t(ctx: Context, en: String, he: String) = if (Prefs.lang(ctx) == Lang.HE) he else en
 
     fun pay(ctx: Context, s: RavPass.Section, ride: PayFor? = null): Intent = Intent(ctx, MainActivity::class.java).setAction(ACTION_PAY)
-        .putExtra(EXTRA_SECTION, s.name).putExtra(EXTRA_LINE, ride?.line).putExtra(EXTRA_OFF, ride?.off)
+        .putExtra(EXTRA_SECTION, s.name).putExtra(EXTRA_LINE, ride?.line).putExtra(EXTRA_OFF, ride?.off).putExtra(EXTRA_RIDE, ride?.ride)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     // A ticket, or the latest live one when none is named (a shortcut kept from before).
@@ -63,8 +64,8 @@ internal object PayEntry {
     fun take(ctx: Context, intent: Intent?): Boolean = when (intent?.action) {
         ACTION_PAY -> {
             val s = RavPass.Section.entries.firstOrNull { it.name == intent.getStringExtra(EXTRA_SECTION) } ?: RavPass.Section.BUS
-            val line = intent.getStringExtra(EXTRA_LINE); val off = intent.getStringExtra(EXTRA_OFF)
-            waiting = s to (if (line == null && off == null) null else PayFor(line, off))
+            val line = intent.getStringExtra(EXTRA_LINE); val off = intent.getStringExtra(EXTRA_OFF); val ride = intent.getStringExtra(EXTRA_RIDE)
+            waiting = s to (if (line == null && off == null && ride == null) null else PayFor(line, off, ride))
             true
         }
         ACTION_TICKET -> {

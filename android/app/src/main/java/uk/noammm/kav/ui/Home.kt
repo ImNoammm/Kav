@@ -24,6 +24,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import uk.noammm.kav.ext.Slots
 import uk.noammm.kav.ActiveJourney
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.RecentTrip
@@ -101,7 +103,9 @@ internal fun HomeScreen(
                         Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp))
                         WhereTo(recentNames, Modifier.weight(1f))
                     }
-                    SettingsButton(model.update != null && Shown.updatePrompts) { model.settingsOpen = true }
+                    SettingsButton(model.update != null && Shown.updatePrompts) {
+                        if (!uk.noammm.kav.ext.Actions.take(null, "settings.open") { org.json.JSONObject() }) model.settingsOpen = true
+                    }
                 }
             }, estimate = K.gap3 + 52.dp, fade = 28.dp) { topSpace, backdrop ->
             LazyColumn(
@@ -116,7 +120,7 @@ internal fun HomeScreen(
                     return@LazyColumn
                 }
                 ext?.let { extHomeStrip(it) }
-                item(key = "favourites") {
+                item(key = "favourites") { KavPart("home.places", favourites, { JSONObject() }) {
                     FavouriteStrip(
                         favourites,
                         // A trip to a saved place goes by the name it was saved under, with where it is under that.
@@ -127,19 +131,25 @@ internal fun HomeScreen(
                         onReorder = { save(it) },
                         onRemove = { f -> save(favourites.filter { it.id != f.id }) },
                     )
-                }
+                } }
                 // Each card comes, goes and moves with a fade and a glide: a trip starting or ending, the first recent trip.
-                model.activeJourney?.let { journey -> item(key = "journey") { Box(listMotion().padding(top = K.gap4)) { JourneyCard(model, journey, onResume) } } }
+                model.activeJourney?.let { journey -> item(key = "journey") {
+                    KavPart("home.journey", journey, { JSONObject().put("trip", Slots.trip(journey.trip, journey.resolved)) }) {
+                        Box(listMotion().padding(top = K.gap4)) { JourneyCard(model, journey, onResume) }
+                    }
+                } }
                 if (model.activeJourney == null) item(key = "suggestions") {
-                    HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4))
+                    KavPart("home.suggestions", Unit, { JSONObject() }) { HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4)) }
                 }
                 // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
                 if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
                 // Paying and the tickets, in one card as before 4.3.2: set up, turned on with something missing, or offered
                 // to a rider who never turned it on (PayCard).
-                if (Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer) item(key = "payments") { PayCard(listMotion().padding(top = K.gap4)) }
+                if (Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer) item(key = "payments") {
+                    KavPart("home.pay", Unit, { JSONObject() }) { PayCard(listMotion().padding(top = K.gap4)) }
+                }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
-                if (recentTrips.isNotEmpty()) item(key = "recent") {
+                if (recentTrips.isNotEmpty()) item(key = "recent") { KavPart("home.recent", recentTrips, { JSONObject() }) {
                     Column(listMotion().padding(top = K.gap4).fillMaxWidth().panel(K.rCard)
                         .animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
                         Row(Modifier.fillMaxWidth()) {
@@ -157,7 +167,7 @@ internal fun HomeScreen(
                             RecentTripRow(trip) { onTrip(trip) }
                         }
                     }
-                }
+                } }
             }
             }
         }
@@ -269,7 +279,7 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
                         model.activeJourney?.takeIf { it.trip === journey.trip }
                             ?.let { model.activeJourney = it.copy(chosen = it.chosen + (leg to option)) }
                     },
-                    report = { model.report = it })
+                    report = { model.openReport(it) })
             }
         }
         // The dots in the middle; back to the step on now, from another, at the end of the same row.

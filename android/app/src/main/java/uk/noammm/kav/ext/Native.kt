@@ -39,11 +39,16 @@ object Native {
         if (!ENTRY.matches(s.entry)) throw TrustError("native: bad entry class")
     }
 
-    // What one loaded extension added, by its identity.
-    class Loaded(val identity: String, val name: String, val loader: ClassLoader, val sha256: String = "") {
+    // What one loaded extension added, by its identity. onAt: when the rider switched it on (Registry.Installed.enabledAt).
+    class Loaded(val identity: String, val name: String, val loader: ClassLoader, val sha256: String = "", val onAt: Long = 0) {
         val cards = ConcurrentHashMap<String, Kav.Card>()
         val screens = ConcurrentHashMap<String, Kav.Screen>()
         val hooks = ConcurrentHashMap<String, Kav.Hook>()
+        // API 4: the actions it takes over (Actions), its views on Kav's screen parts by "<part>|<where>" (Parts), and
+        // the methods it hooked (MethodHooks).
+        val actions = ConcurrentHashMap<String, Kav.Action>()
+        val parts = ConcurrentHashMap<String, Kav.Card>()
+        val unhooks: MutableList<Kav.Unhook> = java.util.concurrent.CopyOnWriteArrayList()
         @Volatile var onSettings: Kav.SettingsChanged? = null
         @Volatile var settingsScreen: Kav.Screen? = null
     }
@@ -72,13 +77,31 @@ object Native {
     fun settingsScreen(identity: String): Kav.Screen? = loaded[identity]?.settingsScreen
     fun isLoaded(identity: String) = loaded.containsKey(identity)
     fun provides(identity: String, hook: String) = loaded[identity]?.hooks?.containsKey(hook) == true
+    fun nameOf(identity: String): String? = loaded[identity]?.name
+
+    // The loaded extensions holding an action, and their views on a part, as Actions and Parts order them.
+    fun actionsOf(name: String): List<Actions.Holder> = loaded.values.mapNotNull { l -> l.actions[name]?.let { Actions.Holder(l.identity, l.onAt, it) } }
+    fun partsOf(name: String): List<Parts.Piece> = if (loaded.isEmpty()) emptyList() else loaded.values.flatMap { l ->
+        Parts.WHERE.mapNotNull { w -> l.parts["$name|$w"]?.let { Parts.Piece(l.identity, l.onAt, w, it) } }
+    }
 
     // Switched off, revoked, blocked or uninstalled: Kav stops calling its code for the rest of this run (its cards,
     // screens, hooks and map things go). What its code started on its own runs until Kav closes; it loads again, if on,
     // at the next start.
     fun retire(identity: String) = synchronized(loaded) {
         val pending = starting.remove(identity)
-        if (loaded.remove(identity) != null || pending != null) NativeMap.drop(identity)
+        val gone = loaded.remove(identity)
+        if (gone != null || pending != null) {
+            NativeMap.drop(identity)
+            listOfNotNull(gone, pending).forEach(::release)
+        }
+    }
+
+    // What it added that outlives a call: its hooks taken out, and the screens that ask for its actions told.
+    private fun release(l: Loaded) {
+        l.unhooks.forEach { runCatching { it.unhook() } }
+        l.unhooks.clear()
+        if (l.actions.isNotEmpty()) Actions.notifyChanged()
     }
 
     // Its hook (Hooks), on a thread of Kav's and under the crash guard: null when it
@@ -104,8 +127,9 @@ object Native {
 
     private val hooks = java.util.concurrent.Executors.newCachedThreadPool { r -> Thread(r, "kav-native-hook").apply { isDaemon = true } }
 
-    // Tests only: an extension as if loaded.
+    // Tests only: an extension as if loaded, and what its code is given.
     internal fun put(l: Loaded) { loaded[l.identity] = l }
+    internal fun api(ctx: Context, hub: Hub, i: Registry.Installed, l: Loaded): Kav = Api(ctx, hub, i, l)
     internal fun forget() { loaded.clear() }
 
     // Which loaded extension a class is, for the crash guard: the one whose loader defined it.
@@ -140,7 +164,7 @@ object Native {
         val registry = hub.registry
         val dex = verifiedDex(registry.packageDir(i.identity) ?: return, i.sha256, s.dex)
         val loader = dalvik.system.InMemoryDexClassLoader(java.nio.ByteBuffer.wrap(dex), Native::class.java.classLoader)
-        val l = Loaded(i.identity, i.displayName, loader, i.sha256)
+        val l = Loaded(i.identity, i.displayName, loader, i.sha256, i.enabledAt.takeIf { it > 0 } ?: i.installedAt)
         synchronized(registry) {
             val current = registry.get(i.identity) ?: return
             if (current.sha256 != i.sha256 || !hub.active(current)) return
@@ -164,10 +188,11 @@ object Native {
                 if (!starting.remove(i.identity, l)) return
                 loaded[i.identity] = l
             }
+            if (l.actions.isNotEmpty()) Actions.notifyChanged()
             Log.i(TAG, "${i.identity}: started, ${l.cards.size} cards, ${l.screens.size} screens")
         } finally {
             synchronized(loaded) {
-                if (starting.remove(i.identity, l)) NativeMap.drop(i.identity)
+                if (starting.remove(i.identity, l)) { NativeMap.drop(i.identity); release(l) }
             }
         }
     }
@@ -209,6 +234,48 @@ object Native {
             runCatching { ExtLog.add(i.identity, JSONObject().put("t", System.currentTimeMillis() / 1000).put("log", text.take(4000))) }
         }
         override fun ui(): KavUi = ui?.invoke(i.identity) ?: throw IllegalStateException("Kav's look isn't ready")
+
+        // API 4: only for a manifest that says "api": 4, and each with the contribution it names, so what Kav lists about
+        // the extension (ExtUses) is all it does.
+        private fun needs(what: String, capability: String?) {
+            if (i.manifest.api < 4) throw IllegalStateException("$what needs \"api\": 4 in the manifest")
+            if (capability != null && i.manifest.contributions.none { it.capability == capability })
+                throw IllegalStateException("$what needs a contribution with capability \"$capability\" in the manifest")
+        }
+
+        override fun action(name: String, action: Kav.Action?) {
+            needs("action", Actions.CAPABILITY + name)
+            require(name in Actions.NAMES) { "$name isn't one of Kav's actions" }
+            if (action == null) l.actions.remove(name) else l.actions[name] = action
+            if (loaded[i.identity] === l) Actions.notifyChanged()
+        }
+
+        override fun kavAction(name: String, activity: Context, args: String?) {
+            needs("kavAction", null)
+            Actions.kav(name, activity, args.orEmpty())
+        }
+
+        override fun part(name: String, where: String, card: Kav.Card?) {
+            needs("part", Parts.CAPABILITY + name)
+            require(name in Parts.NAMES) { "$name isn't one of Kav's screen parts" }
+            require(where in Parts.WHERE) { "where is \"before\", \"after\" or \"replace\"" }
+            if (card == null) l.parts.remove("$name|$where") else l.parts["$name|$where"] = card
+        }
+
+        override fun addTicket(ticket: String) {
+            needs("addTicket", null)
+            uk.noammm.kav.ExtTickets.add(app, i.identity, JSONObject(ticket))
+        }
+
+        override fun hook(method: java.lang.reflect.Member, before: Kav.MethodHook?, after: Kav.MethodHook?): Kav.Unhook {
+            needs("hook", MethodHooks.CAPABILITY)
+            return MethodHooks.hook(i.identity, l, method, before, after)
+        }
+
+        override fun kavClassLoader(): ClassLoader {
+            needs("kavClassLoader", null)
+            return Native::class.java.classLoader!!
+        }
     }
 
     // A card's or screen's view, made under the crash guard: null when its code failed.

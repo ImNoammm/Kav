@@ -717,7 +717,7 @@ private fun LiveScreenForSource(model: KavModel) {
                                     }
                                     is LiveFocus.Vehicle -> LiveVehicleCard(
                                         focusVehicle?.takeIf { it.tripId == f.tripId }, now, lineStops, progress, reportStops, crowd,
-                                        onReport = { model.report = it },
+                                        onReport = { model.openReport(it) },
                                     ) { focus = f.from?.let { LiveFocus.Stop(it) } }
                                     else -> Unit
                                 }

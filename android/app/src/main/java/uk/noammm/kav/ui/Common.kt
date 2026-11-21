@@ -566,7 +566,13 @@ private fun AlertTile(alert: RideAlerts.Alert) {
 @Composable
 fun ServiceAlerts(content: @Composable () -> Unit) {
     var notice by remember { mutableStateOf<RideAlerts.Alert?>(null) }
-    CompositionLocalProvider(LocalServiceAlertOpener provides { notice = it }) {
+    // An extension holding "alert.open" goes first (ext/Actions.kt); Kav's own opens the last one asked.
+    var asked by remember { mutableStateOf<RideAlerts.Alert?>(null) }
+    DisposableEffect(Unit) { uk.noammm.kav.ext.Actions.own("alert.open") { _, _ -> notice = asked }; onDispose { } }
+    CompositionLocalProvider(LocalServiceAlertOpener provides { a ->
+        asked = a
+        if (!uk.noammm.kav.ext.Actions.take(null, "alert.open") { org.json.JSONObject().put("label", a.label).put("ids", org.json.JSONArray(a.ids)) }) notice = a
+    }) {
         Box(Modifier.fillMaxSize()) {
             content()
             notice?.let { ServiceAlertSheet(it) { notice = null } }
@@ -1180,7 +1186,7 @@ private fun StopPhotoTile(stop: StopLook, shot: StopPhotos.Photo, thumb: Dp) {
     PhotoTile(
         shot.bitmap, T("A photo of the stop", "תמונה של התחנה"), T("Open stop photo", "פתיחת תמונת התחנה"), thumb,
         open = true, ahead = false, key = StopPhotos.key(stop.look),
-        largeAction = T("Street View", "Street View"), onLarge = { StreetViewer.open = stop },
+        largeAction = T("Street View", "Street View"), onLarge = { openStreet(stop) },
     ) { StopPhotos.full(stop.look)?.bitmap }
 }
 
@@ -1196,7 +1202,7 @@ private fun NoPhoto(thumb: Dp, look: StopLook) {
     Box(
         Modifier.size(thumb).clip(RoundedCornerShape(K.rTile)).background(K.fill)
             .semantics { contentDescription = T("No photo of this stop. See it in Street View", "אין תמונה של התחנה. צפייה ב-Street View") }
-            .clickable(role = Role.Button) { StreetViewer.open = look },
+            .clickable(role = Role.Button) { openStreet(look) },
         contentAlignment = Alignment.Center,
     ) { Canvas(Modifier.size(thumb * .5f)) { streetGlyph(K.muted) } }
 }

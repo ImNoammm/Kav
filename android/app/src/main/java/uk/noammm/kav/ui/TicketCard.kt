@@ -295,7 +295,9 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             val gate = t.kind != TicketScreens.Kind.BUS
-            if (codes.isEmpty()) Box(Modifier.fillMaxWidth().heightIn(min = 120.dp).panel(K.rTile).padding(K.gap4), contentAlignment = Alignment.Center) {
+            // An extension's ticket without codes has nothing to show here.
+            if (codes.isEmpty() && uk.noammm.kav.ExtTickets.mine(t)) Unit
+            else if (codes.isEmpty()) Box(Modifier.fillMaxWidth().heightIn(min = 120.dp).panel(K.rTile).padding(K.gap4), contentAlignment = Alignment.Center) {
                 Text(T("The ticket for an inspector is in Rav-Pass: open it there, under \"Active travel ticket for inspection\". Once you have, Kav shows it here too.",
                     "הכרטיס לביקורת נמצא ברב-פס: פתחו אותו שם, תחת \"כרטיס נסיעה פעילה לביקורת\". אחרי שתפתחו אותו, Kav תציג אותו גם כאן."),
                     style = K.type.body, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -328,7 +330,7 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
                 TicketValidity(t, now)
                 TicketRideRows(t, net, ride, model, onClose)
             }
-            KavButton(T("Open in Rav-Pass", "פתיחה ברב-פס"), onClick = { TicketStore.showAsked = System.currentTimeMillis(); RavPass.go(ctx, sectionOf(t)) },
+            if (!uk.noammm.kav.ExtTickets.mine(t)) KavButton(T("Open in Rav-Pass", "פתיחה ברב-פס"), onClick = { TicketStore.showAsked = System.currentTimeMillis(); RavPass.go(ctx, sectionOf(t)) },
                 style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
         }
     }
@@ -343,7 +345,8 @@ private fun TicketValidity(t: Ticket, now: Long) {
     Column(Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap2, top = K.gap3, bottom = K.gap3)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LiveText(valid, Modifier.weight(1f, fill = false), style = K.type.title.tabular, color = if (fresh) good else K.dim)
-            if (t.validUntil != null) Box(
+            // An extension's ticket ends when it says: no estimate of Kav's to explain.
+            if (t.validUntil != null && !uk.noammm.kav.ExtTickets.mine(t)) Box(
                 Modifier.padding(start = K.gap1).size(40.dp).clip(CircleShape)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = T("Kav's estimate", "הערכה של Kav")) { why = !why },
                 contentAlignment = Alignment.Center,
@@ -460,7 +463,7 @@ private fun Code(content: String, format: String, modifier: Modifier = Modifier)
 internal fun RideTicketRow(section: RavPass.Section, line: String?, depMs: Long): Boolean {
     if (!TicketView.supported()) return false
     val t = liveTickets().filter { TicketView.matches(it, section, line, depMs) }.maxByOrNull { it.readAt } ?: return false
-    TicketRow(t, inset = K.gap3) { TicketStore.opened = t.key }
+    TicketRow(t, inset = K.gap3) { openTicket(null, t.key) }
     return true
 }
 
@@ -471,7 +474,7 @@ internal fun HomeTicketRows() {
     val live = liveTickets()
     for (t in live.sortedByDescending { it.readAt }) {
         Separator()
-        TicketRow(t) { TicketStore.opened = t.key }
+        TicketRow(t) { openTicket(null, t.key) }
     }
 }
 

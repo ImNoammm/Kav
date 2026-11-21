@@ -236,8 +236,8 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                 } else if (hits.isNotEmpty()) item(key = "hits-gap") { Spacer(listMotion(quick = true).height(K.gap2)) }
                 itemsIndexed(hits, key = { _, s -> s }) { i, s ->
                     Box(listMotion(quick = true)) {
-                        if (RefTable.isHandle(s)) ExtStopListRow(s, null, first = i == 0, last = i == hits.lastIndex) { model.stationStop = s }
-                        else StopListRow(net, s, null, town = true, first = i == 0, last = i == hits.lastIndex) { model.stationStop = s }
+                        if (RefTable.isHandle(s)) ExtStopListRow(s, null, first = i == 0, last = i == hits.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
+                        else StopListRow(net, s, null, town = true, first = i == 0, last = i == hits.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
                     }
                 }
             } else {
@@ -249,12 +249,12 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                                 net, s, yoursLive[s].orEmpty(), shownAt, model.lineAlerts.filter { it.stop == net.stopKey(s) },
                                 first = i == 0, last = i == yours.lastIndex, day = yoursDays[s],
                                 asking = Schedules.boards && net.code.getOrElse(s) { 0 } > 0,
-                            ) { model.stationStop = s }
+                            ) { if (!stopTaken(model, s)) model.stationStop = s }
                         }
                     }
                     itemsIndexed(yoursExt, key = { _, s -> "saved-x-$s" }) { i, s ->
                         Box(listMotion(quick = true)) {
-                            key(known) { ExtStopListRow(s, null, first = yours.isEmpty() && i == 0, last = i == yoursExt.lastIndex) { model.stationStop = s } }
+                            key(known) { ExtStopListRow(s, null, first = yours.isEmpty() && i == 0, last = i == yoursExt.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s } }
                         }
                     }
                 }
@@ -294,9 +294,9 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                     }
                     else -> itemsIndexed(near, key = { _, it -> it.first }) { i, (s, d) ->
                         Box(listMotion(quick = true)) {
-                            if (RefTable.isHandle(s)) ExtStopListRow(s, distanceLabel(d), first = i == 0, last = i == near.lastIndex) { model.stationStop = s }
+                            if (RefTable.isHandle(s)) ExtStopListRow(s, distanceLabel(d), first = i == 0, last = i == near.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
                             else StopListRow(net, s, distanceLabel(d), town = net.cityName(s) != homeTown, first = i == 0, last = i == near.lastIndex) {
-                                model.stationStop = s
+                                if (!stopTaken(model, s)) model.stationStop = s
                             }
                         }
                     }
@@ -310,7 +310,7 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
         onMap, net, model.here,
         onPick = {}, onDismiss = { onMap = false },
         onLocate = { model.locate(it.first, it.second) },
-        onStop = { s -> onMap = false; model.stationStop = s },
+        onStop = { s -> onMap = false; if (!stopTaken(model, s)) model.stationStop = s },
     )
 }
 
@@ -356,9 +356,12 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
 
     var alerting by remember(stop) { mutableStateOf(false) }
     val alertable = remember(stop) { alertable(net, stop) }
+    // What the stop's parts are told (ExtParts.kt): which stop this is.
+    val about = { stopArgs(net, stop) }
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(K.bg)) {
         ScreenHeader(T("Departures", "יציאות"), back = onBack)
+        KavPart("stop.header", stop, about) {
         Column(Modifier.padding(horizontal = K.gap4)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StopGlyphOrPhoto(net, stop, null, thumb = 56.dp, kind = stopMode(net, stop), opened = true)
@@ -404,6 +407,7 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                 }
             }
         }
+        }
         Spacer(Modifier.height(K.gap3))
         val provider = sourceName(Schedules.source)
         // The board's notes fade from one to the next, and open and close in their place.
@@ -439,6 +443,7 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
         // At the top, the board stays there as departures come in above its first row, so the soonest are always in
         // view; a list keyed by departure would otherwise keep that row first and push the new ones off the top.
         val boardState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val board = rememberPart("stop.board", stop, about)
         val shownKeys = remember { arrayOfNulls<List<String>>(1) }
         SideEffect {
             if (shownKeys[0] != keys && boardState.firstVisibleItemIndex == 0 && boardState.firstVisibleItemScrollOffset == 0) {
@@ -451,6 +456,10 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
         )) {
             // Keep extension controls above a departure list that can run into tomorrow.
             if (code > 0) item(key = "ext-slots") { StopSlots(model, "il.mot/gtfs/stop/$code", net.stopName(stop)) }
+            // Extensions' views on the board (stop.board), after API 3's cards; Kav's rows unless one replaces them.
+            partRows(board, "before")
+            partRows(board, "replace")
+            if (board?.replaced == null) {
             // A stop the week on the phone has nothing for, the first time its provider is asked: the board's rows as
             // shapes, until its times fill them in.
             if (standIn && lines.isEmpty()) items(5, key = { "skeleton-$it" }) { i ->
@@ -479,6 +488,8 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                     }
                 }
             }
+            }
+            partRows(board, "after")
         }
     }
     if (alerting) AlertSheet(model, net, stop) { alerting = false }

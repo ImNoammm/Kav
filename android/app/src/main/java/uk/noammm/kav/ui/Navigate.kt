@@ -412,7 +412,7 @@ fun NavigateScreen(
                 ) { showing ->
                 if (showing != null) {
                     VehicleCard(showing.second, showing.first, r, now, Modifier.padding(horizontal = K.gap3).padding(bottom = K.gap3),
-                        onReport = { model.report = it }) { tappedBus = null }
+                        onReport = { model.openReport(it) }) { tappedBus = null }
                 } else Column(if (compact) Modifier.fillMaxHeight() else Modifier) {
                 val ceiling = with(LocalDensity.current) { cardHeight.roundToPx() }
                 val pageHeights = remember(steps) { mutableStateMapOf<Int, Int>() }
@@ -435,7 +435,7 @@ fun NavigateScreen(
                                 chosen = chosen, fix = fix,
                                 onChoose = ::choose,
                                 pay = Shown.payments,
-                                report = { model.report = it },
+                                report = { model.openReport(it) },
                             )
                         }
                     }

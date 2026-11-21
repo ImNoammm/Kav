@@ -214,6 +214,9 @@ class MainActivity : ComponentActivity() {
         Prefs.crowdSource(this).let { c -> uk.noammm.kav.data.GoogleCrowd.enabled = c == Prefs.CROWD_GOOGLE; uk.noammm.kav.data.KavCrowd.enabled = c == Prefs.CROWD_KAV }
         uk.noammm.kav.ui.StopPhotos.enabled = Prefs.stopPhotos(this)
         Shown.updatePrompts = Prefs.updatePrompts(this)
+        // An extension taking over paying, or letting it go: the pay buttons follow (PayMode).
+        val app = applicationContext
+        uk.noammm.kav.ext.Actions.changed = { android.os.Handler(android.os.Looper.getMainLooper()).post { uk.noammm.kav.ui.PayMode.refresh(app) } }
         uk.noammm.kav.ui.PayMode.refresh(this)
         Pip.allowed = Prefs.pipNavigation(this)
         Shown.twelveHour = Prefs.twelveHour(this)
@@ -281,11 +284,17 @@ class MainActivity : ComponentActivity() {
     // Kav's own screen in front again: the button over Rav-Pass goes at once.
     override fun onResume() {
         super.onResume()
+        uk.noammm.kav.ext.Actions.resumed(this)
         uk.noammm.kav.ui.PayOverlay.disarm()
         uk.noammm.kav.ui.PayOverlay.split = isInMultiWindowMode
         // A permission "Pay with Rav-Pass" needs may have been taken away, or given, while Kav was away.
         uk.noammm.kav.ui.PayMode.refresh(this)
         PayEntry.resumed(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        uk.noammm.kav.ext.Actions.paused(this)
     }
 
     // Kav out of sight, with paying maybe switched in its settings: the shortcuts, tile and ticket notification follow.
@@ -389,6 +398,13 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var settingsOpen by mutableStateOf(false)
     // The bus being reported to the ministry, while its report is open.
     internal var report by mutableStateOf<uk.noammm.kav.ui.ReportFor?>(null)
+    // A report opened by a tap: an extension holding "report" goes first, and Kav's own opens the last one asked.
+    private var reportAsked: uk.noammm.kav.ui.ReportFor? = null
+    internal fun openReport(r: uk.noammm.kav.ui.ReportFor) {
+        reportAsked = r
+        if (!uk.noammm.kav.ext.Actions.take(null, "report") { uk.noammm.kav.ui.reportArgs(r) }) report = r
+    }
+    internal fun reportOwn() { reportAsked?.let { report = it } }
     var activeJourney by mutableStateOf<ActiveJourney?>(null)
     var returnHome by mutableStateOf(false)
 
@@ -402,16 +418,34 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var pendingLink by mutableStateOf<TripLink.Plan?>(null)
     var settingFavourite by mutableStateOf<uk.noammm.kav.ui.Favourite?>(null)
 
+    // The rider's saved places, stops and lines, each kept here: an extension holding "place.save", "stop.save" or
+    // "line.save" goes first, told the whole list as it would be kept.
     var favourites by mutableStateOf(ctx?.let { Prefs.favourites(it) } ?: emptyList())
     fun saveFavourites(ctx: Context, list: List<uk.noammm.kav.ui.Favourite>) {
+        if (uk.noammm.kav.ext.Actions.take(null, "place.save") { org.json.JSONObject().put("places", org.json.JSONArray(list.map { f ->
+                org.json.JSONObject().put("id", f.id).put("name", f.name).put("lat", f.place?.lat).put("lon", f.place?.lon)
+            })) }) { placesAsked = list; return }
+        saveFavouritesOwn(ctx, list)
+    }
+    // The list an extension was last asked to keep, for Kav's own (Kav.kavAction "place.save").
+    var placesAsked: List<uk.noammm.kav.ui.Favourite>? = null
+    fun saveFavouritesOwn(ctx: Context, list: List<uk.noammm.kav.ui.Favourite>) {
         favourites = list
         Prefs.saveFavourites(ctx, list)
     }
 
     var savedStops by mutableStateOf(ctx?.let { Prefs.savedStops(it) } ?: emptyList())
-    fun saveStops(ctx: Context, keys: List<String>) { savedStops = keys; Prefs.setSavedStops(ctx, keys) }
+    fun saveStops(ctx: Context, keys: List<String>) {
+        if (uk.noammm.kav.ext.Actions.take(null, "stop.save") { org.json.JSONObject().put("stops", org.json.JSONArray(keys)) }) return
+        saveStopsOwn(ctx, keys)
+    }
+    fun saveStopsOwn(ctx: Context, keys: List<String>) { savedStops = keys; Prefs.setSavedStops(ctx, keys) }
     var savedLines by mutableStateOf(ctx?.let { Prefs.savedLines(it) } ?: emptyList())
-    fun saveLines(ctx: Context, keys: List<String>) { savedLines = keys; Prefs.setSavedLines(ctx, keys) }
+    fun saveLines(ctx: Context, keys: List<String>) {
+        if (uk.noammm.kav.ext.Actions.take(null, "line.save") { org.json.JSONObject().put("lines", org.json.JSONArray(keys)) }) return
+        saveLinesOwn(ctx, keys)
+    }
+    fun saveLinesOwn(ctx: Context, keys: List<String>) { savedLines = keys; Prefs.setSavedLines(ctx, keys) }
     var lineAlerts by mutableStateOf(ctx?.let { Prefs.lineAlerts(it) } ?: emptyList())
     fun saveAlerts(ctx: Context, alerts: List<LineAlert>) {
         lineAlerts = alerts
@@ -451,7 +485,9 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     // Whether back from the tab goes to where it was opened from (a line found from an alert, say).
     fun returnsTo(destination: Tab) = returns.lastOrNull()?.destination == destination
     fun backFromStation() { if (!returnTo(Tab.Stations)) stationStop = -1 }
-    fun openStation(stop: Int) {
+    // A stop's board opened by a tap: an extension holding "stop.open" goes first (ext/Actions.kt).
+    fun openStation(stop: Int) { if (!uk.noammm.kav.ui.stopTaken(this, stop)) openStationOwn(stop) }
+    fun openStationOwn(stop: Int) {
         rememberReturn(Tab.Stations)
         stationStop = stop; tab = Tab.Stations
     }
@@ -459,6 +495,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         stationStop = -1; lineRoute = -1; scheduleLine = null; returns.clear()
     }
     fun openSchedule(line: uk.noammm.kav.data.Schedules.Line, code: Int) {
+        if (uk.noammm.kav.ui.lineTaken(this, line.number, net?.code?.indexOfFirst { it == code } ?: -1)) return
         rememberReturn(Tab.Lines)
         scheduleLine = line; scheduleSource = uk.noammm.kav.data.Schedules.source; scheduleStop = code
         lineRoute = -1; tab = Tab.Lines
@@ -689,6 +726,8 @@ private fun Root() {
     var onboarded by remember { mutableStateOf(Prefs.onboarded(ctx)) }
     val app = ctx.applicationContext
     val model: KavModel = viewModel { KavModel(Loaded.net, app) }
+    // Kav's own handling of its actions, for an extension's Kav.kavAction (ui/ExtActions.kt).
+    remember(model) { uk.noammm.kav.ui.kavActions(model) }
     if (!onboarded) {
         // Its paying step sets paying up with the same popup as Settings.
         Box(Modifier.fillMaxSize()) {
@@ -1086,7 +1125,7 @@ private fun Shell(model: KavModel) {
                         androidx.compose.animation.fadeIn(tween(200)),
                     exit = androidx.compose.animation.slideOutVertically(tween(200)) { it } +
                         androidx.compose.animation.fadeOut(tween(150)),
-                ) { TabBar(model) }
+                ) { uk.noammm.kav.ui.KavPart("tabbar", model.tab, { org.json.JSONObject().put("tab", model.tab.name.lowercase()) }) { TabBar(model) } }
             }
         },
     ) { pad ->
@@ -1403,6 +1442,8 @@ private fun TabBar(model: KavModel) {
                         on, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                         indication = null, role = Role.Tab,
                     ) {
+                        // An extension holding "tab.open" goes first (ext/Actions.kt).
+                        if (uk.noammm.kav.ext.Actions.take(null, "tab.open") { org.json.JSONObject().put("tab", t.name.lowercase()) }) return@selectable
                         model.settingsOpen = false
                         if (on) model.resetOpenPages()
                         // Home goes back to its start when tapped while on it; from another tab it's where it was left.
