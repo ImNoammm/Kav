@@ -93,7 +93,7 @@ internal fun DeparturesBlock(model: KavModel, code: Int, limit: Int) {
     val body: @Composable ColumnScope.() -> Unit = {
         Text(s?.let { net.stopName(it) } ?: T.ltr(code.toString()), style = K.type.headline)
         // Scheduled, never live: Kav's green is for times measured live, and none of these is.
-        Text(T("Scheduled · tap for live times", "לפי לוח הזמנים · הקישו לזמנים בזמן אמת"), style = K.type.caption)
+        Text(T("Scheduled · tap for live times", "לפי לוח הזמנים · הקישו לזמני הגעה בזמן אמת"), style = K.type.caption)
         val list = rows
         when {
             net == null || list == null -> Spinner(20.dp)

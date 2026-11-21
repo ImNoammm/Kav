@@ -111,7 +111,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
 
     part(
         "live",
-        T("Live times and planners", "זמנים בזמן אמת ומתכננים"),
+        T("Live times and planners", "זמני הגעה בזמן אמת ומתכננים"),
         serverUses(),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
@@ -249,7 +249,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             T("No account", "אין חשבון"),
             T(
                 "Planning, live times and search need no sign-in, profile or sync.",
-                "תכנון, זמנים בזמן אמת וחיפוש לא דורשים התחברות, פרופיל או סנכרון.",
+                "תכנון, זמני הגעה בזמן אמת וחיפוש לא דורשים התחברות, פרופיל או סנכרון.",
             ),
         )
         Absent(
@@ -1028,7 +1028,7 @@ internal fun CrowdChoice() {
     val said = when (crowd) {
         Prefs.CROWD_KAV -> T(
             "Your phone asks Kav's server (or your own, when live times come from it) how busy the lines you look at usually are: the first time each shows after Kav opens, and again after six hours (after ten minutes when there was no answer). It learns which lines you look at. Nothing goes to Google.",
-            "הטלפון שואל את השרת של Kav (או את השרת שלכם, כשהזמנים בזמן אמת מגיעים ממנו) כמה עמוסים בדרך כלל הקווים שאתם מסתכלים עליהם: בפעם הראשונה שכל קו מוצג אחרי ש-Kav נפתחת, ושוב אחרי שש שעות (אחרי עשר דקות כשלא הייתה תשובה). הוא יודע אילו קווים אתם מסתכלים עליהם. שום דבר לא נשלח ל-Google.",
+            "הטלפון שואל את השרת של Kav (או את השרת שלכם, כשזמני ההגעה בזמן אמת מגיעים ממנו) כמה עמוסים בדרך כלל הקווים שאתם מסתכלים עליהם: בפעם הראשונה שכל קו מוצג אחרי ש-Kav נפתחת, ושוב אחרי שש שעות (אחרי עשר דקות כשלא הייתה תשובה). הוא יודע אילו קווים אתם מסתכלים עליהם. שום דבר לא נשלח ל-Google.",
         )
         Prefs.CROWD_GOOGLE -> T(
             "Kav asks Google from your phone about the stop you board at while a trip, navigation or a line's page is open, at most every ten minutes: Google sees the stop and your IP address.",
@@ -1250,7 +1250,7 @@ internal fun PlanningSource() {
                     "עותק משלכם של השרת של Kav מחשב את המסלולים שאתם מחפשים, עם המתכנן שלו. כפי שמוגדר עכשיו, ") + kavStill()
             } + T(
                 " The trips it finds get their live times from the choice above.",
-                " המסלולים שהוא מוצא מקבלים את הזמנים בזמן אמת מהבחירה שלמעלה.",
+                " המסלולים שהוא מוצא מקבלים את זמני ההגעה בזמן אמת מהבחירה שלמעלה.",
             )
         },
         Source.PLANNING, KavPlan.source, { s -> KavPlan.source = s; Prefs.setPlanSource(ctx, s) },
@@ -1369,7 +1369,7 @@ internal fun ShareServerChoice() {
         Column {
             InfoHeader(T("Share links made on", "קישורי שיתוף נוצרים ב"), T(
                 "Where a Kav link you share keeps the trip until it expires: Kav's server or your own. Whoever opens the link reads the trip from there. Until you pick, links are made on your server while live times or trips come from it.",
-                "המקום שבו קישור Kav ששיתפתם שומר את הנסיעה עד שתוקפו פג: השרת של Kav או השרת שלכם. מי שפותח את הקישור קורא את הנסיעה משם. עד שתבחרו, קישורים נוצרים בשרת שלכם כשהזמנים בזמן אמת או המסלולים מגיעים ממנו.",
+                "המקום שבו קישור Kav ששיתפתם שומר את הנסיעה עד שתוקפו פג: השרת של Kav או השרת שלכם. מי שפותח את הקישור קורא את הנסיעה משם. עד שתבחרו, קישורים נוצרים בשרת שלכם כשזמני ההגעה בזמן אמת או המסלולים מגיעים ממנו.",
             ))
             val order = listOf(Source.KAV, Source.OWN)
             KavSegmented(
