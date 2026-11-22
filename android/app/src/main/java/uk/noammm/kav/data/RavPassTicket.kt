@@ -433,28 +433,29 @@ internal object Tickets {
     // the one it ends (a transfer, or a fare Kav can't tell from one) keeps that window: it began with the first fare.
     fun current(kept: List<Ticket>): List<Ticket> {
         val newest = HashMap<TicketScreens.Kind, Ticket>()
-        for (t in kept.sortedBy { it.start }) {
+        for (t in kept.filter { it.endsAt == null }.sortedBy { it.start }) {
             val f = family(t.kind)
             val before = newest[f]
             val from = before?.let { b -> b.windowFrom ?: b.paidAt ?: b.shownAt }
             val inside = before?.validUntil?.let { end -> (t.paidAt ?: t.shownAt)?.let { it < end } } == true
             newest[f] = if (inside && t.windowFrom == null && (t.band ?: Ticket.NEAR_KM) <= Ticket.NEAR_KM) t.copy(windowFrom = from) else t
         }
-        return kept.mapNotNull { t -> newest[family(t.kind)]?.takeIf { it.key == t.key } }
+        return kept.mapNotNull { t -> if (t.endsAt != null) t else newest[family(t.kind)]?.takeIf { it.key == t.key } }
     }
 
     // Rav-Pass said it has no active ticket of these kinds (TicketScreens.noTicket), its bar up since `since`: the tickets
     // of their family Kav kept before then end.
     fun end(kept: List<Ticket>, kinds: Set<TicketScreens.Kind>, since: Long): List<Ticket> =
-        kept.filterNot { t -> kinds.any { family(it) == family(t.kind) } && t.readAt < since }
+        kept.filterNot { t -> t.endsAt == null && kinds.any { family(it) == family(t.kind) } && t.readAt < since }
 
     // A read ticket added to those kept. The same ticket is one with the same key, or one sharing any passenger's code (a
     // light rail ticket has no number), or the group it's the rest of; seen again it gains any passenger not seen before
     // and keeps its first reading. A ticket already over when it's read isn't kept and isn't new. True when it's new.
     fun merge(kept: List<Ticket>, read: Ticket): Pair<List<Ticket>, Boolean> {
         if (read.overAt <= read.readAt) return kept to false
-        val (all, new) = add(kept, read)
-        val now = current(all)
+        val (readTickets, extensionTickets) = kept.partition { it.endsAt == null }
+        val (all, new) = add(readTickets, read)
+        val now = current(all) + extensionTickets
         // A reading older than the ticket kept of its family is no ticket of Kav's.
         return now to (new && now.any { it.key == read.key })
     }

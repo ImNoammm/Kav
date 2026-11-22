@@ -29,6 +29,7 @@ import uk.noammm.kav.ext.Slots
 import uk.noammm.kav.ActiveJourney
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.RecentTrip
+import uk.noammm.kav.TicketStore
 import uk.noammm.kav.data.Transit
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -143,10 +144,11 @@ internal fun HomeScreen(
                 }
                 // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
                 if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
-                // Paying and the tickets, in one card as before 4.3.2: set up, turned on with something missing, or offered
-                // to a rider who never turned it on (PayCard).
-                if (Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer) item(key = "payments") {
-                    KavPart("home.pay", Unit, { JSONObject() }) { PayCard(listMotion().padding(top = K.gap4)) }
+                // Extension tickets and their ride history stay on Home after the payment extension is switched off.
+                val showPay = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
+                if (showPay || TicketStore.kept.any { it.key.startsWith("ext:") } ||
+                    TicketStore.history.any { it.key.startsWith("ext:") }) item(key = "payments") {
+                    KavPart("home.pay", Unit, { JSONObject() }) { PayCard(listMotion().padding(top = K.gap4), showPay) }
                 }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
                 if (recentTrips.isNotEmpty()) item(key = "recent") { KavPart("home.recent", recentTrips, { JSONObject() }) {
