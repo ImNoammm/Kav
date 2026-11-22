@@ -458,7 +458,7 @@ internal fun PayingSettings() {
             ListRow(T("Ride history", "היסטוריית נסיעות"),
                 subtitle = TicketStore.history.size.takeIf { it > 0 }?.let { T.count(it, "1 ride", "נסיעה אחת", "rides", "נסיעות") },
                 leading = { Icon(Icons.Rounded.History, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(22.dp)) },
-                onClick = { PayHistory.open = true })
+                onClick = { PayHistory.request("settings") })
         }
         if (TicketView.supported() && live.isNotEmpty()) row { LiveTicketsRow() }
         if (TicketStore.history.isNotEmpty()) row {

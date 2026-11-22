@@ -511,9 +511,11 @@ private fun LiveScreenForSource(model: KavModel) {
     Column(Modifier.fillMaxSize()) {
         // Where the live data comes from, under an info button instead of on every visit.
         var about by rememberSaveable { mutableStateOf(false) }
-        ScreenHeader(T("Live", "בזמן אמת")) {
-            KavIconButton(Icons.Rounded.Info, T("Where live data comes from", "מאיפה המידע בזמן אמת"), { about = !about },
-                floating = true, tint = androidx.compose.animation.animateColorAsState(if (about) K.accentInk else K.textSecondary, tween(200), label = "aboutTint").value)
+        KavPart("live.header", about, { org.json.JSONObject().put("showingInfo", about) }) {
+            ScreenHeader(T("Live", "בזמן אמת")) {
+                KavIconButton(Icons.Rounded.Info, T("Where live data comes from", "מאיפה המידע בזמן אמת"), { about = !about },
+                    floating = true, tint = androidx.compose.animation.animateColorAsState(if (about) K.accentInk else K.textSecondary, tween(200), label = "aboutTint").value)
+            }
         }
         // The panel's height as it opens and closes, taken in the same layout pass as the map's (the Column measures it
         // first): the map stays its height without it (aboutTall), its card cutting off the bottom, so opening the panel
@@ -567,12 +569,19 @@ private fun LiveScreenForSource(model: KavModel) {
         }
         // What the map shows: words, one control, in reach above the map.
         val shows = listOf(LiveShow.ALL, LiveShow.TRAFFIC, LiveShow.STOPS)
-        KavSegmented(
-            listOf(T("All", "הכול"), T("Vehicles", "כלי רכב"), T("Stops", "תחנות")),
-            selected = shows.indexOf(model.liveShow),
-            onSelect = { model.liveShow = shows[it] },
-            modifier = Modifier.padding(horizontal = K.gap4).padding(bottom = K.gap3),
-        )
+        KavPart("live.filters", model.liveShow, { org.json.JSONObject().put("show", liveShowKey(model.liveShow)) }) {
+            KavSegmented(
+                listOf(T("All", "הכול"), T("Vehicles", "כלי רכב"), T("Stops", "תחנות")),
+                selected = shows.indexOf(model.liveShow),
+                onSelect = { i ->
+                    val show = shows[i]
+                    if (!uk.noammm.kav.ext.Actions.take(ctx, "live.show") { org.json.JSONObject().put("show", liveShowKey(show)) }) {
+                        model.liveShow = show
+                    }
+                },
+                modifier = Modifier.padding(horizontal = K.gap4).padding(bottom = K.gap3),
+            )
+        }
         // Once you're found the row folds away and the map grows into its place.
         androidx.compose.animation.AnimatedVisibility(
             !located,

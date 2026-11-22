@@ -18,6 +18,9 @@ object Actions {
         "report", "alert.open", "taxi", "street.open",
         "place.save", "stop.save", "line.save",
         "settings.open", "tab.open",
+        "settings.page.open", "pay.history.open", "plan.stop", "live.show",
+        "search.open", "results.place.pick", "results.endpoints.swap", "results.stop.remove",
+        "results.stop.stay", "results.time.select", "results.order.select", "results.planner.select",
     )
 
     const val CAPABILITY = "action."

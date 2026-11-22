@@ -11,6 +11,8 @@ import kav.kavapp.api.Kav
 // The four cards of API 3 (Kav.card, Slots) sit where they always did, each beside one of these: "home" after
 // home.suggestions, "trip" after trip.timeline, "stop" at the top of stop.board, "results" inside results.route's card.
 object Parts {
+    val SETTINGS_PAGES = listOf("trips", "paying", "live", "look", "map", "privacy", "extensions", "kav")
+
     // Every part, with what it is told (docs/native.md lists each with its JSON and where Kav draws it).
     val NAMES = listOf(
         "home.places", "home.journey", "home.suggestions", "home.latest", "home.pay", "home.recent",
@@ -20,7 +22,13 @@ object Parts {
         "line.header",
         "settings.root",
         "tabbar",
-    )
+        "settings.page.header",
+        "stops.header", "stops.search", "lines.header", "lines.search", "lines.filters",
+        "live.header", "live.filters",
+        "results.endpoints", "results.options", "results.time.shift", "results.planners",
+        "ticket.header", "ticket.validity", "ticket.ride",
+        "pay.history.header", "pay.history.summary", "pay.history.empty", "pay.history.month", "pay.history.ride",
+    ) + SETTINGS_PAGES.map { "settings.page.$it" }
 
     const val CAPABILITY = "part."
     val CAPABILITIES get() = NAMES.map { CAPABILITY + it }

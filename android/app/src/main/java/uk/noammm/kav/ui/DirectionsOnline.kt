@@ -34,6 +34,10 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import uk.noammm.kav.data.RailTrip
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import uk.noammm.kav.Tab
+import uk.noammm.kav.ext.Actions
 
 private data class OpenTrip(
     val trip: Transit.Itinerary,
@@ -63,6 +67,12 @@ private const val TOO_CLOSE_M = 120.0
 private const val TOO_CLOSE = "too-close"
 
 internal val HERE = listOf("Current location", "המיקום הנוכחי")
+
+private fun timeWay(type: Int) = when (type) {
+    Transit.TIME_ARRIVAL -> "arrive"
+    Transit.TIME_LAST -> "last"
+    else -> "depart"
+}
 
 private fun hereName() = T(HERE[0], HERE[1])
 
@@ -112,7 +122,7 @@ internal fun sharedPlace(name: String?, lat: Double, lon: Double) = Place(
 private fun planArgs(from: Place?, to: Place?, fromLL: Pair<Double, Double>?, toLL: Pair<Double, Double>?, at: Long, type: Int): org.json.JSONObject {
     fun end(p: Place?, ll: Pair<Double, Double>?) = org.json.JSONObject().put("name", p?.name ?: hereName()).put("lat", ll?.first).put("lon", ll?.second)
     return org.json.JSONObject().put("from", end(from, fromLL)).put("to", end(to, toLL)).put("at", at / 1000)
-        .put("way", when (type) { Transit.TIME_ARRIVAL -> "arrive"; Transit.TIME_LAST -> "last"; else -> "depart" })
+        .put("way", timeWay(type))
 }
 
 @Composable
@@ -182,6 +192,74 @@ fun DirectionsOnline(model: KavModel) {
     var tab by remember { mutableStateOf<Source?>(null) }
     val tabs = if (KavPlan.everyPlanner) KavPlan.tabs() else emptyList()
     val planner = tab?.takeIf { it in tabs } ?: KavPlan.source
+    fun openSearch() {
+        hereOrigin = null; stopovers = emptyList(); linkError = null; fromPlace = null
+        departAt = 0L; timeType = Transit.TIME_DEPARTURE; picking = "to"
+    }
+    fun pickPlace(which: String, index: Int = -1) {
+        when (which) {
+            "from", "to" -> picking = which
+            "stop" -> if (index < 0) picking = "stop" else if (index in stopovers.indices) picking = "stop:$index"
+        }
+    }
+    fun swapEnds() {
+        val a = fromPlace
+        fromPlace = toPlace
+        toPlace = a ?: hereOrigin?.let(::herePlace)
+    }
+    fun removeStop(index: Int) { stopovers = stopovers.filterIndexed { i, _ -> i != index } }
+    fun stayAtStop(index: Int, minutes: Int) {
+        if (minutes in 0..60) stopovers = stopovers.mapIndexed { i, s -> if (i == index) s.staying(minutes) else s }
+    }
+    fun chooseTime(ms: Long, type: Int) {
+        departAt = ms; timeType = type; whenOpen = false; showResults = true
+    }
+    fun chooseOrder(order: Sort) { sort = order; orderOpen = false }
+    fun resultAction(name: String, args: () -> JSONObject = { JSONObject() }, own: () -> Unit) {
+        if (!Actions.take(ctx, name, args)) own()
+    }
+    fun pickResultPlace(which: String, index: Int = -1) {
+        resultAction("results.place.pick", {
+            JSONObject().put("end", which).put("index", index.takeIf { it >= 0 })
+        }) { pickPlace(which, index) }
+    }
+    fun selectTime(ms: Long, type: Int) {
+        resultAction("results.time.select", {
+            JSONObject().put("at", ms / 1000).put("way", timeWay(type))
+        }) { chooseTime(ms, type) }
+    }
+    DisposableEffect(model) {
+        Actions.own("search.open") { _, _ ->
+            if (model.tab == Tab.Directions && !model.settingsOpen && !showResults && open == null) openSearch()
+        }
+        fun onResults(name: String, own: (JSONObject) -> Unit) {
+            Actions.own(name) { _, a ->
+                if (model.tab == Tab.Directions && !model.settingsOpen && showResults && open == null) own(a)
+            }
+        }
+        onResults("results.place.pick") { pickPlace(it.optString("end"), it.optInt("index", -1)) }
+        onResults("results.endpoints.swap") { swapEnds() }
+        onResults("results.stop.remove") { removeStop(it.optInt("index", -1)) }
+        onResults("results.stop.stay") { stayAtStop(it.optInt("index", -1), it.optInt("minutes", -1)) }
+        onResults("results.time.select") { a ->
+            val seconds = a.optLong("at", -1)
+            val type = when (a.optString("way")) {
+                "depart" -> Transit.TIME_DEPARTURE
+                "arrive" -> Transit.TIME_ARRIVAL
+                "last" -> Transit.TIME_LAST
+                else -> null
+            }
+            if (type != null && seconds in 0..4_102_444_800L) chooseTime(seconds * 1000, type)
+        }
+        onResults("results.order.select") { a ->
+            Sort.entries.firstOrNull { it.name.lowercase() == a.optString("order") && (it != Sort.LOWEST_CO2 || Shown.co2) }
+                ?.let(::chooseOrder)
+        }
+        onResults("results.planner.select") { a ->
+            if (KavPlan.everyPlanner) KavPlan.tabs().firstOrNull { it.key == a.optString("source") }?.let { tab = it }
+        }
+        onDispose { }
+    }
     val everyScope = rememberCoroutineScope()
     val every = remember { EveryPlanner(everyScope) }
     // Routes a tab already had when it was picked: their live times are from when they were planned.
@@ -592,7 +670,7 @@ fun DirectionsOnline(model: KavModel) {
         HomeScreen(
             model = model,
             recentTrips = Prefs.trips(ctx),
-            onSearch = { hereOrigin = null; stopovers = emptyList(); linkError = null; fromPlace = null; departAt = 0L; timeType = Transit.TIME_DEPARTURE; picking = "to" },
+            onSearch = { resultAction("search.open") { openSearch() } },
             onFavourite = { p ->
                 hereOrigin = null; stopovers = emptyList(); linkError = null; fromPlace = null; toPlace = p
                 departAt = 0L; timeType = Transit.TIME_DEPARTURE
@@ -661,87 +739,100 @@ fun DirectionsOnline(model: KavModel) {
             verticalArrangement = Arrangement.spacedBy(K.gap3),
         ) {
             item(key = "trip") {
-                PlanHeader(
-                    // With no start picked the trip starts where you are, so it says so even before the fix arrives.
-                    from = endpointName(fromPlace) ?: hereName(),
-                    to = endpointName(toPlace),
-                    fromIsHere = fromIsHere,
-                    toIsHere = isHere(toPlace),
-                    onFrom = { picking = "from" },
-                    onTo = { picking = "to" },
-                    stops = stopovers.map { it.name },
-                    stays = stopovers.map { it.stayMin },
-                    onStay = { i, minutes -> stopovers = stopovers.mapIndexed { j, s -> if (j == i) s.staying(minutes) else s } },
-                    onAddStop = { picking = "stop" },
-                    onStop = { i -> picking = "stop:$i" },
-                    onRemoveStop = { i -> stopovers = stopovers.filterIndexed { j, _ -> j != i } },
-                    // Places counted from the start, 0. The start moved away takes where you are as a place like the
-                    // others, and a place moved to the start becomes it.
-                    onMove = { a, b ->
-                        val dest = toPlace
-                        val start = fromPlace ?: (hereOrigin ?: here)?.let(::herePlace)
-                        if (dest != null && (a > 0 && b > 0 || start != null)) {
-                            val way = (listOfNotNull(start.takeIf { a == 0 || b == 0 }) + stopovers + dest).toMutableList()
-                            val shift = if (a == 0 || b == 0) 0 else 1
-                            way.add(b - shift, way.removeAt(a - shift))
-                            if (shift == 0) { hereOrigin = null; fromPlace = way.removeAt(0) }
-                            toPlace = way.last(); stopovers = way.dropLast(1)
-                        }
-                    },
-                    onSwap = {
-                        val a = fromPlace
-                        fromPlace = toPlace
-                        toPlace = a ?: hereOrigin?.let(::herePlace)
-                    },
-                    onBack = { leaveResults() },
-                )
+                KavPart("results.endpoints", Triple(fromPlace, toPlace, stopovers), {
+                    JSONObject().put("from", endpointName(fromPlace) ?: hereName()).put("to", endpointName(toPlace))
+                        .put("stops", JSONArray(stopovers.map { JSONObject().put("name", it.name).put("minutes", it.stayMin) }))
+                }) {
+                    PlanHeader(
+                        // With no start picked the trip starts where you are, so it says so even before the fix arrives.
+                        from = endpointName(fromPlace) ?: hereName(),
+                        to = endpointName(toPlace),
+                        fromIsHere = fromIsHere,
+                        toIsHere = isHere(toPlace),
+                        onFrom = { pickResultPlace("from") },
+                        onTo = { pickResultPlace("to") },
+                        stops = stopovers.map { it.name },
+                        stays = stopovers.map { it.stayMin },
+                        onStay = { i, minutes ->
+                            resultAction("results.stop.stay", { JSONObject().put("index", i).put("minutes", minutes) }) { stayAtStop(i, minutes) }
+                        },
+                        onAddStop = { pickResultPlace("stop") },
+                        onStop = { i -> pickResultPlace("stop", i) },
+                        onRemoveStop = { i -> resultAction("results.stop.remove", { JSONObject().put("index", i) }) { removeStop(i) } },
+                        // Places counted from the start, 0. The start moved away takes where you are as a place like the
+                        // others, and a place moved to the start becomes it.
+                        onMove = { a, b ->
+                            val dest = toPlace
+                            val start = fromPlace ?: (hereOrigin ?: here)?.let(::herePlace)
+                            if (dest != null && (a > 0 && b > 0 || start != null)) {
+                                val way = (listOfNotNull(start.takeIf { a == 0 || b == 0 }) + stopovers + dest).toMutableList()
+                                val shift = if (a == 0 || b == 0) 0 else 1
+                                way.add(b - shift, way.removeAt(a - shift))
+                                if (shift == 0) { hereOrigin = null; fromPlace = way.removeAt(0) }
+                                toPlace = way.last(); stopovers = way.dropLast(1)
+                            }
+                        },
+                        onSwap = { resultAction("results.endpoints.swap") { swapEnds() } },
+                        onBack = { leaveResults() },
+                    )
+                }
             }
             item(key = "when") {
-                Column {
-                    DepartRow(
-                        whenLabel(departAt, timeType),
-                        onWhen = { whenOpen = true },
-                        order = sort.labelText(),
-                        onOrder = { orderOpen = true },
-                    )
-                    PreciseLocationNudge()
+                KavPart("results.options", Triple(departAt, timeType, sort), {
+                    JSONObject().put("at", departAt / 1000).put("way", timeWay(timeType)).put("order", sort.name.lowercase())
+                }) {
+                    Column {
+                        DepartRow(
+                            whenLabel(departAt, timeType),
+                            onWhen = { whenOpen = true },
+                            order = sort.labelText(),
+                            onOrder = { orderOpen = true },
+                        )
+                        PreciseLocationNudge()
+                    }
                 }
             }
             // Earlier and Later, with the first route's time between them. It stays while new routes load, so the
             // time rolls to theirs instead of the row going.
             fun androidx.compose.foundation.lazy.LazyListScope.shiftRow(time: String) = item(key = "shift") {
-                Row(
-                    Modifier.animateItem(fadeInSpec = androidx.compose.animation.core.tween(240),
-                        fadeOutSpec = androidx.compose.animation.core.tween(150),
-                        placementSpec = androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))
-                        .fillMaxWidth().padding(horizontal = K.gap4),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    fun nudge(delta: Long) {
-                        val now = System.currentTimeMillis()
-                        val base = if (departAt == 0L) now else departAt
-                        departAt = (base + delta).let { if (it < now + 60_000L) 0L else it }
-                        if (departAt == 0L) timeType = Transit.TIME_DEPARTURE
+                KavPart("results.time.shift", time, { JSONObject().put("firstDeparture", time) }) {
+                    Row(
+                        Modifier.animateItem(fadeInSpec = androidx.compose.animation.core.tween(240),
+                            fadeOutSpec = androidx.compose.animation.core.tween(150),
+                            placementSpec = androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))
+                            .fillMaxWidth().padding(horizontal = K.gap4),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        fun nudge(delta: Long) {
+                            val now = System.currentTimeMillis()
+                            val base = if (departAt == 0L) now else departAt
+                            val next = (base + delta).let { if (it < now + 60_000L) 0L else it }
+                            selectTime(next, if (next == 0L) Transit.TIME_DEPARTURE else timeType)
+                        }
+                        KavChip(T("Earlier", "מוקדם יותר"), selected = false, onClick = { nudge(-15 * 60_000L) },
+                            icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft)
+                        Spacer(Modifier.weight(1f))
+                        // The time rolls up for Later and down for Earlier.
+                        RollingText(
+                            time,
+                            style = K.type.caption.tabular,
+                            order = compareBy { t -> t.filter(Char::isDigit).toIntOrNull() ?: 0 },
+                        )
+                        Spacer(Modifier.weight(1f))
+                        KavChip(T("Later", "מאוחר יותר"), selected = false, onClick = { nudge(15 * 60_000L) },
+                            trailing = Icons.AutoMirrored.Rounded.KeyboardArrowRight)
                     }
-                    KavChip(T("Earlier", "מוקדם יותר"), selected = false, onClick = { nudge(-15 * 60_000L) },
-                        icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft)
-                    Spacer(Modifier.weight(1f))
-                    // The time rolls up for Later and down for Earlier.
-                    RollingText(
-                        time,
-                        style = K.type.caption.tabular,
-                        order = compareBy { t -> t.filter(Char::isDigit).toIntOrNull() ?: 0 },
-                    )
-                    Spacer(Modifier.weight(1f))
-                    KavChip(T("Later", "מאוחר יותר"), selected = false, onClick = { nudge(15 * 60_000L) },
-                        trailing = Icons.AutoMirrored.Rounded.KeyboardArrowRight)
                 }
             }
             // A tab for each planner under Earlier and Later, when every planner's routes show; over a planner's error
             // or empty answer too, so another can be picked.
             fun androidx.compose.foundation.lazy.LazyListScope.tabsRow() {
                 if (tabs.size > 1) item(key = "planners") {
-                    PlannerTabs(tabs, planner, { tab = it }, listMotion().padding(horizontal = K.gap4, vertical = K.gap2))
+                    KavPart("results.planners", tabs to planner, { JSONObject().put("source", planner.key).put("sources", JSONArray(tabs.map { it.key })) }) {
+                        PlannerTabs(tabs, planner, { picked ->
+                            resultAction("results.planner.select", { JSONObject().put("source", picked.key) }) { tab = picked }
+                        }, listMotion().padding(horizontal = K.gap4, vertical = K.gap2))
+                    }
                 }
             }
             when {
@@ -1020,7 +1111,10 @@ fun DirectionsOnline(model: KavModel) {
         val orders = Sort.entries.filter { it != Sort.LOWEST_CO2 || Shown.co2 }
         ChoiceSheet(
             T("Order routes by", "סדר המסלולים"), orders.map { it.labelText() }, orders.indexOf(sort),
-            onPick = { sort = orders[it]; orderOpen = false },
+            onPick = { i ->
+                val order = orders[i]
+                resultAction("results.order.select", { JSONObject().put("order", order.name.lowercase()) }) { chooseOrder(order) }
+            },
             onDismiss = { orderOpen = false },
         )
     }
@@ -1028,10 +1122,8 @@ fun DirectionsOnline(model: KavModel) {
     if (whenOpen) WhenSheet(
         departAt = departAt,
         timeType = timeType,
-        onPick = { ms, type ->
-            departAt = ms; timeType = type; whenOpen = false; showResults = true
-        },
-        onNow = { departAt = 0L; timeType = Transit.TIME_DEPARTURE; whenOpen = false },
+        onPick = ::selectTime,
+        onNow = { selectTime(0L, Transit.TIME_DEPARTURE) },
         onDismiss = { whenOpen = false },
     )
 }

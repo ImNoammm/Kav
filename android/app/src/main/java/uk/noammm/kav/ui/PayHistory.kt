@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.json.JSONObject
 import uk.noammm.kav.TicketStore
 import uk.noammm.kav.data.Ride
 import uk.noammm.kav.data.RideHistory
@@ -37,6 +38,10 @@ import java.util.Locale
 // (TicketStore.history) rather than HopOn's billing: this month and the last at the top, then every ride month by month.
 internal object PayHistory {
     var open by mutableStateOf(false)
+
+    fun request(source: String) {
+        if (!uk.noammm.kav.ext.Actions.take(null, "pay.history.open") { JSONObject().put("source", source) }) open = true
+    }
 }
 
 // year * 12 + month, from 0, in Israel time.
@@ -77,36 +82,50 @@ private fun PayHistoryScreen(onClose: () -> Unit) {
     val lastMonth = months.firstOrNull { it.first == current - 1 }?.second.orEmpty()
     androidx.activity.compose.BackHandler(onBack = onClose)
     Column(Modifier.fillMaxSize().background(K.bg).statusBarsPadding()) {
-        ScreenHeader(T("Ride history", "היסטוריית נסיעות"), back = onClose)
+        KavPart("pay.history.header", Unit, { JSONObject() }) {
+            ScreenHeader(T("Ride history", "היסטוריית נסיעות"), back = onClose)
+        }
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = K.gap4, end = K.gap4, bottom = K.gap6 + LocalBottomBarInset.current),
         ) {
             item(key = "stats") {
-                Column(Modifier.fillMaxWidth().panel(K.rCard).padding(K.gap5), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
-                    // A month with every ride's price known shows its quoted total over its rides; else its rides alone.
-                    val thisTotal = quoted(thisMonth)
-                    val lastTotal = quoted(lastMonth)
-                    Row(horizontalArrangement = Arrangement.spacedBy(K.gap6)) {
-                        Stat(T("This month", "החודש"), rides(thisMonth.size), thisTotal)
-                        Stat(T("Last month", "חודש שעבר"), rides(lastMonth.size), lastTotal)
+                KavPart("pay.history.summary", thisMonth to lastMonth, {
+                    JSONObject().put("thisMonth", thisMonth.size).put("lastMonth", lastMonth.size)
+                }) {
+                    Column(Modifier.fillMaxWidth().panel(K.rCard).padding(K.gap5), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
+                        // A month with every ride's price known shows its quoted total over its rides; else its rides alone.
+                        val thisTotal = quoted(thisMonth)
+                        val lastTotal = quoted(lastMonth)
+                        Row(horizontalArrangement = Arrangement.spacedBy(K.gap6)) {
+                            Stat(T("This month", "החודש"), rides(thisMonth.size), thisTotal)
+                            Stat(T("Last month", "חודש שעבר"), rides(lastMonth.size), lastTotal)
+                        }
+                        if (thisTotal != null || lastTotal != null) Note(T("Prices are what Rav-Pass quoted when you paid. Monthly caps can lower the charge.",
+                            "המחירים הם מה שרב-פס הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
                     }
-                    if (thisTotal != null || lastTotal != null) Note(T("Prices are what Rav-Pass quoted when you paid. Monthly caps can lower the charge.",
-                        "המחירים הם מה שרב-פס הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
                 }
             }
             if (months.isEmpty()) item(key = "none") {
-                NoteCard(T("Rides you pay for with Rav-Pass show here.", "נסיעות שתשלמו עליהן ברב-פס יופיעו כאן."), Modifier.padding(top = K.gap4))
+                KavPart("pay.history.empty", Unit, { JSONObject() }) {
+                    NoteCard(T("Rides you pay for with Rav-Pass show here.", "נסיעות שתשלמו עליהן ברב-פס יופיעו כאן."), Modifier.padding(top = K.gap4))
+                }
             }
             months.forEach { (key, list) ->
                 item(key = "m$key") {
-                    Row(Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap4, top = K.gap6, bottom = K.gap2),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(monthName(key), style = K.type.header, modifier = Modifier.weight(1f))
-                        Text(listOfNotNull(rides(list.size), quoted(list)?.let(T::ltr)).joinToString(" · "), style = K.type.subhead)
+                    KavPart("pay.history.month", key to list, {
+                        JSONObject().put("year", key / 12).put("month", key % 12 + 1).put("rides", list.size)
+                    }) {
+                        Row(Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap4, top = K.gap6, bottom = K.gap2),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(monthName(key), style = K.type.header, modifier = Modifier.weight(1f))
+                            Text(listOfNotNull(rides(list.size), quoted(list)?.let(T::ltr)).joinToString(" · "), style = K.type.subhead)
+                        }
                     }
                 }
-                itemsIndexed(list, key = { _, r -> "r${r.key}" }) { i, r -> RideRow(r, i == 0, i == list.lastIndex) }
+                itemsIndexed(list, key = { _, r -> "r${r.key}" }) { i, r ->
+                    KavPart("pay.history.ride", r, { r.json() }) { RideRow(r, i == 0, i == list.lastIndex) }
+                }
             }
         }
     }
@@ -166,7 +185,7 @@ internal fun RideSummary() {
     val counts = keys.map { by[it]?.size ?: 0 }
     Separator()
     Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = T("Open the ride history", "פתיחת היסטוריית הנסיעות")) { PayHistory.open = true }
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = T("Open the ride history", "פתיחת היסטוריית הנסיעות")) { PayHistory.request("home") }
             .padding(horizontal = K.gap4, vertical = K.gap3),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(K.gap4),

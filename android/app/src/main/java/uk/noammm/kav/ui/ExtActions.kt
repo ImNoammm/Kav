@@ -4,8 +4,10 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.KavModel
+import uk.noammm.kav.Tab
 import uk.noammm.kav.TicketStore
 import uk.noammm.kav.data.Net
+import uk.noammm.kav.data.Transit
 import uk.noammm.kav.ext.Actions
 import uk.noammm.kav.ext.Kind
 import uk.noammm.kav.ext.Namespace
@@ -22,6 +24,25 @@ internal fun stopArgs(net: Net?, stop: Int): JSONObject {
 
 // A stop's board opened by a tap: true when an extension holding "stop.open" took it.
 internal fun stopTaken(model: KavModel, stop: Int): Boolean = Actions.take(null, "stop.open") { stopArgs(model.net, stop) }
+
+internal fun planFromStop(model: KavModel, stop: Int, place: Transit.Place, end: String) {
+    if (!Actions.take(null, "plan.stop") {
+        stopArgs(model.net, stop).put("end", end).put("place", JSONObject()
+            .put("name", place.name).put("detail", place.detail).put("lat", place.lat).put("lon", place.lon)
+            .put("type", place.type).put("mode", place.mode))
+    }) planFromStopOwn(model, place, end)
+}
+
+private fun planFromStopOwn(model: KavModel, place: Transit.Place, end: String) {
+    when (end) {
+        "from" -> model.pendingFrom = place
+        "to" -> model.pendingTo = place
+        else -> return
+    }
+    model.tab = Tab.Directions
+}
+
+internal fun liveShowKey(show: LiveShow) = if (show == LiveShow.TRAFFIC) "vehicles" else show.name.lowercase()
 
 // A line's page opened by a tap: its number, and the stop it opens at when there is one.
 internal fun lineTaken(model: KavModel, number: String?, stop: Int): Boolean = Actions.take(null, "line.open") {
@@ -57,6 +78,25 @@ internal fun kavActions(model: KavModel) {
     }
     Actions.own("ticket.open") { _, a -> TicketStore.opened = a.optString("key").ifEmpty { null } }
     Actions.own("report") { _, _ -> model.reportOwn() }
+    Actions.own("settings.page.open") { _, a ->
+        val page = a.optString("page")
+        if (page in uk.noammm.kav.ext.Parts.SETTINGS_PAGES) {
+            model.settingsOpen = true
+            SettingsNav.wanted = page
+        }
+    }
+    Actions.own("plan.stop") { _, a ->
+        val place = a.optJSONObject("place") ?: return@own
+        val lat = place.optDouble("lat")
+        val lon = place.optDouble("lon")
+        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return@own
+        planFromStopOwn(model, Transit.Place(place.optString("name"), place.optString("detail"), lat, lon,
+            place.optInt("type", 5), place.optInt("mode", -1)), a.optString("end"))
+    }
+    Actions.own("live.show") { _, a ->
+        LiveShow.entries.firstOrNull { liveShowKey(it) == a.optString("show") }?.let { model.liveShow = it }
+    }
+    Actions.own("pay.history.open") { _, _ -> PayHistory.open = true }
     Actions.own("settings.open") { _, _ -> model.settingsOpen = true }
     Actions.own("street.open") { _, _ -> StreetViewer.asked?.let { StreetViewer.open = it } }
     Actions.own("taxi") { ctx, a -> a.optString("link").takeIf { it.startsWith("gett://") }?.let { openGettOwn(ctx, it) } }

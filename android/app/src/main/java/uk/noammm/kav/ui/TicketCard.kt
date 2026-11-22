@@ -287,7 +287,9 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
     val pager = androidx.compose.foundation.pager.rememberPagerState { codes.size.coerceAtLeast(1) }
     val (net, ride) = rememberRide(t)
     Column(Modifier.fillMaxSize().background(K.bg).statusBarsPadding()) {
-        ScreenHeader(kindName(t.kind), back = onClose)
+        val about = { org.json.JSONObject().put("key", t.key).put("kind", t.kind.name)
+            .put("line", t.line).put("from", t.from).put("to", t.to).put("validUntil", t.validUntil) }
+        KavPart("ticket.header", t, about) { ScreenHeader(kindName(t.kind), back = onClose) }
         Column(
             Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = K.gap4)
                 .padding(top = K.gap2, bottom = K.gap4 + LocalBottomBarInset.current).animateContentSize(),
@@ -327,8 +329,8 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
                 }
             }
             Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-                TicketValidity(t, now)
-                TicketRideRows(t, net, ride, model, onClose)
+                KavPart("ticket.validity", t, about) { TicketValidity(t, now) }
+                TicketRideRows(t, net, ride, model, onClose, about)
             }
             if (!uk.noammm.kav.ExtTickets.mine(t)) KavButton(T("Open in Rav-Pass", "פתיחה ברב-פס"), onClick = { TicketStore.showAsked = System.currentTimeMillis(); RavPass.go(ctx, sectionOf(t)) },
                 style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
@@ -377,32 +379,35 @@ private fun TicketValidity(t: Ticket, now: Long) {
 // The ride: the line's plate, then the stop it was boarded at and the stop it goes to, down a short rail. The plate opens
 // the line's page and each stop its board, where Kav found them in its timetable; the rest is plain text.
 @Composable
-private fun TicketRideRows(t: Ticket, net: Net?, ride: TicketRide?, model: uk.noammm.kav.KavModel?, onClose: () -> Unit) {
+private fun TicketRideRows(t: Ticket, net: Net?, ride: TicketRide?, model: uk.noammm.kav.KavModel?, onClose: () -> Unit,
+    about: () -> org.json.JSONObject) {
     val from = stopName(net, ride?.from ?: -1, t.from)
     val to = stopName(net, ride?.to ?: -1, t.to)
     if (from == null && to == null && t.line == null) return
     Separator()
-    val m = model?.takeIf { net != null && ride != null }
-    Row(Modifier.fillMaxWidth().padding(K.gap2), verticalAlignment = Alignment.Top) {
-        val line = m?.takeIf { ride!!.route >= 0 }?.let { mm ->
-            {
-                openTimetableLine(mm, ride!!.route, ride.from.takeIf { it >= 0 } ?: ride.to)
-                onClose()
+    KavPart("ticket.ride", t, about) {
+        val m = model?.takeIf { net != null && ride != null }
+        Row(Modifier.fillMaxWidth().padding(K.gap2), verticalAlignment = Alignment.Top) {
+            val line = m?.takeIf { ride!!.route >= 0 }?.let { mm ->
+                {
+                    openTimetableLine(mm, ride!!.route, ride.from.takeIf { it >= 0 } ?: ride.to)
+                    onClose()
+                }
             }
-        }
-        Box(
-            Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(K.rBadge + 4.dp))
-                .then(if (line != null) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
-                    onClickLabel = T("Open the line", "פתיחת הקו"), onClick = line) else Modifier)
-                .padding(horizontal = K.gap2),
-            contentAlignment = Alignment.Center,
-        ) { TicketBadge(t, net, ride) }
-        Column(Modifier.weight(1f)) {
-            val stops = listOfNotNull(from?.let { it to (ride?.from ?: -1) }, to?.let { it to (ride?.to ?: -1) })
-            stops.forEachIndexed { i, (name, stop) ->
-                RideStop(name, first = i == 0, last = i == stops.lastIndex,
-                    said = if (stops.size == 2 && i == 0 || stops.size == 1 && from != null) T("Boarded at $name", "עלייה ב$name") else T("To $name", "אל $name"),
-                    onClick = m?.takeIf { stop >= 0 }?.let { mm -> { mm.openStation(stop); onClose() } })
+            Box(
+                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(K.rBadge + 4.dp))
+                    .then(if (line != null) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
+                        onClickLabel = T("Open the line", "פתיחת הקו"), onClick = line) else Modifier)
+                    .padding(horizontal = K.gap2),
+                contentAlignment = Alignment.Center,
+            ) { TicketBadge(t, net, ride) }
+            Column(Modifier.weight(1f)) {
+                val stops = listOfNotNull(from?.let { it to (ride?.from ?: -1) }, to?.let { it to (ride?.to ?: -1) })
+                stops.forEachIndexed { i, (name, stop) ->
+                    RideStop(name, first = i == 0, last = i == stops.lastIndex,
+                        said = if (stops.size == 2 && i == 0 || stops.size == 1 && from != null) T("Boarded at $name", "עלייה ב$name") else T("To $name", "אל $name"),
+                        onClick = m?.takeIf { stop >= 0 }?.let { mm -> { mm.openStation(stop); onClose() } })
+                }
             }
         }
     }

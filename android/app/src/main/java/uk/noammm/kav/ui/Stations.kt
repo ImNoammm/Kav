@@ -215,17 +215,19 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
     // Nearby, a stop's town is named only where it isn't the nearest town's.
     val homeTown = near.firstNotNullOfOrNull { if (RefTable.isHandle(it.first)) null else net.cityName(it.first).ifBlank { null } }
     Column(Modifier.fillMaxSize().graphicsLayer { alpha = under }) {
-        ScreenHeader(T("Stops", "תחנות"))
+        KavPart("stops.header", Unit, { org.json.JSONObject() }) { ScreenHeader(T("Stops", "תחנות")) }
         Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(
             start = K.gap4, end = K.gap4, bottom = LocalBottomBarInset.current + K.gap4,
         )) {
             item(key = "search") {
                 // The search and the map on one card.
-                Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-                    KavField(q, { q = it }, T("Search stops", "חיפוש תחנות"), Modifier.fillMaxWidth(), search = true, flat = true)
-                    Separator()
-                    SelectOnMapRow(0.dp, framed = false) { onMap = true }
+                KavPart("stops.search", q, { org.json.JSONObject().put("query", q) }) {
+                    Column(Modifier.fillMaxWidth().panel(K.rCard)) {
+                        KavField(q, { q = it }, T("Search stops", "חיפוש תחנות"), Modifier.fillMaxWidth(), search = true, flat = true)
+                        Separator()
+                        SelectOnMapRow(0.dp, framed = false) { onMap = true }
+                    }
                 }
             }
             // Every row comes, goes and moves with a fade and a glide: hits as the name is typed, stops as you move.
@@ -374,11 +376,11 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
             Spacer(Modifier.height(K.gap3))
             ActionStrip {
                 ActionTile(T("From here", "מכאן"), T("Plan a trip from this stop", "תכנון נסיעה מהתחנה הזו"), onClick = {
-                    model.pendingFrom = placeOf(net, stop); model.tab = uk.noammm.kav.Tab.Directions
+                    planFromStop(model, stop, placeOf(net, stop), "from")
                 }) { ink, _ -> fromHereGlyph(ink) }
                 ActionDivider()
                 ActionTile(T("To here", "לכאן"), T("Plan a trip to this stop", "תכנון נסיעה לתחנה הזו"), onClick = {
-                    model.pendingTo = placeOf(net, stop); model.tab = uk.noammm.kav.Tab.Directions
+                    planFromStop(model, stop, placeOf(net, stop), "to")
                 }) { ink, _ -> toHereGlyph(ink) }
                 ActionDivider()
                 val ctx = LocalContext.current
@@ -543,11 +545,11 @@ private fun ExtStopBoard(model: KavModel, net: Net, stop: Int, onBack: () -> Uni
             ActionStrip {
                 val place = e?.let { uk.noammm.kav.data.Transit.Place(name = it.name, detail = "", lat = it.lat, lon = it.lon) }
                 ActionTile(T("From here", "מכאן"), T("Plan a trip from this stop", "תכנון נסיעה מהתחנה הזו"), onClick = {
-                    if (place != null) { model.pendingFrom = place; model.tab = uk.noammm.kav.Tab.Directions }
+                    if (place != null) planFromStop(model, stop, place, "from")
                 }) { ink, _ -> fromHereGlyph(ink) }
                 ActionDivider()
                 ActionTile(T("To here", "לכאן"), T("Plan a trip to this stop", "תכנון נסיעה לתחנה הזו"), onClick = {
-                    if (place != null) { model.pendingTo = place; model.tab = uk.noammm.kav.Tab.Directions }
+                    if (place != null) planFromStop(model, stop, place, "to")
                 }) { ink, _ -> toHereGlyph(ink) }
                 ActionDivider()
                 // Saved with Kav's other stops by its reference, so it stays its publisher's (Extensions.savedKey).

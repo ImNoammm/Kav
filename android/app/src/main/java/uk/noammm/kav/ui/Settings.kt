@@ -332,7 +332,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                 }
                 KavPart("settings.root", Unit, { org.json.JSONObject() }) {
                     Column(Modifier.padding(horizontal = K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap6)) {
-                        for (group in SETTINGS_GROUPS) PartGroup(group.mapNotNull { id -> parts.firstOrNull { it.id == id } }) { page = it }
+                        for (group in SETTINGS_GROUPS) PartGroup(group.mapNotNull { id -> parts.firstOrNull { it.id == id } }) { id ->
+                            if (!uk.noammm.kav.ext.Actions.take(ctx, "settings.page.open") { org.json.JSONObject().put("page", id) }) page = id
+                        }
                     }
                 }
             } else {
@@ -340,10 +342,15 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                 val headTitle = (if (open.id == "extensions") ExtUi.title else null) ?: open.title
                 val headBack = { backs?.onBackPressed() ?: run { page = null } }
                 val headAdd = if (open.id == "extensions") ExtUi.headerAdd else null
-                if (headAdd != null) ScreenHeader(headTitle, back = headBack) {
-                    KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), headAdd)
-                } else ScreenHeader(headTitle, "", back = headBack)
-                Column(Modifier.padding(horizontal = K.gap1), content = open.content)
+                val about = { org.json.JSONObject().put("page", open.id).put("title", headTitle) }
+                KavPart("settings.page.header", open.id to headTitle, about) {
+                    if (headAdd != null) ScreenHeader(headTitle, back = headBack) {
+                        KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), headAdd)
+                    } else ScreenHeader(headTitle, "", back = headBack)
+                }
+                KavPart("settings.page.${open.id}", open.id to headTitle, about) {
+                    Column(Modifier.padding(horizontal = K.gap1), content = open.content)
+                }
             }
         }
     }

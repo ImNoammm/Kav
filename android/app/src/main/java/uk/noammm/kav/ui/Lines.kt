@@ -197,7 +197,7 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
     val listReady = list.leadReady || q.isNotBlank() || types.isNotEmpty()
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(T("Lines", "קווים"))
+        KavPart("lines.header", Unit, { org.json.JSONObject() }) { ScreenHeader(T("Lines", "קווים")) }
         var scrolled by list::scrolled
         LaunchedEffect(listState) {
             snapshotFlow { listState.isScrollInProgress }.collect { if (it) scrolled = true }
@@ -238,18 +238,22 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
 private fun LineSearch(q: String, onQ: (String) -> Unit, types: IntArray, onTypes: (IntArray) -> Unit) {
     Column {
         // The same card as the Stops tab's search.
-        Box(Modifier.fillMaxWidth().panel(K.rCard)) {
-            KavField(q, onQ, T("Line number or name", "מספר או שם קו"), Modifier.fillMaxWidth(), search = true, flat = true)
+        KavPart("lines.search", q, { org.json.JSONObject().put("query", q) }) {
+            Box(Modifier.fillMaxWidth().panel(K.rCard)) {
+                KavField(q, onQ, T("Line number or name", "מספר או שם קו"), Modifier.fillMaxWidth(), search = true, flat = true)
+            }
         }
         Spacer(Modifier.height(K.gap2))
-        Row(
-            Modifier
-                .bleed(K.gap4)
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = K.gap4),
-            horizontalArrangement = Arrangement.spacedBy(K.gap2),
-        ) {
-            FILTERS.forEach { (label, t) -> Chip(filterLabel(label), types === t) { onTypes(t) } }
+        KavPart("lines.filters", types, { org.json.JSONObject().put("modes", org.json.JSONArray(types.toList())) }) {
+            Row(
+                Modifier
+                    .bleed(K.gap4)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = K.gap4),
+                horizontalArrangement = Arrangement.spacedBy(K.gap2),
+            ) {
+                FILTERS.forEach { (label, t) -> Chip(filterLabel(label), types === t) { onTypes(t) } }
+            }
         }
         Spacer(Modifier.height(K.gap3))
     }
@@ -1060,7 +1064,7 @@ private fun ScheduleLines(model: KavModel, net: Net, state: ScheduleListState, l
     // As the week's list: the full list waits for Recent and Nearby.
     val listReady = leadReady || q.isNotBlank() || types.isNotEmpty()
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(T("Lines", "קווים"))
+        KavPart("lines.header", Unit, { org.json.JSONObject() }) { ScreenHeader(T("Lines", "קווים")) }
         Box(Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), state = state.scroll, contentPadding = PaddingValues(
                 start = K.gap4, end = K.gap4, bottom = LocalBottomBarInset.current + K.gap4,
