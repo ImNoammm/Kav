@@ -25,8 +25,7 @@ The first time, before any source, Kav shows "Before you add extensions": they a
 review them, they can do anything Kav can on the phone, and installing one is the rider's own call.
 
 After Add, every extension of the source shows in Settings › Extensions with its own switch, off until the rider
-switches it on. On, it runs at once. Each extension's page shows the same lines under "It can", with "By &lt;name>, a
-third-party extension, not made by Kav" where its parts show.
+switches it on. On, it runs at once. Each extension's page shows the same lines under "It can".
 
 ## Kav writes the lines, from your manifest
 

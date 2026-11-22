@@ -303,7 +303,7 @@ get no live times from Kav.
 ## Timetables and stop boards: `board.provide`
 
 A contribution with capability `board.provide` gives Kav stops of its own and what leaves them. Riders find those
-stops in the Stops tab, in search and nearby, after Kav's own and marked "by &lt;your extension>"; opening one shows
+stops in the Stops tab, in search and nearby, after Kav's own, with no mark of yours; opening one shows
 Kav's stop board filled with your times, marked as yours, refreshed every 30 seconds; and a rider can save the stop
 like any other (`ext/Hooks.kt`, `NativeBoard`). Kav asks only the stop's own publisher about it, wherever it shows
 departures.

@@ -1218,7 +1218,7 @@ get no live times from Kav.
 ### Timetables and stop boards: `board.provide`
 
 A contribution with capability `board.provide` gives Kav stops of its own and what leaves them. Riders find those
-stops in the Stops tab, in search and nearby, after Kav's own and marked "by &lt;your extension>"; opening one shows
+stops in the Stops tab, in search and nearby, after Kav's own, with no mark of yours; opening one shows
 Kav's stop board filled with your times, marked as yours, refreshed every 30 seconds; and a rider can save the stop
 like any other (`ext/Hooks.kt`, `NativeBoard`). Kav asks only the stop's own publisher about it, wherever it shows
 departures.
@@ -1769,8 +1769,7 @@ The first time, before any source, Kav shows "Before you add extensions": they a
 review them, they can do anything Kav can on the phone, and installing one is the rider's own call.
 
 After Add, every extension of the source shows in Settings › Extensions with its own switch, off until the rider
-switches it on. On, it runs at once. Each extension's page shows the same lines under "It can", with "By &lt;name>, a
-third-party extension, not made by Kav" where its parts show.
+switches it on. On, it runs at once. Each extension's page shows the same lines under "It can".
 
 ### Kav writes the lines, from your manifest
 
@@ -1961,7 +1960,7 @@ on this phone" (שומר מידע בטלפון הזה).
 Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by
 Kav." ("נוצר על ידי Kav.") for Kav's own source. Your reason follows a line after "From the publisher:" ("מהמפרסם:").
 
-A route your planner gave, a line of yours under a search's route and a stop of yours in Kav's lists show "by &lt;its name>" ("מאת &lt;its name>"). A Home card of yours has your extension's name as its title. A card on a trip's page or a stop board has no label.
+A Home card of yours has your extension's name as its title. Nothing else of yours carries a label: not a route your planner gave, a line of yours under a search's route, a stop of yours in Kav's lists, nor a card on a trip's page or a stop board.
 
 ### When something of yours hides routes or does not run
 

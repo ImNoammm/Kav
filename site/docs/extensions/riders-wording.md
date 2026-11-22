@@ -105,7 +105,7 @@ on this phone" (שומר מידע בטלפון הזה).
 Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by
 Kav." ("נוצר על ידי Kav.") for Kav's own source. Your reason follows a line after "From the publisher:" ("מהמפרסם:").
 
-A route your planner gave, a line of yours under a search's route and a stop of yours in Kav's lists show "by &lt;its name>" ("מאת &lt;its name>"). A Home card of yours has your extension's name as its title. A card on a trip's page or a stop board has no label.
+A Home card of yours has your extension's name as its title. Nothing else of yours carries a label: not a route your planner gave, a line of yours under a search's route, a stop of yours in Kav's lists, nor a card on a trip's page or a stop board.
 
 ## When something of yours hides routes or does not run
 
