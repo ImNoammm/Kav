@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, kavClassLoader. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, deoptimize, kavClassLoader. */
     int API = 4;
 
     int apiVersion();
@@ -97,6 +97,10 @@ public interface Kav {
      *  skip the original; after runs after it and may change the result. Either may be null. Returns an Unhook, or throws
      *  when the method can't be hooked. Every hook is removed when the extension is switched off or blocked. */
     Unhook hook(java.lang.reflect.Member method, MethodHook before, MethodHook after);
+
+    /** A method that may have inlined a small one you hooked (R8 inlines small methods in Kav's release builds), run as
+     *  written again so your hook is reached. True when it was done. */
+    boolean deoptimize(java.lang.reflect.Member method);
 
     /** Kav's own ClassLoader, to find its classes by name. */
     ClassLoader kavClassLoader();

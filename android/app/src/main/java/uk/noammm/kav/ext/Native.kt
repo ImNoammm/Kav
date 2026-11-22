@@ -272,6 +272,11 @@ object Native {
             return MethodHooks.hook(i.identity, l, method, before, after)
         }
 
+        override fun deoptimize(method: java.lang.reflect.Member): Boolean {
+            needs("deoptimize", MethodHooks.CAPABILITY)
+            return MethodHooks.deoptimize(method)
+        }
+
         override fun kavClassLoader(): ClassLoader {
             needs("kavClassLoader", null)
             return Native::class.java.classLoader!!
