@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, deoptimize, kavClassLoader. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. */
     int API = 4;
 
     int apiVersion();
@@ -97,6 +97,15 @@ public interface Kav {
      *  skip the original; after runs after it and may change the result. Either may be null. Returns an Unhook, or throws
      *  when the method can't be hooked. Every hook is removed when the extension is switched off or blocked. */
     Unhook hook(java.lang.reflect.Member method, MethodHook before, MethodHook after);
+
+    /** The same, by the function's name, as the manifest's "hooks" lists it: className, method ("<init>" for a
+     *  constructor) and its parameter types ("int", "java.lang.String", "int[]"). When this Kav has no such function,
+     *  or can't hook it, nothing is hooked and nothing is thrown: Kav writes it in the extension's log and says on its
+     *  row that it needs an update for this Kav. hooked tells whether it took. */
+    Unhook hook(String className, String method, String[] params, MethodHook before, MethodHook after);
+
+    /** Whether this extension has a hook on that function now. */
+    boolean hooked(String className, String method, String... params);
 
     /** A method that may have inlined a small one you hooked (R8 inlines small methods in Kav's release builds), run as
      *  written again so your hook is reached. True when it was done. */

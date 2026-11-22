@@ -453,13 +453,35 @@ Kav. It ends at `validUntil`, and stays when your extension is switched off or r
 
 #### Hooks into Kav itself
 
+List each function you hook in the manifest, and hook it by that name:
+
+```json
+"contributions": [{ "id": "minutes", "capability": "hooks" }],
+"hooks": [{ "class": "uk.noammm.kav.ui.CommonKt", "method": "durMinutes", "params": ["int"] }]
+```
+
 ```java
-Class<?> common = Class.forName("uk.noammm.kav.ui.CommonKt", false, kav.kavClassLoader());
-Method minutes = common.getDeclaredMethod("durMinutes", int.class);
-Kav.Unhook unhook = kav.hook(minutes,
+Kav.Unhook unhook = kav.hook("uk.noammm.kav.ui.CommonKt", "durMinutes", new String[] {"int"},
     call -> { /* before: may change call.args(), or call.setResult(...) to skip the original */ },
     call -> call.setResult(call.result() + " (hooked)"));
+if (!kav.hooked("uk.noammm.kav.ui.CommonKt", "durMinutes", "int")) kav.log("not in this Kav");
 ```
+
+`method` is `"<init>"` for a constructor; `params` are Java's names for the types (`"int"`, `"java.lang.String"`,
+`"int[]"`). Declared, your hooks can't break your extension when Kav changes:
+
+- Kav looks up every declared function as your code starts. One this Kav doesn't have is left out: nothing is
+  thrown, nothing counts against your extension, and its row in Settings › Extensions says "Needs an update for this
+  version of Kav". `hook` by name does the same for one it can't find or hook, and `hooked` tells you whether it took.
+- `kavx check` holds your declared hooks against the functions a Kav release has (`api/hookable/<versionCode>.txt.gz`,
+  the newest by default, `--kav <versionCode>` for another), and warns about each one it doesn't have.
+- Kav's own release gate keeps every function that extensions on its community list and the kit's samples declare:
+  a Kav that loses one fails its tests, and keeps the old function or offers a named action or part in its place.
+  `kavx hooks <file.kavb>` prints yours for that list.
+
+`kav.hook(member, before, after)` takes a `Member` you found yourself (with `kavClassLoader()`), for Android's own
+methods, and throws when it can't be hooked; your own reflection that fails throws in your code too, which the crash
+guard counts. Prefer the name.
 
 `before` runs before the method and may set a result or an error, which skips the method; `after` runs after it and
 may change its result or error. Either may be `null`. `call.thisObject()` is the object it was called on (`null`
@@ -570,7 +592,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, deoptimize, kavClassLoader. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. */
     int API = 4;
 
     int apiVersion();
@@ -658,6 +680,15 @@ public interface Kav {
      *  skip the original; after runs after it and may change the result. Either may be null. Returns an Unhook, or throws
      *  when the method can't be hooked. Every hook is removed when the extension is switched off or blocked. */
     Unhook hook(java.lang.reflect.Member method, MethodHook before, MethodHook after);
+
+    /** The same, by the function's name, as the manifest's "hooks" lists it: className, method ("<init>" for a
+     *  constructor) and its parameter types ("int", "java.lang.String", "int[]"). When this Kav has no such function,
+     *  or can't hook it, nothing is hooked and nothing is thrown: Kav writes it in the extension's log and says on its
+     *  row that it needs an update for this Kav. hooked tells whether it took. */
+    Unhook hook(String className, String method, String[] params, MethodHook before, MethodHook after);
+
+    /** Whether this extension has a hook on that function now. */
+    boolean hooked(String className, String method, String... params);
 
     /** A method that may have inlined a small one you hooked (R8 inlines small methods in Kav's release builds), run as
      *  written again so your hook is reached. True when it was done. */
@@ -1580,7 +1611,7 @@ At most 64 KB.
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
-| `api` | The API it was made for: `2` for Kav 5. Default 1. |
+| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks. Default 1. |
 | `description` | At most 2000 characters. |
 | `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed. See [native.md](https://kavapp.link/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |
@@ -1589,6 +1620,7 @@ At most 64 KB.
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](https://kavapp.link/docs/extensions/screens). |
 | `theme` | Colors, for a `theme` contribution. See [screens.md](https://kavapp.link/docs/extensions/screens). |
+| `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
 | `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |
 | `issues`, `homepage` | `https://` links. Without `issues`, "Report an issue" goes to the source's GitHub issues. |
@@ -1606,7 +1638,7 @@ At most 64 KB.
 | `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | a card on Home, a line under each search result, a card on a trip's page, a card on stop boards |
 | `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](https://kavapp.link/docs/extensions/native#actions) lists them) |
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](https://kavapp.link/docs/extensions/native#screen-parts)) |
-| `hooks` (API 4) | hooks on Kav's own code ([native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself)) |
+| `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](https://kavapp.link/docs/extensions/native) has the table).

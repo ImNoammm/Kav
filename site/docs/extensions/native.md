@@ -425,13 +425,35 @@ Kav. It ends at `validUntil`, and stays when your extension is switched off or r
 
 ### Hooks into Kav itself
 
+List each function you hook in the manifest, and hook it by that name:
+
+```json
+"contributions": [{ "id": "minutes", "capability": "hooks" }],
+"hooks": [{ "class": "uk.noammm.kav.ui.CommonKt", "method": "durMinutes", "params": ["int"] }]
+```
+
 ```java
-Class<?> common = Class.forName("uk.noammm.kav.ui.CommonKt", false, kav.kavClassLoader());
-Method minutes = common.getDeclaredMethod("durMinutes", int.class);
-Kav.Unhook unhook = kav.hook(minutes,
+Kav.Unhook unhook = kav.hook("uk.noammm.kav.ui.CommonKt", "durMinutes", new String[] {"int"},
     call -> { /* before: may change call.args(), or call.setResult(...) to skip the original */ },
     call -> call.setResult(call.result() + " (hooked)"));
+if (!kav.hooked("uk.noammm.kav.ui.CommonKt", "durMinutes", "int")) kav.log("not in this Kav");
 ```
+
+`method` is `"<init>"` for a constructor; `params` are Java's names for the types (`"int"`, `"java.lang.String"`,
+`"int[]"`). Declared, your hooks can't break your extension when Kav changes:
+
+- Kav looks up every declared function as your code starts. One this Kav doesn't have is left out: nothing is
+  thrown, nothing counts against your extension, and its row in Settings › Extensions says "Needs an update for this
+  version of Kav". `hook` by name does the same for one it can't find or hook, and `hooked` tells you whether it took.
+- `kavx check` holds your declared hooks against the functions a Kav release has (`api/hookable/<versionCode>.txt.gz`,
+  the newest by default, `--kav <versionCode>` for another), and warns about each one it doesn't have.
+- Kav's own release gate keeps every function that extensions on its community list and the kit's samples declare:
+  a Kav that loses one fails its tests, and keeps the old function or offers a named action or part in its place.
+  `kavx hooks <file.kavb>` prints yours for that list.
+
+`kav.hook(member, before, after)` takes a `Member` you found yourself (with `kavClassLoader()`), for Android's own
+methods, and throws when it can't be hooked; your own reflection that fails throws in your code too, which the crash
+guard counts. Prefer the name.
 
 `before` runs before the method and may set a result or an error, which skips the method; `after` runs after it and
 may change its result or error. Either may be `null`. `call.thisObject()` is the object it was called on (`null`

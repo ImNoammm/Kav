@@ -94,7 +94,7 @@ At most 64 KB.
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
-| `api` | The API it was made for: `2` for Kav 5. Default 1. |
+| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks. Default 1. |
 | `description` | At most 2000 characters. |
 | `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed. See [native.md](/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |
@@ -103,6 +103,7 @@ At most 64 KB.
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](/docs/extensions/screens). |
 | `theme` | Colors, for a `theme` contribution. See [screens.md](/docs/extensions/screens). |
+| `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
 | `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |
 | `issues`, `homepage` | `https://` links. Without `issues`, "Report an issue" goes to the source's GitHub issues. |
@@ -120,7 +121,7 @@ At most 64 KB.
 | `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | a card on Home, a line under each search result, a card on a trip's page, a card on stop boards |
 | `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](/docs/extensions/native#actions) lists them) |
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](/docs/extensions/native#screen-parts)) |
-| `hooks` (API 4) | hooks on Kav's own code ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
+| `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](/docs/extensions/native) has the table).

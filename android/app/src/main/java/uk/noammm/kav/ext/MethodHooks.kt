@@ -13,8 +13,72 @@ import java.util.concurrent.CopyOnWriteArrayList
 // round. Each call into an extension's hook goes through the crash guard; one that crashes is counted and the call goes
 // on without it. An extension's hooks all go when it is switched off, blocked or removed (Native.retire). In safe mode
 // no extension code loads, so none hook.
+//
+// So that a Kav update can't break an extension through its hooks, its manifest lists the functions it hooks:
+//   "hooks": [{"class": "uk.noammm.kav.ui.CommonKt", "method": "durMinutes", "params": ["int"]}]
+// Kav looks each one up as the extension's code starts. One this Kav doesn't have is left out, never counted as a
+// crash, and the extension's row says it needs an update for this Kav (gaps). Kav.hook by name skips it the same way,
+// and Kav.hooked says whether a hook took. Kav's own release gate (android/hook/declared.txt) keeps every function the
+// listed extensions hook.
 object MethodHooks {
     const val CAPABILITY = "hooks"
+
+    // A function a manifest says it hooks; method "<init>" for a constructor.
+    data class Declared(val cls: String, val method: String, val params: List<String>) {
+        override fun toString() = "$cls.$method(${params.joinToString(",")})"
+    }
+
+    fun declared(m: Manifest): List<Declared> = m.json.optJSONArray("hooks")?.let { a ->
+        (0 until minOf(a.length(), 256)).mapNotNull { k ->
+            val o = a.optJSONObject(k) ?: return@mapNotNull null
+            val ps = o.optJSONArray("params")
+            val cls = o.optString("class"); val method = o.optString("method")
+            if (cls.isEmpty() || method.isEmpty()) null else Declared(cls, method, (0 until (ps?.length() ?: 0)).map { ps!!.optString(it) })
+        }
+    }.orEmpty()
+
+    private val PRIMITIVES = mapOf("int" to Int::class.javaPrimitiveType, "long" to Long::class.javaPrimitiveType, "boolean" to Boolean::class.javaPrimitiveType,
+        "float" to Float::class.javaPrimitiveType, "double" to Double::class.javaPrimitiveType, "byte" to Byte::class.javaPrimitiveType,
+        "short" to Short::class.javaPrimitiveType, "char" to Char::class.javaPrimitiveType)
+
+    private fun type(name: String, loader: ClassLoader): Class<*> {
+        if (name.endsWith("[]")) return java.lang.reflect.Array.newInstance(type(name.dropLast(2), loader), 0).javaClass
+        return PRIMITIVES[name] ?: Class.forName(name, false, loader)
+    }
+
+    // The function in this Kav, or null when it has none by that name and those parameters.
+    fun find(d: Declared, loader: ClassLoader = MethodHooks::class.java.classLoader!!): Member? = runCatching {
+        val c = Class.forName(d.cls, false, loader)
+        val ps = d.params.map { type(it, loader) }.toTypedArray()
+        if (d.method == "<init>") c.getDeclaredConstructor(*ps) else c.getDeclaredMethod(d.method, *ps)
+    }.getOrNull()
+
+    // The declared functions this Kav doesn't have, by extension: its row says it needs an update for this Kav.
+    val gaps = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    // As its code starts: every declared function looked up; the missing ones noted, and written in its log.
+    fun check(identity: String, m: Manifest, log: (String) -> Unit) {
+        val missing = declared(m).filter { find(it) == null }.map { it.toString() }
+        if (missing.isEmpty()) gaps.remove(identity) else gaps[identity] = missing
+        for (x in missing) log("this Kav has no $x: its hook is left out")
+    }
+
+    // An extension's hook by name: none, and nothing thrown, when this Kav doesn't have the function or can't hook it.
+    fun hook(identity: String, l: Native.Loaded, d: Declared, before: Kav.MethodHook?, after: Kav.MethodHook?, log: (String) -> Unit): Kav.Unhook {
+        val m = find(d)
+        if (m != null) try { return hook(identity, l, m, before, after) } catch (e: Exception) { log("couldn't hook $d: $e") }
+        else log("this Kav has no $d: its hook is left out")
+        gaps.merge(identity, listOf(d.toString())) { a, b -> (a + b).distinct() }
+        return NONE
+    }
+
+    private val NONE = object : Kav.Unhook { override fun unhook() {} }
+
+    // Whether this extension has a hook on the function now.
+    fun hooked(identity: String, d: Declared): Boolean {
+        val m = find(d) ?: return false
+        return synchronized(this) { hooked[m]?.has(identity) == true }
+    }
 
     internal class Entry(val identity: String, val before: Kav.MethodHook?, val after: Kav.MethodHook?)
 
@@ -26,6 +90,7 @@ object MethodHooks {
         private val name = "${target.declaringClass.name}.${target.name}"
 
         internal fun add(e: Entry) { entries += e }
+        internal fun has(identity: String) = entries.any { it.identity == identity }
         internal fun remove(e: Entry): Boolean { entries -= e; return entries.isEmpty() }
 
         // The engine's callback for every call of the method: its receiver first for one that isn't static.
@@ -111,7 +176,7 @@ object MethodHooks {
 // hooks, never at Kav's start.
 object HookEngine {
     val ready: Boolean by lazy {
-        runCatching { System.loadLibrary("kavhook"); start() }.onFailure { android.util.Log.w("KavHook", "can't start: $it") }.getOrDefault(false)
+        runCatching { System.loadLibrary("kavhook"); start() }.onFailure { e -> runCatching { android.util.Log.w("KavHook", "can't start: $e") } }.getOrDefault(false)
     }
 
     @JvmStatic external fun start(): Boolean

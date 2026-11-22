@@ -1,0 +1,6 @@
+# Kav's release gate for extensions' hooks: every function of Kav's that a listed extension hooks (its manifest's
+# "hooks"), one a line, as kavx hooks prints them from its bundle: the community list's extensions, Kav's own and the
+# kit's samples. A unit test (HookGateTest) fails when this Kav no longer has one of them by that name and those
+# parameters. When it fails, keep the old function as a thin one that calls the new code, or make what extensions hook
+# it for a named action or screen part (ext/Actions.kt, ext/Parts.kt) and tell their makers.
+uk.noammm.kav.ui.CommonKt durMinutes(int)    # the kit's hook-sample

@@ -181,6 +181,8 @@ object Native {
                 return
             }
             outdated -= i.identity
+            // The functions it says it hooks, looked up in this Kav before its code runs (MethodHooks).
+            if (i.manifest.contributions.any { it.capability == MethodHooks.CAPABILITY }) MethodHooks.check(i.identity, i.manifest) { log(hub, i.identity, it) }
             val ext = entry.getDeclaredConstructor().newInstance() as KavExtension
             ext.start(Api(ctx.applicationContext, hub, i, l))
             synchronized(loaded) {
@@ -195,6 +197,11 @@ object Native {
                 if (starting.remove(i.identity, l)) { NativeMap.drop(i.identity); release(l) }
             }
         }
+    }
+
+    private fun log(hub: Hub, identity: String, text: String) {
+        ExtLog.init(hub.dir)
+        runCatching { ExtLog.add(identity, JSONObject().put("t", System.currentTimeMillis() / 1000).put("log", text.take(4000))) }
     }
 
     // Hash the installed files in Bundle.Ext's order, retaining the same dex bytes that go to ART.
@@ -270,6 +277,16 @@ object Native {
         override fun hook(method: java.lang.reflect.Member, before: Kav.MethodHook?, after: Kav.MethodHook?): Kav.Unhook {
             needs("hook", MethodHooks.CAPABILITY)
             return MethodHooks.hook(i.identity, l, method, before, after)
+        }
+
+        override fun hook(className: String, method: String, params: Array<String>?, before: Kav.MethodHook?, after: Kav.MethodHook?): Kav.Unhook {
+            needs("hook", MethodHooks.CAPABILITY)
+            return MethodHooks.hook(i.identity, l, MethodHooks.Declared(className, method, params?.toList().orEmpty()), before, after) { log(it) }
+        }
+
+        override fun hooked(className: String, method: String, vararg params: String): Boolean {
+            needs("hooked", MethodHooks.CAPABILITY)
+            return MethodHooks.hooked(i.identity, MethodHooks.Declared(className, method, params.toList()))
         }
 
         override fun deoptimize(method: java.lang.reflect.Member): Boolean {
