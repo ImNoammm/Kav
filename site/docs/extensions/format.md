@@ -94,7 +94,7 @@ At most 64 KB.
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
-| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks. Default 1. |
+| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks, with Kav 5.1 (`minKav` 47). Default 1. |
 | `description` | At most 2000 characters. |
 | `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed. See [native.md](/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |

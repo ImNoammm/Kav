@@ -115,7 +115,7 @@ GitHub builds every APK there from the code in this repo, and you can check the
 one you downloaded with the [GitHub CLI](https://cli.github.com):
 
 ```sh
-gh attestation verify kav-5.0.1.apk --repo ImNoammm/kav
+gh attestation verify kav-5.1.apk --repo ImNoammm/kav
 ```
 
 ### If Play Protect blocks installation
