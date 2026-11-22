@@ -214,7 +214,7 @@ class PageHost(
 }
 
 // What Home shows when the rider chose an extension's Home body (PLAN.md 3.3). Kav's own search bar and Settings stay
-// above every body; the resume card of a trip under way, the "by" label and the way back to Kav's Home stay above the
+// above every body; the resume card of a trip under way and the way back to Kav's Home stay above the
 // extension's body, which can never cover or reorder them. Kav's own Home (with its own resume card) shows whenever the
 // extension's isn't there: not chosen, in safe mode, off or missing, failed, or not ready within the budget.
 object HomeBody {

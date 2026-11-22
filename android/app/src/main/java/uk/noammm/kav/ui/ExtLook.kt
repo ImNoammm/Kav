@@ -21,7 +21,7 @@ import uk.noammm.kav.ext.Screens
 // every screen reads null and does exactly what it did before (PLAN.md section 4: zero added work). In safe mode none
 // is filled: Kav's look, Kav's Home, four tabs.
 object ExtShown {
-    class Tab(val identity: String, val page: String, private val title: Pair<String, String>, val by: String) {
+    class Tab(val identity: String, val page: String, private val title: Pair<String, String>) {
         val label get() = T(title.first, title.second.ifEmpty { title.first })
     }
     class Home(val identity: String, val name: String)
@@ -52,7 +52,7 @@ object ExtShown {
 
     // After a choice changed: shown at once.
     fun publish() {
-        val t = Screens.tab?.let { Tab(it.identity, it.page, it.title, it.name) }
+        val t = Screens.tab?.let { Tab(it.identity, it.page, it.title) }
         val h = Screens.home?.let { Home(it.identity, it.name) }
         val look = Screens.theme
         val s = uk.noammm.kav.ext.Slots.Picks.on
@@ -68,7 +68,7 @@ object ExtShown {
         val hub = ExtApp.hub(ctx)
         fun on(identity: String) = hub.registry.get(identity)?.takeIf { hub.active(it) }
         val t = Screens.tab?.takeIf { p -> on(p.identity)?.let { Screens.tabOf(it, p.page) } != null }
-            ?.let { Tab(it.identity, it.page, it.title, it.name) }
+            ?.let { Tab(it.identity, it.page, it.title) }
         val look = Screens.theme?.let { p ->
             val i = on(p.identity) ?: return@let null
             if (i.sha256 == p.sha256) p else Screens.themeOf(i)

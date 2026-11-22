@@ -46,8 +46,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -1455,9 +1453,7 @@ private fun TabBar(model: KavModel) {
                 ) {
                     TabGlyph(t, ink, 22.dp)
                     Spacer(Modifier.height(2.dp))
-                    Text(t.label, style = K.type.caption, color = ink, maxLines = 1,
-                        // An extension's tab says whose it is (PLAN.md 7.1); the bar has no room to show it.
-                        modifier = if (t == Tab.Ext && pinned != null) Modifier.semantics { contentDescription = t.label + ", " + T("by ", "מאת ") + pinned.by } else Modifier)
+                    Text(t.label, style = K.type.caption, color = ink, maxLines = 1)
                 }
             }
         }

@@ -927,7 +927,7 @@ fun DirectionsOnline(model: KavModel) {
                                 // Leaving at a time, a card lists no bus from before it: the rider didn't ask about those.
                                 ItineraryCard(shown[i], resolved, if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L, footer = resultFooter(model, taxi?.let { leg ->
                                     { OrderGett(gettLink(leg, pickupName, dropoffName), Modifier.fillMaxWidth()) }
-                                }, shown[i], resolved, remember(shown[i].provider) { plannerName(shown[i].provider) })) {
+                                }, shown[i], resolved)) {
                                     // Not before the rider's required rules have judged it.
                                     if (checking) return@ItineraryCard
                                     openTrip(OpenTrip(

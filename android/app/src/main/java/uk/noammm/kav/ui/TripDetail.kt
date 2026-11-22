@@ -281,8 +281,6 @@ private fun TripDetailBody(
                     me = me, heading = heading, onShown = onMapShown)
             }
             KavPart("trip.summary", trip, about) { Summary(trip, r) }
-            // A route an extension's planner gave says so (PLAN.md 7.1), in Kav's own colours.
-            remember(trip.provider) { plannerName(trip.provider) }?.let { ByLabel(it, Modifier.padding(horizontal = K.gap4, vertical = K.gap2)) }
             Spacer(Modifier.height(K.gap3))
             KavPart("trip.timeline", trip, about) { Timeline(trip, r, fromLabel, toLabel, onTrack, onReport, asked) }
             Spacer(Modifier.height(K.gap4))

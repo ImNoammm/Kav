@@ -1033,23 +1033,18 @@ private fun StopListRow(net: Net, stop: Int, distance: String?, town: Boolean, f
     )
 }
 
-// An extension's stop in a list: its name as its provider gives it, and whose it is (PLAN.md 7.1, "by …"). No photo is
+// An extension's stop in a list: its name as its provider gives it. No photo is
 // asked for it: its place goes to nobody.
 @Composable
 private fun ExtStopListRow(stop: Int, distance: String?, first: Boolean, last: Boolean, onClick: () -> Unit) {
     val entry = Extensions.knownStop(stop)
-    val ns = entry?.first ?: RefTable.ref(stop)?.namespace
     ListRow(
         entry?.second?.name ?: T("Stop", "תחנה"), Modifier.groupItem(first, last, inset = RowInset),
-        subtitle = listOfNotNull(entry?.second?.code?.ifEmpty { null }?.let { T.ltr(it) }, ns?.let { byWords(Extensions.nameOf(it)) })
-            .joinToString(" · ").ifBlank { null },
+        subtitle = entry?.second?.code?.ifEmpty { null }?.let { T.ltr(it) },
         value = distance,
         leading = { StopGlyphOrPhoto(-1, null, kind = modeOf(entry?.second?.mode ?: 3), photo = null) }, onClick = onClick,
     )
 }
-
-// "by <extension>", set apart as theirs.
-internal fun byWords(name: String) = T("by \u2068$name\u2069", "מאת \u2068$name\u2069")
 
 // Where a row's text starts, past its 40 dp photo.
 private val RowInset = 68.dp

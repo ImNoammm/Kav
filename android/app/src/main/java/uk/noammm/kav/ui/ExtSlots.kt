@@ -74,14 +74,6 @@ internal fun StopSlots(model: KavModel, ref: String, name: String) {
     }
 }
 
-// The name for the "by" label on a route an extension's planner gave (Itinerary.provider, its namespace); null for
-// Kav's own.
-internal fun plannerName(provider: String): String? {
-    if (provider.isEmpty()) return null
-    val ns = uk.noammm.kav.ext.Namespace.of(provider) ?: return provider
-    return runCatching { uk.noammm.kav.ext.Hooks.installed(ns)?.displayName }.getOrNull() ?: ns.dataset
-}
-
 // What a search says when the extension it plans with gave no usable answer: what happened and with whom, never "no
 // routes", and Kav's server isn't asked instead.
 internal fun plannerProblemWords(ctx: android.content.Context, e: uk.noammm.kav.ext.ProviderProblem): String {
@@ -103,13 +95,12 @@ internal fun plannerProblemWords(ctx: android.content.Context, e: uk.noammm.kav.
     }
 }
 
-// A result card's footer: the planner's "by" label when an extension planned it, Kav's own (the taxi card's Gett
-// button), then each results card's line for this route (ExtNative.kt), under its name.
-internal fun resultFooter(model: KavModel, own: (@Composable () -> Unit)?, route: Transit.Itinerary, r: Transit.Resolved, by: String? = null): (@Composable () -> Unit)? {
+// A result card's footer: Kav's own (the taxi card's Gett button), then each results card's line for this route
+// (ExtNative.kt).
+internal fun resultFooter(model: KavModel, own: (@Composable () -> Unit)?, route: Transit.Itinerary, r: Transit.Resolved): (@Composable () -> Unit)? {
     val ids = if (ExtShown.slots.isEmpty()) emptyList() else picked(Slots.Kind.RESULTS)
-    if (own == null && by == null && ids.isEmpty()) return null
+    if (own == null && ids.isEmpty()) return null
     return {
-        by?.let { ByLabel(it) }
         own?.invoke()
         if (ids.isNotEmpty()) {
             val about = remember(route) { JSONObject().put("trip", Slots.trip(route, r)) }

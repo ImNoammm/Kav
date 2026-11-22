@@ -222,7 +222,7 @@ internal fun NativeCard(model: KavModel, identity: String, on: String, about: JS
     else Column(Modifier.fillMaxWidth().padding(top = top)) { view() }
 }
 
-// A results card's line under one route of a search's results, beside its name: the view its code makes for that route,
+// A results card's line under one route of a search's results: the view its code makes for that route,
 // or nothing when it makes none (or failed: the crash guard counts it).
 @Composable
 internal fun ResultLine(model: KavModel, identity: String, about: JSONObject) {
@@ -231,12 +231,7 @@ internal fun ResultLine(model: KavModel, identity: String, about: JSONObject) {
     val card = Native.card(identity, "results") ?: return
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val view = remember(identity, about) { Native.view(identity, "card results") { card.create(ctx, about.toString()) } } ?: return
-    val name = remember(identity) { uk.noammm.kav.ext.ExtApp.hub(ctx).registry.get(identity)?.displayName.orEmpty() }
-    Row(Modifier.fillMaxWidth().padding(top = K.gap1), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(K.gap2)) {
-        if (name.isNotEmpty()) ByLabel(name)
-        AndroidView(factory = { (view.parent as? android.view.ViewGroup)?.removeView(view); view }, modifier = Modifier.weight(1f))
-    }
+    AndroidView(factory = { (view.parent as? android.view.ViewGroup)?.removeView(view); view }, modifier = Modifier.fillMaxWidth().padding(top = K.gap1))
 }
 
 // Whether the chosen Home is a native extension's: then its view once its code has started (Ready), Kav's Home while it

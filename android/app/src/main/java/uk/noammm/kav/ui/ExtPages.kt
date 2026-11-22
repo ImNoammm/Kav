@@ -48,8 +48,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -73,7 +71,7 @@ import uk.noammm.kav.ext.Screens
 
 // An extension's screens (ext/Pages.kt): its pages over Kav's screens or in the tab the rider pinned, its Home body,
 // and its settings page, which Kav draws. Its block trees (ext/Blocks.kt) are Kav's own components in Kav's own layout.
-// What Kav keeps for itself on each: the header with Back, the "by <extension>" label, loading and unavailable states
+// What Kav keeps for itself on each: the header with Back, loading and unavailable states
 // and their words, the way back to Kav's Home, and the rider's own trips, which Kav draws from its own data. Those are drawn in Kav's own colours even under a theme, so no extension's look can hide or fake them.
 
 private suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) { runCatching(block) }
@@ -94,20 +92,10 @@ object ExtPageNav {
     fun close(model: KavModel) { overlay = emptyList(); model.settingsOpen = false }
 }
 
-private fun by(name: String) = T("by ", "מאת ") + "\u2068$name\u2069"
-
-private fun bySpoken(name: String) = T("By $name, a third-party extension, not made by Kav", "מאת $name, תוסף של צד שלישי שלא נוצר על ידי Kav")
 
 // Kav's own colours for what it keeps for itself, whatever theme is on.
 @Composable
 private fun kavOwn(): Palette = palette(K.look)
-
-// "by <extension>": small grey words on what an extension puts on one of Kav's own screens (a line, a row, a route),
-// so a rider can tell whose it is. Its own pages don't carry it: their header names them.
-@Composable
-internal fun ByLabel(name: String, modifier: Modifier = Modifier) {
-    Text(by(name), style = K.type.caption, color = K.textTertiary, maxLines = 1, modifier = modifier.clearAndSetSemantics { contentDescription = bySpoken(name) })
-}
 
 @Composable
 private fun KavOwnButton(label: String, onClick: () -> Unit) {
@@ -510,13 +498,12 @@ internal fun Modifier.watchTouch(h: ExtHome?): Modifier = if (h == null) this el
     awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); h.touched = true }
 }
 
-// Home's rows when the extension's body shows: the trip under way, the label with the way back, then its blocks.
+// Home's rows when the extension's body shows: the trip under way, the way back, then its blocks.
 internal fun LazyListScope.extHomeItems(model: KavModel, h: ExtHome, resume: (@Composable () -> Unit)?) {
     for (part in h.parts(resume != null)) when (part) {
         HomeBody.Part.RESUME -> resume?.let { r -> item(key = "ext-resume") { Box(Modifier.padding(top = K.gap4)) { r() } } }
         HomeBody.Part.LABEL -> item(key = "ext-label") {
-            Row(Modifier.fillMaxWidth().padding(top = K.gap4), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                ByLabel(h.name)
+            Row(Modifier.fillMaxWidth().padding(top = K.gap4), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                 KavOwnButton(T("Kav's Home", "מסך הבית של Kav")) { h.kavNow = true }
             }
         }
