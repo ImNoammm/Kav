@@ -13,6 +13,11 @@ fetch() {
   if [ $# -gt 3 ]; then git -C "$WORK/$1" submodule update -q --init --recursive "$4"; fi
 }
 fetch lsplant https://github.com/JingMatrix/LSPlant.git 7a768e31ffb2852797631b5140b54f9702a78743 lsplant/src/main/jni/external/dex_builder
+# Load generated hook classes with Android's public in-memory class loader (API 26+).
+PATCH="$HERE/lsplant-in-memory-loader.patch"
+if ! git -C "$WORK/lsplant" apply --reverse --check "$PATCH" 2>/dev/null; then
+  git -C "$WORK/lsplant" apply "$PATCH"
+fi
 fetch dobby https://github.com/JingMatrix/Dobby.git 05a09ac6807a6bb1726350e40ea4b127c1c79809
 fetch xz-embedded https://github.com/tukaani-project/xz-embedded.git ae63ae3a36ed01724674e8f3d750dc47bf125410
 for abi in arm64-v8a x86_64; do

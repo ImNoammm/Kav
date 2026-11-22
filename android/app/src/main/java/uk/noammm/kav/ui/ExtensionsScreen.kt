@@ -448,7 +448,7 @@ private fun ExtCard(
 private fun troubleOf(hub: Hub, i: Registry.Installed): String? = listOfNotNull(
     if (hub.blocked(i) != null) T("Blocked", "חסום") else null,
     if (i.identity in ExtUpdates.updating) T("Updating…", "מתעדכן…") else if (i.identity in ExtUpdates.outdated) T("Needs an update from its maker", "צריך עדכון מהיוצר שלו")
-    else if (uk.noammm.kav.ext.MethodHooks.gaps.containsKey(i.identity)) T("Needs an update for this version of Kav", "צריך עדכון לגרסה הזו של Kav") else null,
+    else if (uk.noammm.kav.ext.MethodHooks.gaps.containsKey(i.identity)) T("Needs an update for this Kav", "צריך עדכון לגרסה הזו של Kav") else null,
     if (i.problem == NativeGuard.CRASHED) T("Made Kav close", "גרם ל-Kav להיסגר") else if (i.problem.isNotEmpty()) engineWords(i.problem).replaceFirstChar { it.uppercase() } else null,
 ).takeIf { it.isNotEmpty() }?.joinToString(" · ", transform = ::iso)
 
