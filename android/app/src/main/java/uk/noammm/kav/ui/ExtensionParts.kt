@@ -637,8 +637,8 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
             uk.noammm.kav.ext.MethodHooks.CAPABILITY -> T("Changes Kav", "משנה את Kav")
             Capabilities.BOARD -> T("Timetables", "לוחות זמנים")
             else -> when {
-                it.startsWith("action.") -> actionWords(it.removePrefix("action."))
-                it.startsWith("part.") -> partWords(it.removePrefix("part."))
+                it.startsWith("action.") -> actionWords(it.removePrefix("action.")).replaceFirstChar { c -> c.uppercase() }
+                it.startsWith("part.") -> partWords(it.removePrefix("part.")).replaceFirstChar { c -> c.uppercase() }
                 else -> kindWords(it)
             }
         }
