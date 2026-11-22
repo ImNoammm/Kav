@@ -118,6 +118,9 @@ At most 64 KB.
 | `page.provide`, `home.body` | its own pages, and the page `home` as a Home body |
 | `theme` | colors from the manifest |
 | `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | a card on Home, a line under each search result, a card on a trip's page, a card on stop boards |
+| `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](/docs/extensions/native#actions) lists them) |
+| `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](/docs/extensions/native#screen-parts)) |
+| `hooks` (API 4) | hooks on Kav's own code ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](/docs/extensions/native) has the table).
@@ -143,6 +146,9 @@ Under any of them you may add one short reason of your own:
 | `theme` | it changes how Kav looks |
 | `map`, `notifications`, `location`, `settings` | what it adds, from `adds` |
 | `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | it can add a card to Home, a line to results, a part to a trip's page, a row to stop boards |
+| `actions` | the actions it takes over |
+| `parts` | the parts of Kav's screens it changes |
+| `hooks` | it changes how Kav itself works |
 | `searches` | it sees the rider's trip searches |
 | `results` | it changes the rider's results |
 | `data` | it keeps its own data on the phone |

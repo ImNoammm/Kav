@@ -96,7 +96,9 @@ loads your code, so they never go into your dex.
   extension whose dex isn't there, and any other `.dex` file in it.
 - `native.entry` is the full name of your class that implements `KavExtension`. It needs a public constructor with
   no arguments.
-- `minKav: 45` is Kav 5. `api: 2` is this API.
+- `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
+  actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). A Kav with an older API than your
+  manifest says doesn't start your code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
 
@@ -109,6 +111,10 @@ declares it too:
 | `kav.screen("about", ...)` | a contribution `page.provide` and the page `{"id": "about", ...}` under `pages` |
 | a tab | the same, with `"tab": true` on the page |
 | `kav.home(...)` | a contribution `home.body`, and the page `"home"` (with `page.provide`) |
+| `kav.action("pay", ...)` and every other action | `"api": 4` and a contribution `action.pay` (`action.<name>`) |
+| `kav.part("home.pay", ...)` and every other part | `"api": 4` and a contribution `part.home.pay` (`part.<name>`) |
+| `kav.hook(...)`, `kav.deoptimize(...)` | `"api": 4` and a contribution `hooks` |
+| `kav.addTicket(...)`, `kav.kavAction(...)`, `kav.kavClassLoader()` | `"api": 4` |
 | `kav.provide("plan.provide", ...)` | a contribution `plan.provide` |
 | `kav.provide("walk.time", ...)` and the other route rules | a contribution with that capability |
 | `kav.provide("board.stops", ...)`, `"board.departures"` | a contribution `board.provide` |
@@ -118,8 +124,8 @@ declares it too:
 ## The API
 
 Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
-one; `kav.apiVersion()` says which level the Kav in front of you has (3 is Kav 5). Plain types only: text, numbers,
-JSON as text, and Android's own `Context`, `View` and `Bitmap`.
+one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, the next Kav has 4). Plain
+types only: text, numbers, JSON as text, and Android's own `Context`, `View` and `Bitmap`.
 
 **When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
 or an update of it arrives: no restart is needed. Never in safe mode.
@@ -145,7 +151,7 @@ class Hello : KavExtension {
 
 | Method | What it gives |
 |---|---|
-| `Kav.API` | the API level this jar was built for (3) |
+| `Kav.API` | the API level this jar was built for (4) |
 | `apiVersion()` | the API level of the Kav that loaded you |
 | `context()` | the application's `Context` |
 | `id()` | your identity: your source and your name, `"github.<owner>.<repo>/<name>"`, or `"file.<digest>/<name>"` for a bundle added from a file |
@@ -161,6 +167,13 @@ class Hello : KavExtension {
 | `pickPlace(picked)` | Kav's own place search over the screen; told the place chosen as JSON text (`{"name", "lat", "lon"}`), or `null` when the rider closed it, on the main thread |
 | `log(text)` | a line in your log |
 | `ui()` | Kav's components and theme (`KavUi`) |
+| `action(name, action)` | API 4: take over one of Kav's actions ([below](#actions)) |
+| `kavAction(name, activity, args)` | API 4: Kav's own handling of an action, with no extension asked |
+| `part(name, where, card)` | API 4: a view `"before"` or `"after"` one of Kav's screen parts, or one that `"replace"`s it ([below](#screen-parts)) |
+| `addTicket(ticket)` | API 4: a ticket in Kav's own tickets and ride history ([below](#tickets)) |
+| `hook(method, before, after)` | API 4: a hook on one of Kav's own methods, or Android's ([below](#hooks-into-kav-itself)) |
+| `deoptimize(method)` | API 4: a method run as written again, so a hook on a small method it inlined is reached |
+| `kavClassLoader()` | API 4: Kav's own `ClassLoader`, to find its classes by name |
 
 ```kotlin
 val app = kav.context()
@@ -291,6 +304,152 @@ set a look again, so keep it quick. Return `null` for Kav's own look for that st
 back Kav's look. When two extensions set a stop look, the last one set wins. `samples/native/map-pins` uses all of
 it.
 
+## API 4: taking over Kav
+
+API 4 lets an extension change anything in Kav, in two layers:
+
+- **Named takeover points**, which keep working across Kav's updates: every main action of Kav's (Pay, opening a
+  stop, starting a trip...) and every main part of its screens (Home's pay card, each ride of a trip...) has a name
+  you take over, add to or replace.
+- **Hooks on Kav's own code**, as an Xposed module has them: any of Kav's methods, or Android's, by name. They reach
+  everything else, and may break when Kav's code changes.
+
+Each needs `"api": 4` and a contribution with the matching capability in your manifest; without them the call throws.
+Riders see it under "It can": "Takes over: paying", "Changes parts of Kav's screens: Home's pay card", and for hooks
+"Changes how Kav itself works". Everything API 3 had works as before, so an extension built for API 3 needs no change.
+
+### Actions
+
+```java
+// args: JSON text. Return true when you handled it, false to let the next extension, then Kav, do its own.
+kav.action("pay", (activity, args) -> { showMyPay(activity, new JSONObject(args)); return true; });
+// Later, from your own screen: Kav's own handling after all, with no extension asked.
+kav.kavAction("pay", activity, args);
+```
+
+Kav calls your action on the main thread, with the screen's `Activity`, instead of doing its own. With several
+extensions on one action, the one the rider switched on last goes first; one that returns `false`, or throws, passes
+it to the next, then to Kav. A throw is counted by the crash guard. `null` removes your action. Kav's own handling of
+`trip.open`, `trip.start`, `trip.end`, `share`, `plan`, `report`, `alert.open`, `street.open` and `place.save` is
+for the screen it was asked from, so `kavAction` on one of those works while that screen is open, on what it shows.
+
+| Name | Args | Where Kav handles it |
+|---|---|---|
+| `pay` | a ride (below), `{}` from Home's "Pay for a ride" and the shortcuts, `{"section": "train"}` for a train's exit ticket | every Pay button, the trip's notification, the Pay shortcut and tile: `ui/RavPass.kt` `RavPass.open` |
+| `ticket.open` | `{"key"}` | a ticket opened from Home, a ride or the ride history: `ui/ExtActions.kt` `openTicket` |
+| `stop.open` | `{"stop": "il.mot/gtfs/stop/<code>", "name"}` | a stop's board opened (Stops tab, a trip, an alert): `KavModel.openStation`, `ui/Stations.kt` |
+| `line.open` | `{"number", "stop"}` (`stop` the board it was opened from, or `null`) | a line's page opened: `ui/Lines.kt` `openTimetableLine`, `KavModel.openSchedule` |
+| `trip.open` | `{"trip": <the route>}` | a trip's page opened from results, Home's latest route, the trip under way, a train: `ui/DirectionsOnline.kt` `openTrip` |
+| `trip.start` | `{"trip"}` | a trip's Start: `ui/TripDetail.kt` |
+| `trip.end` | `{"trip"}` | End trip in navigation: `ui/TripDetail.kt` (the trip notification's own End always ends it) |
+| `share` | `{"trip"}` | a trip's Share: `ui/TripDetail.kt` |
+| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results |
+| `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` |
+| `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` |
+| `taxi` | `{"link": "gett://..."}` | a taxi ordered: `ui/Gett.kt` |
+| `street.open` | `{"name", "lat", "lon"}` | a stop's Street View: `ui/StreetView.kt` `openStreet` |
+| `place.save` | `{"places": [{"id", "name", "lat", "lon"}]}`, the whole list as it would be kept | Home's places added, edited, moved or removed: `KavModel.saveFavourites` |
+| `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` |
+| `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` |
+| `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` |
+| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` |
+
+The ride `pay` is told, from a ride's own Pay button and the trip's notification:
+
+```json
+{"section": "bus", "line": "37", "mode": 3,
+ "from": {"stop": "il.mot/gtfs/stop/35368", "name": "...", "lat": 32.1, "lon": 34.9},
+ "to":   {"stop": "il.mot/gtfs/stop/32653", "name": "...", "lat": 32.1, "lon": 34.9},
+ "dep": 1795421100, "trip": "il.mot/gtfs/trip/..."}
+```
+
+`section` is `bus`, `train`, `lightrail` or `any`; `mode` the GTFS route type; `dep` in seconds. With an extension
+on `pay`, Kav's Pay buttons show without Rav-Pass, its permissions or the ticket reader, and Settings' Paying says
+"With &lt;your name>".
+
+### Screen parts
+
+```java
+// about: what the part shows, as JSON text. A replace that returns null shows Kav's own.
+kav.part("home.pay", "after", (context, about) -> kav.ui().card(context, kav.ui().row(context, "info", "Hi", null, null)));
+kav.part("trip.ride", "replace", (context, about) -> myRide(context, new JSONObject(about).getJSONObject("leg")));
+```
+
+Kav asks for the view each time the part shows, on the main thread. Views before and after a part go in the order
+their extensions were switched on, first on first; of several replacements, the last switched on is shown, and when
+it returns `null`, the next one's, then Kav's own. A part no extension adds to is drawn as it always is. `null` as
+the card removes yours.
+
+| Name | About | What it is |
+|---|---|---|
+| `home.places` | `{}` | Home's row of saved places (`ui/Home.kt`) |
+| `home.journey` | `{"trip"}` | Home's card of the trip under way |
+| `home.suggestions` | `{}` | Home's suggestions card (latest route, nearest station) |
+| `home.latest` | `{"trip"}` | the latest route inside it (`ui/HomeSuggestions.kt`) |
+| `home.pay` | `{}` | Home's pay card, while paying is on |
+| `home.recent` | `{}` | Home's recent trips |
+| `trip.header` | `{"trip"}` | a trip page's top row: Back, its title, Share, Start (`ui/TripDetail.kt`) |
+| `trip.map` | `{"trip"}` | its map |
+| `trip.summary` | `{"trip"}` | its summary under the map |
+| `trip.timeline` | `{"trip"}` | all its steps |
+| `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button |
+| `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line |
+| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) |
+| `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) |
+| `stop.board` | `{"stop", "name"}` | its departures, as rows of their own |
+| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) |
+| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) |
+| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) |
+
+`{"trip"}` is the route as route rules get it ([hooks.md](/docs/extensions/hooks)); `leg` one of its `legs`, and `index` its place
+in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
+after `trip.timeline`, `stop` at the top of `stop.board`, `results` inside each `results.route` card.
+
+### Tickets
+
+```java
+kav.addTicket(new JSONObject()
+    .put("key", "t1").put("kind", "BUS").put("line", "37").put("from", "boarding stop").put("to", "destination")
+    .put("boughtAt", now).put("validUntil", now + 90 * 60_000L).put("riders", 1).put("price", 800)
+    .put("number", "UTN reference").put("codes", new JSONArray().put("<QR text per passenger>")).put("needsExit", false)
+    .toString());
+```
+
+The ticket goes into Kav's own tickets, as one Kav read from Rav-Pass does: on Home's pay card, on its ride, as the
+live ticket notification, in Settings › Paying › Ride history and Home's "This month". From any thread. `key` is
+your own id for it; Kav keeps it as `"ext:<your id()>:<key>"`, the key `ticket.open` names, and the same key again
+updates it. `kind` is `BUS`, `TRAIN` or `LIGHT_RAIL`; a train ticket with `needsExit` is an entrance, which the next
+bus's Pay asks about. Times are in milliseconds; `price` in agorot. Each code is a passenger's QR code, drawn by
+Kav. It ends at `validUntil`, and stays when your extension is switched off or removed. A ticket that isn't right
+(no key, another kind, `validUntil` not after `boughtAt`) throws.
+
+### Hooks into Kav itself
+
+```java
+Class<?> common = Class.forName("uk.noammm.kav.ui.CommonKt", false, kav.kavClassLoader());
+Method minutes = common.getDeclaredMethod("durMinutes", int.class);
+Kav.Unhook unhook = kav.hook(minutes,
+    call -> { /* before: may change call.args(), or call.setResult(...) to skip the original */ },
+    call -> call.setResult(call.result() + " (hooked)"));
+```
+
+`before` runs before the method and may set a result or an error, which skips the method; `after` runs after it and
+may change its result or error. Either may be `null`. `call.thisObject()` is the object it was called on (`null`
+for a static method), `call.args()` its arguments, `call.callOriginal(args...)` the method itself without the hooks.
+A constructor can be hooked too. With several hooks on one method, befores go in the order they hooked and afters
+the other way round. Each call of yours goes through the crash guard: one that throws is counted, and the method
+carries on without it. `hook` throws when the method can't be hooked.
+
+- Kav starts the hook engine the first time an extension hooks, so a Kav without such an extension pays nothing for
+  it. It is LSPlant (LGPL-3.0) with Dobby (Apache-2.0), for Android 8 to 17, on arm64 and x86_64 phones; Kav's
+  `android/hook/build.sh` builds it.
+- Kav keeps its class and method names in its release builds, so you can find them by name. R8 still inlines small
+  methods into their callers: a hook on one may not be reached where it was inlined. `kav.deoptimize(caller)` makes
+  the caller run as written again; a method with many callers (like `durMinutes`) is never inlined.
+- Kav's code changes from release to release. A hook is the right tool for what no action or part reaches, and the
+  wrong one for what they do: check it on every new Kav, and give your rider a way back (switch it off).
+- Your hooks go when your extension is switched off, blocked or removed, and none load in safe mode.
+
 ## The crash guard and safe mode
 
 Your code runs inside Kav, so a crash of yours is Kav's crash. Kav counts each one against the extension that
@@ -358,6 +517,9 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `native-rules` | a trip planner, three route rules and a stop board |
 | `my-home` | a Home body and a tab of its own |
 | `crash-test` | a button that crashes Kav, to see the crash guard switch it off |
+| `pay-sample` | API 4: takes over Kav's Pay buttons with a pretend ticket, which it puts in Kav's own tickets and opens there |
+| `parts-sample` | API 4: a row after Home's pay card, and each ride of a trip drawn its own way |
+| `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 

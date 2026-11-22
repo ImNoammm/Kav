@@ -84,6 +84,9 @@ adds the permissions or what is changed.
 | Can add a line to your trip results | יכול להוסיף שורה לתוצאות החיפוש שלכם | key `slot.results` |
 | Can add a part to a trip's page | יכול להוסיף חלק לעמוד של נסיעה | key `slot.trip` |
 | Can add a row to stop boards | יכול להוסיף שורה ללוחות תחנה | key `slot.stop` |
+| Takes over: | לוקח על עצמו: | key `actions`, followed by the actions (paying: תשלום, opening stops: פתיחת תחנות...) |
+| Changes parts of Kav's screens: | משנה חלקים במסכים של Kav: | key `parts`, followed by the parts (Home's pay card: כרטיס התשלום במסך הבית...) |
+| Changes how Kav itself works | משנה את האופן שבו Kav עצמה פועלת | key `hooks` |
 | Sees your trip searches | רואה את חיפושי המסלולים שלכם | key `searches` |
 | Changes your results: | משנה את התוצאות שלכם: | key `results`, followed by what changes |
 | Keeps its own data on your phone | שומר מידע משלו בטלפון שלכם | key `data` |
