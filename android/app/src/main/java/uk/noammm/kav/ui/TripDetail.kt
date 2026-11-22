@@ -131,14 +131,18 @@ fun TripDetailScreen(
     fun leavePlan() {
         if (planFromNavigation) { planFromNavigation = false; navigating = true } else onBack()
     }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Leaving navigation for Home, by its back button or Back, and its trip plan shown over it: each by name.
+    fun navArgs() = JSONObject().put("trip", Slots.trip(trip, r))
+    fun planShown() { if (navigating) { navigating = false; planFromNavigation = true } }
+    val exitNavigation = { if (!Actions.take(ctx, "nav.exit", ::navArgs)) onHome() }
     androidx.activity.compose.BackHandler {
         when {
-            navigating -> onHome()
+            navigating -> exitNavigation()
             tracking != null -> tracking = null
             else -> leavePlan()
         }
     }
-    val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // The boards of the trip's stops asked ahead, so the one tapped opens with its provider's times: where it boards,
     // changes and gets off first, then the stops along its rides.
@@ -172,6 +176,13 @@ fun TripDetailScreen(
         Actions.own("trip.start") { _, _ -> start() }
         Actions.own("trip.end") { _, _ -> end() }
         Actions.own("share") { _, _ -> sharingOpen = true }
+        Actions.own("nav.exit") { _, _ -> onHome() }
+        Actions.own("nav.plan") { _, _ -> planShown() }
+        Actions.own("trip.track") { _, a ->
+            trip.legs.getOrNull(a.optInt("leg", -1))?.takeIf { it.kind == Transit.LegKind.RIDE }?.let { l ->
+                tracking = l.copy(tripId = a.optLong("tripId", l.tripId), shortName = a.optString("line").ifEmpty { l.shortName }) to l.fromStop
+            }
+        }
         onDispose { }
     }
     FreshAlerts(trip.rides.map { it to r })
@@ -184,7 +195,11 @@ fun TripDetailScreen(
             extra = { TripSlots(model, trip, r) },
             me = model.here?.takeIf { model.hereFresh }, heading = model.heading,
             onMapShown = { model.tripMapShown = it },
-            onTrack = { leg, stopId -> tracking = leg to stopId },
+            onTrack = { leg, stopId ->
+                // The ride by its place in the trip, and the bus that Live location follows on it.
+                val i = trip.legs.indexOfFirst { it.kind == Transit.LegKind.RIDE && it.fromStop == leg.fromStop && it.toStop == leg.toStop }
+                if (!Actions.take(ctx, "trip.track") { navArgs().put("leg", i).put("tripId", leg.tripId).put("line", leg.shortName) }) tracking = leg to stopId
+            },
             onStart = { if (!Actions.take(ctx, "trip.start") { JSONObject().put("trip", Slots.trip(trip, r)) }) start() },
             onReport = { model.openReport(it) },
             onShare = { if (!Actions.take(ctx, "share") { JSONObject().put("trip", Slots.trip(trip, r)) }) sharingOpen = true }, asked = asked)
@@ -209,8 +224,8 @@ fun TripDetailScreen(
                 NavigateScreen(
                     model, trip, r, fromLabel, toLabel,
                     onStop = { if (!Actions.take(ctx, "trip.end") { JSONObject().put("trip", Slots.trip(trip, r)) }) end() },
-                    onExit = onHome,
-                    onPlan = { navigating = false; planFromNavigation = true },
+                    onExit = exitNavigation,
+                    onPlan = { if (!Actions.take(ctx, "nav.plan", ::navArgs)) planShown() },
                 )
                 }
                 androidx.compose.animation.AnimatedVisibility(

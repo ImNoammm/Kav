@@ -348,8 +348,8 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                         KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), headAdd)
                     } else ScreenHeader(headTitle, "", back = headBack)
                 }
-                KavPart("settings.page.${open.id}", open.id to headTitle, about) {
-                    Column(Modifier.padding(horizontal = K.gap1), content = open.content)
+                Column(Modifier.padding(horizontal = K.gap1)) {
+                    KavPart("settings.page.${open.id}", open.id to headTitle, about, inset = K.gap3) { Column(content = open.content) }
                 }
             }
         }

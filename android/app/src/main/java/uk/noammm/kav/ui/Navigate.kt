@@ -333,6 +333,26 @@ fun NavigateScreen(
             model.activeJourney = next.first
         }
     }
+    // The rider's taps here by name (ext/Actions.kt), and Kav's own of each for Kav.kavAction, set again as the screen
+    // changes so they act on the step and the problem shown now.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    fun tripArgs() = org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(trip, r))
+    fun failureArgs(f: Failure) = tripArgs().put("reason", f.kind.name.lowercase()).put("key", f.key)
+    fun showStep(step: Int) { scope.launch { pager.animateScrollToPage(step) } }
+    fun keep(f: Failure) { kept = kept + f.key; replanFailed = false }
+    fun stepTapped(step: Int) {
+        if (step !in steps.indices) return
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.step") { tripArgs().put("step", step).put("current", currentStep).put("steps", steps.size) }) showStep(step)
+    }
+    fun busTapped(leg: Int, option: Int) {
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.board.select") { tripArgs().put("leg", leg).put("option", option) }) choose(leg, option)
+    }
+    SideEffect {
+        uk.noammm.kav.ext.Actions.own("nav.step") { _, a -> a.optInt("step", -1).takeIf { it in steps.indices }?.let(::showStep) }
+        uk.noammm.kav.ext.Actions.own("nav.board.select") { _, a -> a.optInt("leg", -1).takeIf { it >= 0 }?.let { choose(it, a.optInt("option", 0)) } }
+        uk.noammm.kav.ext.Actions.own("nav.replan") { _, _ -> failure?.let(::replan) }
+        uk.noammm.kav.ext.Actions.own("nav.replan.keep") { _, _ -> failure?.let(::keep) }
+    }
 
     val liquid = rememberLiquidBackdrop()
     val bottomInset = LocalBottomBarInset.current
@@ -354,7 +374,7 @@ fun NavigateScreen(
 
             Column(Modifier.align(Alignment.TopStart).onSizeChanged { headerHeight = it.height }
                 .then(if (compact) Modifier.width(maxWidth - panelWidth) else Modifier.fillMaxWidth())) {
-                Row(
+                KavPart("nav.header", trip, ::tripArgs) { Row(
                     Modifier.fillMaxWidth().padding(K.gap3).glassSurface()
                         .padding(K.gap2),
                     verticalAlignment = Alignment.CenterVertically,
@@ -375,13 +395,14 @@ fun NavigateScreen(
                     }
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
                         tint = K.text)
-                }
-                if (!compact) StepStrip(pager, steps.size, currentStep) { target ->
-                    scope.launch { pager.animateScrollToPage(target) }
-                }
+                } }
+                if (!compact) StepStrip(pager, steps.size, currentStep, ::stepTapped)
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
-                if (failure != null) ReplanCard(failure, r, now, replanning, replanFailed,
-                    onReplan = { replan(failure) }, onKeep = { kept = kept + failure.key; replanFailed = false })
+                if (failure != null) KavPart("nav.problem", failure.key, { failureArgs(failure) }) {
+                    ReplanCard(failure, r, now, replanning, replanFailed,
+                        onReplan = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(failure) }) replan(failure) },
+                        onKeep = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(failure) }) keep(failure) })
+                }
             }
 
             Column(
@@ -390,9 +411,7 @@ fun NavigateScreen(
                 else Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = bottomInset),
             ) {
                 if (compact) {
-                    StepStrip(pager, steps.size, currentStep) { target ->
-                        scope.launch { pager.animateScrollToPage(target) }
-                    }
+                    StepStrip(pager, steps.size, currentStep, ::stepTapped)
                     Spacer(Modifier.height(K.gap2))
                 } else {
                     // The map's credit sits in the right corner just above the card, whatever the card's height or the
@@ -428,15 +447,17 @@ fun NavigateScreen(
                     beyondViewportPageCount = 1,
                 ) { page ->
                     Column(Modifier.fillMaxWidth().onSizeChanged { pageHeights[page] = it.height }.animateContentSize()) {
-                        CurrentStepButton(page, currentStep, shown = page == pager.targetPage, modifier = Modifier.touched(cards, page to 0)) { scope.launch { pager.animateScrollToPage(currentStep) } }
+                        CurrentStepButton(page, currentStep, shown = page == pager.targetPage, modifier = Modifier.touched(cards, page to 0)) { stepTapped(currentStep) }
                         Box(Modifier.touched(cards, page to 1)) {
-                            StepCard(
-                                steps[page], r, active = page == currentStep, now = now,
-                                chosen = chosen, fix = fix,
-                                onChoose = ::choose,
-                                pay = Shown.payments,
-                                report = { model.openReport(it) },
-                            )
+                            KavPart("nav.card", page to (page == currentStep), { tripArgs().put("step", page).put("current", currentStep) }) {
+                                StepCard(
+                                    steps[page], r, active = page == currentStep, now = now,
+                                    chosen = chosen, fix = fix,
+                                    onChoose = ::busTapped,
+                                    pay = Shown.payments,
+                                    report = { model.openReport(it) },
+                                )
+                            }
                         }
                     }
                 }

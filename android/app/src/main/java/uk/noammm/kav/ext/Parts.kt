@@ -28,6 +28,7 @@ object Parts {
         "results.endpoints", "results.options", "results.time.shift", "results.planners",
         "ticket.header", "ticket.validity", "ticket.ride",
         "pay.history.header", "pay.history.summary", "pay.history.empty", "pay.history.month", "pay.history.ride",
+        "nav.header", "nav.problem", "nav.card", "share.targets", "ticket.codes", "pay.setup",
     ) + SETTINGS_PAGES.map { "settings.page.$it" }
 
     const val CAPABILITY = "part."

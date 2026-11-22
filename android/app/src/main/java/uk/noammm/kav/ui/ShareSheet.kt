@@ -546,7 +546,7 @@ private fun ShareTargets(text: String?, failed: Boolean, close: (send: () -> Uni
             val send = Intent(Intent.ACTION_SEND).setType("text/plain").setPackage(pkg)
             val info = pm.resolveActivity(send, 0) ?: return@mapNotNull null
             val icon = runCatching { info.loadIcon(pm).toBitmap(96, 96).asImageBitmap() }.getOrNull()
-            Target(info.loadLabel(pm).toString(), icon, null) { c, t ->
+            pkg to Target(info.loadLabel(pm).toString(), icon, null) { c, t ->
                 c.startActivity(Intent(Intent.ACTION_SEND).setType("text/plain").setPackage(pkg)
                     .putExtra(Intent.EXTRA_TEXT, t).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
@@ -561,26 +561,40 @@ private fun ShareTargets(text: String?, failed: Boolean, close: (send: () -> Uni
     fun tap(name: String, send: (String) -> Unit) { if (text != null) send(text) else if (!failed) waiting = name to send }
     val copy = T("Copy link", "העתקת קישור")
     val more = T("More", "עוד")
-    Column(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(K.gap3),
-        ) {
-            TargetButton(copy, null, if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, waiting?.first == copy,
-                tint = if (copied) K.realtime else K.text) {
-                tap(copy) {
-                    (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Kav", it))
-                    copied = true
+    // Kav's own for each target: "copy", "more", or an app by its package.
+    fun send(target: String) {
+        val app = apps.firstOrNull { it.first == target }?.second
+        when {
+            target == "copy" -> tap(copy) {
+                (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Kav", it))
+                copied = true
+            }
+            target == "more" -> tap(more) { t ->
+                close {
+                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t)
+                    ctx.startActivity(Intent.createChooser(send, T("Share trip", "שיתוף נסיעה")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
-            apps.forEach { a -> TargetButton(a.name, a.icon, null, waiting?.first == a.name) { tap(a.name) { t -> close { a.send(ctx, t) } } } }
-            TargetButton(more, null, Icons.Rounded.MoreHoriz, waiting?.first == more) {
-                tap(more) { t ->
-                    close {
-                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t)
-                        ctx.startActivity(Intent.createChooser(send, T("Share trip", "שיתוף נסיעה")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                }
+            app != null -> tap(app.name) { t -> close { app.send(ctx, t) } }
+        }
+    }
+    // A target tapped, by name (ext/Actions.kt), with the link when it's made.
+    fun tapped(target: String, name: String) {
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "share.send") {
+            org.json.JSONObject().put("target", target).put("name", name).put("link", text ?: org.json.JSONObject.NULL)
+        }) send(target)
+    }
+    SideEffect { uk.noammm.kav.ext.Actions.own("share.send") { _, a -> send(a.optString("target")) } }
+    KavPart("share.targets", text, { org.json.JSONObject().put("link", text ?: org.json.JSONObject.NULL) }) {
+        Column(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(K.gap3),
+            ) {
+                TargetButton(copy, null, if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, waiting?.first == copy,
+                    tint = if (copied) K.realtime else K.text) { tapped("copy", copy) }
+                apps.forEach { (pkg, a) -> TargetButton(a.name, a.icon, null, waiting?.first == a.name) { tapped(pkg, a.name) } }
+                TargetButton(more, null, Icons.Rounded.MoreHoriz, waiting?.first == more) { tapped("more", more) }
             }
         }
     }

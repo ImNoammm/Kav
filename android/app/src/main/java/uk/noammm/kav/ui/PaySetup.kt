@@ -127,23 +127,25 @@ internal fun PaySetupHost() {
                 },
                 label = "paySetup",
             ) { p ->
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    when (p) {
-                        Page.GET -> GetRavPass()
-                        Page.ALLOW -> Allow(
-                            asked.sortedBy { it.ordinal }, missing, greyed?.takeIf { it in missing },
-                            onOverlay = { if (PayOverlay.openSystemScreen(ctx)) went = Need.OVERLAY },
-                            onReader = { reading = true },
-                        )
-                        Page.READER -> AboutReader(
-                            onAgree = {
-                                reading = false
-                                Prefs.setTickets(ctx, true)
-                                if (openAccessibility(ctx)) went = Need.READER
-                            },
-                            onBack = { reading = false },
-                        )
-                        Page.DONE -> Done()
+                KavPart("pay.setup", p, { org.json.JSONObject().put("page", p.name.lowercase()) }) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        when (p) {
+                            Page.GET -> GetRavPass()
+                            Page.ALLOW -> Allow(
+                                asked.sortedBy { it.ordinal }, missing, greyed?.takeIf { it in missing },
+                                onOverlay = { if (PayOverlay.openSystemScreen(ctx)) went = Need.OVERLAY },
+                                onReader = { reading = true },
+                            )
+                            Page.READER -> AboutReader(
+                                onAgree = {
+                                    reading = false
+                                    Prefs.setTickets(ctx, true)
+                                    if (openAccessibility(ctx)) went = Need.READER
+                                },
+                                onBack = { reading = false },
+                            )
+                            Page.DONE -> Done()
+                        }
                     }
                 }
             }
@@ -154,7 +156,7 @@ internal fun PaySetupHost() {
                         style = ButtonStyle.Secondary, wide = true)
                     if (PaySetup.offersOff && Prefs.ravPass(ctx)) {
                         Spacer(Modifier.height(K.gap2))
-                        KavButton(T("Turn off paying", "כיבוי התשלום"), onClick = { close { PaySetup.hide(); PayOffAsk.open = true } },
+                        KavButton(T("Turn off paying", "כיבוי התשלום"), onClick = { close { PaySetup.hide(); payMode(ctx, false, "setup") } },
                             style = ButtonStyle.Destructive, wide = true)
                     }
                 }

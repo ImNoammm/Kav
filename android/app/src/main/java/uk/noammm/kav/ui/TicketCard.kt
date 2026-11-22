@@ -164,6 +164,11 @@ internal fun validity(t: Ticket, now: Long, short: Boolean = false): Pair<String
     }
 }
 
+// A ticket shown in Rav-Pass, on its section, for an inspector.
+internal fun openInRavPass(ctx: android.content.Context, t: Ticket) {
+    TicketStore.showAsked = System.currentTimeMillis(); RavPass.go(ctx, sectionOf(t))
+}
+
 private fun sectionOf(t: Ticket) = when (t.kind) {
     TicketScreens.Kind.BUS -> RavPass.Section.BUS
     TicketScreens.Kind.LIGHT_RAIL -> RavPass.Section.LIGHT_RAIL
@@ -303,37 +308,40 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
                 Text(T("The ticket for an inspector is in Rav-Pass: open it there, under \"Active travel ticket for inspection\". Once you have, Kav shows it here too.",
                     "הכרטיס לביקורת נמצא ברב-פס: פתחו אותו שם, תחת \"כרטיס נסיעה פעילה לביקורת\". אחרי שתפתחו אותו, Kav תציג אותו גם כאן."),
                     style = K.type.body, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            } else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(K.gap2)) {
-                androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxWidth()) { i ->
-                    val p = codes[i]
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        if (!TicketView.drawable(p.format)) Box(Modifier.fillMaxWidth().heightIn(min = 120.dp).panel(K.rTile).padding(K.gap4), contentAlignment = Alignment.Center) {
-                            Text(T("Kav can't draw this code exactly. Show it in Rav-Pass.", "Kav לא יכולה להציג את הקוד הזה בדיוק. הציגו אותו ברב-פס."),
-                                style = K.type.body, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            } else KavPart("ticket.codes", t, { about().put("code", pager.currentPage).put("codes", codes.size) }) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(K.gap2)) {
+                    androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxWidth()) { i ->
+                        val p = codes[i]
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            if (!TicketView.drawable(p.format)) Box(Modifier.fillMaxWidth().heightIn(min = 120.dp).panel(K.rTile).padding(K.gap4), contentAlignment = Alignment.Center) {
+                                Text(T("Kav can't draw this code exactly. Show it in Rav-Pass.", "Kav לא יכולה להציג את הקוד הזה בדיוק. הציגו אותו ברב-פס."),
+                                    style = K.type.body, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            }
+                            // A station's gate reads a code the size Rav-Pass shows a train's at, 180 dp with a white border.
+                            else if (gate) Box(Modifier.size(180.dp).clip(RoundedCornerShape(K.rTile)).background(Color.White).padding(10.dp)) {
+                                Code(p.code, p.format, Modifier.fillMaxSize())
+                            }
+                            // A bus's, big enough for any reader and small enough to leave the ticket's facts on the screen.
+                            else Code(p.code, p.format, Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(K.rCard)))
                         }
-                        // A station's gate reads a code the size Rav-Pass shows a train's at, 180 dp with a white border.
-                        else if (gate) Box(Modifier.size(180.dp).clip(RoundedCornerShape(K.rTile)).background(Color.White).padding(10.dp)) {
-                            Code(p.code, p.format, Modifier.fillMaxSize())
-                        }
-                        // A bus's, big enough for any reader and small enough to leave the ticket's facts on the screen.
-                        else Code(p.code, p.format, Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(K.rCard)))
                     }
-                }
-                // Under the code, what Rav-Pass prints under it: whose it is in a group, and the ticket's number.
-                listOfNotNull(
-                    if (codes.size > 1) "${pager.currentPage + 1} / ${codes.size}" else null,
-                    codes.getOrNull(pager.currentPage)?.name,
-                    t.number,
-                ).takeIf { it.isNotEmpty() }?.let {
-                    Text(it.joinToString("  ·  "), style = K.type.subhead.tabular, color = K.textTertiary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    // Under the code, what Rav-Pass prints under it: whose it is in a group, and the ticket's number.
+                    listOfNotNull(
+                        if (codes.size > 1) "${pager.currentPage + 1} / ${codes.size}" else null,
+                        codes.getOrNull(pager.currentPage)?.name,
+                        t.number,
+                    ).takeIf { it.isNotEmpty() }?.let {
+                        Text(it.joinToString("  ·  "), style = K.type.subhead.tabular, color = K.textTertiary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
                 }
             }
             Column(Modifier.fillMaxWidth().panel(K.rCard)) {
                 KavPart("ticket.validity", t, about) { TicketValidity(t, now) }
                 TicketRideRows(t, net, ride, model, onClose, about)
             }
-            if (!uk.noammm.kav.ExtTickets.mine(t)) KavButton(T("Open in Rav-Pass", "פתיחה ברב-פס"), onClick = { TicketStore.showAsked = System.currentTimeMillis(); RavPass.go(ctx, sectionOf(t)) },
-                style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
+            if (!uk.noammm.kav.ExtTickets.mine(t)) KavButton(T("Open in Rav-Pass", "פתיחה ברב-פס"), onClick = {
+                if (!uk.noammm.kav.ext.Actions.take(ctx, "ticket.ravpass.open") { about() }) openInRavPass(ctx, t)
+            }, style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
         }
     }
 }

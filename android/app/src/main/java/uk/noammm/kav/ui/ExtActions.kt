@@ -97,6 +97,12 @@ internal fun kavActions(model: KavModel) {
         LiveShow.entries.firstOrNull { liveShowKey(it) == a.optString("show") }?.let { model.liveShow = it }
     }
     Actions.own("pay.history.open") { _, _ -> PayHistory.open = true }
+    Actions.own("pay.mode") { ctx, a -> if (a.has("on")) payModeOwn(ctx, a.optBoolean("on")) }
+    Actions.own("pay.offer.hide") { ctx, _ -> PayMode.dismissOffer(ctx) }
+    Actions.own("pay.place.open") { ctx, a -> RavPass.placeNamed(a.optString("place"))?.let { RavPass.place(ctx, it) } }
+    Actions.own("ticket.ravpass.open") { ctx, a ->
+        TicketStore.kept.firstOrNull { it.key == a.optString("key") && !uk.noammm.kav.ExtTickets.mine(it) }?.let { openInRavPass(ctx, it) }
+    }
     Actions.own("settings.open") { _, _ -> model.settingsOpen = true }
     Actions.own("street.open") { _, _ -> StreetViewer.asked?.let { StreetViewer.open = it } }
     Actions.own("taxi") { ctx, a -> a.optString("link").takeIf { it.startsWith("gett://") }?.let { openGettOwn(ctx, it) } }

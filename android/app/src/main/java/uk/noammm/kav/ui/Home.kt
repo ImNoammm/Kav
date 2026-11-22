@@ -135,12 +135,12 @@ internal fun HomeScreen(
                 } }
                 // Each card comes, goes and moves with a fade and a glide: a trip starting or ending, the first recent trip.
                 model.activeJourney?.let { journey -> item(key = "journey") {
-                    KavPart("home.journey", journey, { JSONObject().put("trip", Slots.trip(journey.trip, journey.resolved)) }) {
+                    KavPart("home.journey", journey, { JSONObject().put("trip", Slots.trip(journey.trip, journey.resolved)) }, ownGap = true) {
                         Box(listMotion().padding(top = K.gap4)) { JourneyCard(model, journey, onResume) }
                     }
                 } }
                 if (model.activeJourney == null) item(key = "suggestions") {
-                    KavPart("home.suggestions", Unit, { JSONObject() }) { HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4)) }
+                    KavPart("home.suggestions", Unit, { JSONObject() }, ownGap = true) { HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4)) }
                 }
                 // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
                 if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
@@ -148,10 +148,10 @@ internal fun HomeScreen(
                 val showPay = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
                 if (showPay || TicketStore.kept.any { it.key.startsWith("ext:") } ||
                     TicketStore.history.any { it.key.startsWith("ext:") }) item(key = "payments") {
-                    KavPart("home.pay", Unit, { JSONObject() }) { PayCard(listMotion().padding(top = K.gap4), showPay) }
+                    KavPart("home.pay", Unit, { JSONObject() }, ownGap = true) { PayCard(listMotion().padding(top = K.gap4), showPay) }
                 }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
-                if (recentTrips.isNotEmpty()) item(key = "recent") { KavPart("home.recent", recentTrips, { JSONObject() }) {
+                if (recentTrips.isNotEmpty()) item(key = "recent") { KavPart("home.recent", recentTrips, { JSONObject() }, ownGap = true) {
                     Column(listMotion().padding(top = K.gap4).fillMaxWidth().panel(K.rCard)
                         .animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
                         Row(Modifier.fillMaxWidth()) {
