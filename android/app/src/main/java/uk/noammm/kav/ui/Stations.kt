@@ -535,7 +535,7 @@ private fun ExtStopBoard(model: KavModel, net: Net, stop: Int, onBack: () -> Uni
                 Spacer(Modifier.width(K.gap3))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(e?.name ?: T("Stop", "תחנה"), style = K.type.headline)
-                    Text(listOfNotNull(e?.code?.ifEmpty { null }?.let { T.ltr(it) }, T("Times by \u2068$name\u2069", "הזמנים מ-\u2068$name\u2069")).joinToString(" · "), style = K.type.subhead)
+                    e?.code?.takeIf { it.isNotEmpty() }?.let { Text(T.ltr(it), style = K.type.subhead) }
                 }
             }
             Spacer(Modifier.height(K.gap3))

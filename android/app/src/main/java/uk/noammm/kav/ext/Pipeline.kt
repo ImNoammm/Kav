@@ -591,21 +591,20 @@ class Snapshot(
 // one of Kav's own tags.
 object Tags {
     private const val PREFIX = "x:"
-    private val words = java.util.concurrent.ConcurrentHashMap<String, Triple<String, String, String>>()
+    private val words = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
 
     fun of(p: Pinned, tag: String): String {
         val k = "$PREFIX${p.namespace.key}:${p.contribution}:$tag"
         // Its declared words, or the tag itself as its words in both languages.
-        val w = p.tags[tag] ?: (tag to tag)
-        words[k] = Triple(w.first, w.second, p.label)
+        words[k] = p.tags[tag] ?: (tag to tag)
         return k
     }
 
     fun isTheirs(tag: String) = tag.startsWith(PREFIX)
 
-    // English, Hebrew and whose; a tag not learnt in this run is its own words.
-    fun word(tag: String): Triple<String, String, String>? = words[tag]
-        ?: tag.takeIf(::isTheirs)?.substringAfterLast(':')?.takeIf { it.isNotEmpty() }?.let { Triple(it, it, "") }
+    // English and Hebrew. A tag not learnt in this run is its own words.
+    fun word(tag: String): Pair<String, String>? = words[tag]
+        ?: tag.takeIf(::isTheirs)?.substringAfterLast(':')?.takeIf { it.isNotEmpty() }?.let { it to it }
 
     // A snapshot's tags learnt again (a journey reopened after a restart).
     fun learn(s: Snapshot) { for (p in s.annotate) for (t in p.tags.keys) of(p, t) }

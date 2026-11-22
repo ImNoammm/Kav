@@ -485,8 +485,7 @@ object KavPlan {
     // A tag's words as Kav is shown now; null for a tag it has no words for.
     fun tagWord(tag: String): String? = TAG_WORDS[tag]?.let { (en, he) -> T(en, he) }
         ?: tag.takeIf { it.startsWith(LATE) }?.removePrefix(LATE)?.toIntOrNull()?.let { T("$it min late", "באיחור של $it דק׳") }
-        // An extension's, with whose it is (ext/Pipeline.kt Tags).
-        ?: tag.takeIf { it.startsWith("x:") }?.let(uk.noammm.kav.ext.Tags::word)?.let { (en, he, by) -> T("\u2068$en\u2069 · by \u2068$by\u2069", "\u2068$he\u2069 · מאת \u2068$by\u2069") }
+        ?: tag.takeIf { it.startsWith("x:") }?.let(uk.noammm.kav.ext.Tags::word)?.let { (en, he) -> T.iso(T(en, he)) }
 
     // A saved tag read back. An older Kav saved its words, in either language: those turn back into the tag.
     internal fun tagOf(saved: String): String? = when {

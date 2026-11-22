@@ -172,7 +172,7 @@ class Hello : KavExtension {
 | `part(name, where, card)` | API 4: a view `"before"` or `"after"` one of Kav's screen parts, or one that `"replace"`s it ([below](#screen-parts)) |
 | `addTicket(ticket)` | API 4: a ticket in Kav's own tickets and ride history ([below](#tickets)) |
 | `hook(method, before, after)` | API 4: a hook on one of Kav's own methods, or Android's ([below](#hooks-into-kav-itself)) |
-| `deoptimize(method)` | API 4: a method run as written again, so a hook on a small method it inlined is reached |
+| `deoptimize(method)` | API 4: have ART interpret a caller again so its runtime inlining does not skip a hook |
 | `kavClassLoader()` | API 4: Kav's own `ClassLoader`, to find its classes by name |
 
 ```kotlin
@@ -333,26 +333,26 @@ it to the next, then to Kav. A throw is counted by the crash guard. `null` remov
 `trip.open`, `trip.start`, `trip.end`, `share`, `plan`, `report`, `alert.open`, `street.open` and `place.save` is
 for the screen it was asked from, so `kavAction` on one of those works while that screen is open, on what it shows.
 
-| Name | Args | Where Kav handles it |
-|---|---|---|
-| `pay` | a ride (below), `{}` from Home's "Pay for a ride" and the shortcuts, `{"section": "train"}` for a train's exit ticket | every Pay button, the trip's notification, the Pay shortcut and tile: `ui/RavPass.kt` `RavPass.open` |
-| `ticket.open` | `{"key"}` | a ticket opened from Home, a ride or the ride history: `ui/ExtActions.kt` `openTicket` |
-| `stop.open` | `{"stop": "il.mot/gtfs/stop/<code>", "name"}` | a stop's board opened (Stops tab, a trip, an alert): `KavModel.openStation`, `ui/Stations.kt` |
-| `line.open` | `{"number", "stop"}` (`stop` the board it was opened from, or `null`) | a line's page opened: `ui/Lines.kt` `openTimetableLine`, `KavModel.openSchedule` |
-| `trip.open` | `{"trip": <the route>}` | a trip's page opened from results, Home's latest route, the trip under way, a train: `ui/DirectionsOnline.kt` `openTrip` |
-| `trip.start` | `{"trip"}` | a trip's Start: `ui/TripDetail.kt` |
-| `trip.end` | `{"trip"}` | End trip in navigation: `ui/TripDetail.kt` (the trip notification's own End always ends it) |
-| `share` | `{"trip"}` | a trip's Share: `ui/TripDetail.kt` |
-| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results |
-| `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` |
-| `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` |
-| `taxi` | `{"link": "gett://..."}` | a taxi ordered: `ui/Gett.kt` |
-| `street.open` | `{"name", "lat", "lon"}` | a stop's Street View: `ui/StreetView.kt` `openStreet` |
-| `place.save` | `{"places": [{"id", "name", "lat", "lon"}]}`, the whole list as it would be kept | Home's places added, edited, moved or removed: `KavModel.saveFavourites` |
-| `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` |
-| `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` |
-| `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` |
-| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` |
+| Name | Args | Where Kav handles it | Kav source |
+|---|---|---|---|
+| `pay` | a ride (below), `{}` from Home's "Pay for a ride" and the shortcuts, `{"section": "train"}` for a train's exit ticket | every Pay button, the trip's notification, the Pay shortcut and tile: `ui/RavPass.kt` `RavPass.open` | `ui/RavPass.kt:101` |
+| `ticket.open` | `{"key"}` | a ticket opened from Home, a ride or the ride history: `ui/ExtActions.kt` `openTicket` | `ui/ExtActions.kt:33` |
+| `stop.open` | `{"stop": "il.mot/gtfs/stop/<code>", "name"}` | a stop's board opened (Stops tab, a trip, an alert): `KavModel.openStation`, `ui/Stations.kt` | `ui/ExtActions.kt:24` |
+| `line.open` | `{"number", "stop"}` (`stop` the board it was opened from, or `null`) | a line's page opened: `ui/Lines.kt` `openTimetableLine`, `KavModel.openSchedule` | `ui/ExtActions.kt:27` |
+| `trip.open` | `{"trip": <the route>}` | a trip's page opened from results, Home's latest route, the trip under way, a train: `ui/DirectionsOnline.kt` `openTrip` | `ui/DirectionsOnline.kt:156` |
+| `trip.start` | `{"trip"}` | a trip's Start: `ui/TripDetail.kt` | `ui/TripDetail.kt:188` |
+| `trip.end` | `{"trip"}` | End trip in navigation: `ui/TripDetail.kt` (the trip notification's own End always ends it) | `ui/TripDetail.kt:211` |
+| `share` | `{"trip"}` | a trip's Share: `ui/TripDetail.kt` | `ui/TripDetail.kt:190` |
+| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results | `ui/DirectionsOnline.kt:322` |
+| `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` | `MainActivity.kt:403` |
+| `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` | `ui/Common.kt:574` |
+| `taxi` | `{"link": "gett://..."}` | a taxi ordered: `ui/Gett.kt` | `ui/Gett.kt:56` |
+| `street.open` | `{"name", "lat", "lon"}` | a stop's Street View: `ui/StreetView.kt` `openStreet` | `ui/StreetView.kt:68` |
+| `place.save` | `{"places": [{"id", "name", "lat", "lon"}]}`, the whole list as it would be kept | Home's places added, edited, moved or removed: `KavModel.saveFavourites` | `MainActivity.kt:423` |
+| `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` | `MainActivity.kt:437` |
+| `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` | `MainActivity.kt:443` |
+| `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` | `ui/Home.kt:108` |
+| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1444` |
 
 The ride `pay` is told, from a ride's own Pay button and the trip's notification:
 
@@ -380,26 +380,26 @@ their extensions were switched on, first on first; of several replacements, the 
 it returns `null`, the next one's, then Kav's own. A part no extension adds to is drawn as it always is. `null` as
 the card removes yours.
 
-| Name | About | What it is |
-|---|---|---|
-| `home.places` | `{}` | Home's row of saved places (`ui/Home.kt`) |
-| `home.journey` | `{"trip"}` | Home's card of the trip under way |
-| `home.suggestions` | `{}` | Home's suggestions card (latest route, nearest station) |
-| `home.latest` | `{"trip"}` | the latest route inside it (`ui/HomeSuggestions.kt`) |
-| `home.pay` | `{}` | Home's pay card, while paying is on |
-| `home.recent` | `{}` | Home's recent trips |
-| `trip.header` | `{"trip"}` | a trip page's top row: Back, its title, Share, Start (`ui/TripDetail.kt`) |
-| `trip.map` | `{"trip"}` | its map |
-| `trip.summary` | `{"trip"}` | its summary under the map |
-| `trip.timeline` | `{"trip"}` | all its steps |
-| `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button |
-| `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line |
-| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) |
-| `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) |
-| `stop.board` | `{"stop", "name"}` | its departures, as rows of their own |
-| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) |
-| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) |
-| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) |
+| Name | About | What it is | Kav source |
+|---|---|---|---|
+| `home.places` | `{}` | Home's row of saved places (`ui/Home.kt`) | `ui/Home.kt:124` |
+| `home.journey` | `{"trip"}` | Home's card of the trip under way | `ui/Home.kt:138` |
+| `home.suggestions` | `{}` | Home's suggestions card (latest route, nearest station) | `ui/Home.kt:143` |
+| `home.latest` | `{"trip"}` | the latest route inside it (`ui/HomeSuggestions.kt`) | `ui/HomeSuggestions.kt:207` |
+| `home.pay` | `{}` | Home's pay card, when paying, tickets or ride history are shown | `ui/Home.kt:151` |
+| `home.recent` | `{}` | Home's recent trips | `ui/Home.kt:154` |
+| `trip.header` | `{"trip"}` | a trip page's top row: Back, its title, Share, Start (`ui/TripDetail.kt`) | `ui/TripDetail.kt:257` |
+| `trip.map` | `{"trip"}` | its map | `ui/TripDetail.kt:279` |
+| `trip.summary` | `{"trip"}` | its summary under the map | `ui/TripDetail.kt:283` |
+| `trip.timeline` | `{"trip"}` | all its steps | `ui/TripDetail.kt:285` |
+| `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button | `ui/TripDetail.kt:458` |
+| `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line | `ui/TripDetail.kt:429` |
+| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:926` |
+| `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) | `ui/Stations.kt:364` |
+| `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:446` |
+| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1487` |
+| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:333` |
+| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1126` |
 
 `{"trip"}` is the route as route rules get it ([hooks.md](/docs/extensions/hooks)); `leg` one of its `legs`, and `index` its place
 in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
@@ -443,13 +443,15 @@ if (!kav.hooked("uk.noammm.kav.ui.CommonKt", "durMinutes", "int")) kav.log("not 
 `"int[]"`). Declared, your hooks can't break your extension when Kav changes:
 
 - Kav looks up every declared function as your code starts. One this Kav doesn't have is left out: nothing is
-  thrown, nothing counts against your extension, and its row in Settings › Extensions says "Needs an update for this
-  version of Kav". `hook` by name does the same for one it can't find or hook, and `hooked` tells you whether it took.
+  thrown, nothing counts against your extension, and its row in Settings › Extensions says "Needs an update for
+  this Kav". `hook` by name does the same for one it can't find or hook. `hooked` tells you whether it took.
 - `kavx check` holds your declared hooks against the functions a Kav release has (`api/hookable/<versionCode>.txt.gz`,
   the newest by default, `--kav <versionCode>` for another), and warns about each one it doesn't have.
 - Kav's own release gate keeps every function that extensions on its community list and the kit's samples declare:
   a Kav that loses one fails its tests, and keeps the old function or offers a named action or part in its place.
-  `kavx hooks <file.kavb>` prints yours for that list.
+  `kavx hooks <file.kavb>` prints yours for that list. When building a release list, pass the current community
+  bundles and the kit's sample bundles after the version code to `node tools/hookable.js <apk> <versionCode>`.
+  Missing methods in the release APK fail the command before it writes the version's list.
 
 `kav.hook(member, before, after)` takes a `Member` you found yourself (with `kavClassLoader()`), for Android's own
 methods, and throws when it can't be hooked; your own reflection that fails throws in your code too, which the crash
@@ -466,8 +468,8 @@ carries on without it. `hook` throws when the method can't be hooked.
   it. It is LSPlant (LGPL-3.0) with Dobby (Apache-2.0), for Android 8 to 17, on arm64 and x86_64 phones; Kav's
   `android/hook/build.sh` builds it.
 - Kav keeps its class and method names in its release builds, so you can find them by name. R8 still inlines small
-  methods into their callers: a hook on one may not be reached where it was inlined. `kav.deoptimize(caller)` makes
-  the caller run as written again; a method with many callers (like `durMinutes`) is never inlined.
+  methods into their callers, so those calls may be absent from the APK. `kav.deoptimize(caller)` handles inlining
+  by ART at runtime. To hook a call R8 already inlined, choose a method whose call remains in the release build.
 - Kav's code changes from release to release. A hook is the right tool for what no action or part reaches, and the
   wrong one for what they do: check it on every new Kav, and give your rider a way back (switch it off).
 - Your hooks go when your extension is switched off, blocked or removed, and none load in safe mode.
