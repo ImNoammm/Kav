@@ -12,6 +12,7 @@
 //   node scripts/community.mjs --kit <kit checkout>              the real thing (GITHUB_TOKEN, if set, for GitHub's API)
 //   node scripts/community.mjs --kit <kit> --offline <folder>    every https GET read from <folder>/<host>/<path> instead
 //   node scripts/community.mjs --topic-only                      only ask GitHub which repositories have the topic
+//   node scripts/community.mjs --kit <kit> --bundles <folder>    save listed bundles for the APK hook check
 //
 // Writes extensions/listing.json (the page's data), extensions/community.log, and the sources' pictures into
 // public/community/, so the page asks no other host for anything.
@@ -27,6 +28,7 @@ const { values: o } = parseArgs({
   options: {
     kit: { type: 'string' }, offline: { type: 'string' }, now: { type: 'string' }, 'topic-only': { type: 'boolean' },
     out: { type: 'string' }, log: { type: 'string' }, images: { type: 'string' }, dir: { type: 'string' },
+    bundles: { type: 'string' },
   },
 })
 const data = o.dir || join(site, 'extensions')
@@ -47,7 +49,9 @@ const say = (line) => { log.push(line); console.log(line) }
 
 // ---- Reading the web, or a folder that stands in for it --------------------------------------------------------------
 
-class Missing extends Error {}
+class Missing extends Error {
+  constructor(message, status) { super(message); this.status = status }
+}
 
 // An https GET of at most max bytes, the way Kav's own fetch does it (ExtApp.kt, Http): https only, at most five
 // redirects, each https, and a deadline.
@@ -72,7 +76,7 @@ async function web(url, max, headers = {}) {
       at = new URL(res.headers.get('location'), at).href
       continue
     }
-    if (!res.ok) throw new Missing(`${url}: HTTP ${res.status}`)
+    if (!res.ok) throw new Missing(`${url}: HTTP ${res.status}`, res.status)
     const bytes = Buffer.from(await res.arrayBuffer())
     if (bytes.length > max) throw new Missing(`${url}: larger than ${max} bytes`)
     return bytes
@@ -254,15 +258,26 @@ async function main() {
     if (excluded.has(k)) { say(`left out ${k} ${from}: on exclusions.txt`); continue }
     const early = blocked(blocks, repo)
     if (early) { say(`left out ${k} ${from}: on the block list (${early})`); continue }
-    let release, bundle
+    let release, bytes
     try {
       release = await latest(repo)
-      bundle = kit.readBundle(await web(release.url, kit.maxArchive))
-    } catch (e) { say(`left out ${k} ${from}: ${e.message}`); continue }
+      bytes = await web(release.url, kit.maxArchive)
+    } catch (e) {
+      if (o.bundles && (!(e instanceof Missing) || (e.status && e.status !== 404))) throw e
+      say(`left out ${k} ${from}: ${e.message}`); continue
+    }
+    let bundle
+    try { bundle = kit.readBundle(bytes) } catch (e) { say(`left out ${k} ${from}: ${e.message}`); continue }
     const runs = bundle.extensions.filter((x) => !x.older)
     if (!runs.length) { say(`left out ${k} ${from}: it has no extension this Kav runs`); continue }
     const late = blocked(blocks, repo, bundle.sha256)
     if (late) { say(`left out ${k} ${from}: on the block list (${late})`); continue }
+
+    if (o.bundles) {
+      const [owner, name] = repo.toLowerCase().split('/')
+      mkdirSync(join(o.bundles, owner), { recursive: true })
+      writeFileSync(join(o.bundles, owner, `${name}.kavb`), bytes)
+    }
 
     const d = describe(repo)
     const pic = await picture(repo, bundle)

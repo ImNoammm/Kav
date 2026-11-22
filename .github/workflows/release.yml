@@ -48,6 +48,33 @@ jobs:
           "$TOOLS/aapt2" dump badging "$APK" | grep -q "versionName='$VERSION'"
           "$TOOLS/apksigner" verify --print-certs "$APK" | grep -q 'SHA-256 digest: 9d183d4386584059f53376987ce0a5de4960cd7a9bf4495e2cf0e120f0580f44'
           echo "APK=$APK" >> "$GITHUB_ENV"
+          VERSION_CODE=$("$TOOLS/aapt2" dump badging "$APK" | sed -n "s/^package: .*versionCode='\([0-9][0-9]*\)'.*/\1/p")
+          test -n "$VERSION_CODE"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ImNoammm/kav-extension-kit
+          path: kit
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check extension hooks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          CHECK_DIR="$(mktemp -d)"
+          node site/scripts/community.mjs --kit kit --bundles "$CHECK_DIR/community" \
+            --out "$CHECK_DIR/listing.json" --log "$CHECK_DIR/community.log" --images "$CHECK_DIR/images"
+          for sample in kit/samples/native/*/manifest.json; do
+            folder="${sample%/manifest.json}"
+            node kit/bin/kavx.js bundle "$folder" --out "$CHECK_DIR/samples/${folder##*/}.kavb"
+          done
+          shopt -s nullglob
+          node kit/tools/hookable.js "$APK" "$VERSION_CODE" "$CHECK_DIR"/community/*/*.kavb "$CHECK_DIR"/samples/*.kavb
 
       - uses: actions/attest-build-provenance@v4
         with:
