@@ -489,6 +489,15 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         rememberReturn(Tab.Stations)
         stationStop = stop; tab = Tab.Stations
     }
+    // A tab tapped, Kav's own (also for an extension's Kav.kavAction "tab.open").
+    fun openTab(t: Tab) {
+        val on = tab == t
+        settingsOpen = false
+        if (on) resetOpenPages()
+        // Home goes back to its start when tapped while on it; from another tab it's where it was left.
+        if (t == Tab.Directions && on) returnHome = true
+        tab = t
+    }
     fun resetOpenPages() {
         stationStop = -1; lineRoute = -1; scheduleLine = null; returns.clear()
     }
@@ -1442,11 +1451,7 @@ private fun TabBar(model: KavModel) {
                     ) {
                         // An extension holding "tab.open" goes first (ext/Actions.kt).
                         if (uk.noammm.kav.ext.Actions.take(null, "tab.open") { org.json.JSONObject().put("tab", t.name.lowercase()) }) return@selectable
-                        model.settingsOpen = false
-                        if (on) model.resetOpenPages()
-                        // Home goes back to its start when tapped while on it; from another tab it's where it was left.
-                        if (t == Tab.Directions && on) model.returnHome = true
-                        model.tab = t
+                        model.openTab(t)
                     },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,

@@ -1113,6 +1113,7 @@ fun DirectionsOnline(model: KavModel) {
             T("Order routes by", "סדר המסלולים"), orders.map { it.labelText() }, orders.indexOf(sort),
             onPick = { i ->
                 val order = orders[i]
+                orderOpen = false
                 resultAction("results.order.select", { JSONObject().put("order", order.name.lowercase()) }) { chooseOrder(order) }
             },
             onDismiss = { orderOpen = false },
@@ -1122,8 +1123,9 @@ fun DirectionsOnline(model: KavModel) {
     if (whenOpen) WhenSheet(
         departAt = departAt,
         timeType = timeType,
-        onPick = ::selectTime,
-        onNow = { selectTime(0L, Transit.TIME_DEPARTURE) },
+        // The sheet closes whoever takes the time.
+        onPick = { ms, type -> whenOpen = false; selectTime(ms, type) },
+        onNow = { whenOpen = false; selectTime(0L, Transit.TIME_DEPARTURE) },
         onDismiss = { whenOpen = false },
     )
 }

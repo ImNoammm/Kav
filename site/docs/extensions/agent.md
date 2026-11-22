@@ -381,7 +381,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` | `MainActivity.kt:437` |
 | `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` | `MainActivity.kt:443` |
 | `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` | `ui/Home.kt:108` |
-| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1444` |
+| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1453` |
 | `settings.page.open` | `{"page"}` | Opens a Settings page by ID. See the Settings parts below. | `ui/Settings.kt:336` |
 | `pay.history.open` | `{"source": "home" \| "settings"}` | Opens ride history. Both entry points use the same default action. | `ui/PayHistory.kt:43` |
 | `plan.stop` | `{"end": "from" \| "to", "stop", "name", "place": {"name", "detail", "lat", "lon", "type", "mode"}}` | Sets the start or destination from a ministry or extension stop board and opens the planner. The default uses the coordinates in `place`. | `ui/ExtActions.kt:29` |
@@ -392,7 +392,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `results.stop.remove` | `{"index"}` | Removes one intermediate stop by zero-based index. | `ui/DirectionsOnline.kt:761` |
 | `results.stop.stay` | `{"index", "minutes"}` | Sets a stay from 0 to 60 minutes at a zero-based intermediate stop. | `ui/DirectionsOnline.kt:757` |
 | `results.time.select` | `{"at", "way": "depart" \| "arrive" \| "last"}` | Sets the requested time from the time sheet or the Earlier/Later row. Time is Unix seconds. Use 0 for now or last departure. | `ui/DirectionsOnline.kt:227` |
-| `results.order.select` | `{"order"}` | Sorts the current search. See order values below. | `ui/DirectionsOnline.kt:1116` |
+| `results.order.select` | `{"order"}` | Sorts the current search. See order values below. | `ui/DirectionsOnline.kt:1117` |
 | `results.planner.select` | `{"source": "kav" \| "own"}` | Selects one of the available planner tabs. | `ui/DirectionsOnline.kt:833` |
 | `trip.track` | `{"trip", "leg", "tripId", "line"}` | Live location on a ride's card follows its bus. `leg` is the ride's place in the trip's `legs`, `tripId` the bus Kav found for it. | `ui/TripDetail.kt:201` |
 | `nav.step` | `{"trip", "step", "current", "steps"}` | Shows one step of a trip under way: the step dots, their arrows and Current step. Steps count from zero. | `ui/Navigate.kt:345` |
@@ -464,7 +464,7 @@ its cards.
 | `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:448` |
 | `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1491` |
 | `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:333` |
-| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1126` |
+| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1135` |
 | `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:346` |
 | `stops.header` | `{}` | The Stops tab heading. | `ui/Stations.kt:218` |
 | `stops.search` | `{"query"}` | Search field and Select on map on the Stops tab. | `ui/Stations.kt:225` |

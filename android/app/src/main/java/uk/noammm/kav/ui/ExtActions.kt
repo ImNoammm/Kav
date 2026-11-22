@@ -110,7 +110,7 @@ internal fun kavActions(model: KavModel) {
     fun keys(a: JSONObject, k: String) = a.optJSONArray(k)?.let { j -> (0 until j.length()).map { j.optString(it) }.filter { it.isNotEmpty() } }
     Actions.own("stop.save") { ctx, a -> keys(a, "stops")?.let { model.saveStopsOwn(ctx, it) } }
     Actions.own("line.save") { ctx, a -> keys(a, "lines")?.let { model.saveLinesOwn(ctx, it) } }
-    Actions.own("tab.open") { _, a -> uk.noammm.kav.Tab.entries.firstOrNull { it.name.equals(a.optString("tab"), true) }?.let { model.tab = it } }
+    Actions.own("tab.open") { _, a -> uk.noammm.kav.Tab.entries.firstOrNull { it.name.equals(a.optString("tab"), true) }?.let { model.openTab(it) } }
     Actions.own("pay") { ctx, a ->
         val s = RavPass.Section.entries.firstOrNull { RavPass.key(it) == a.optString("section", "bus") } ?: RavPass.Section.BUS
         val ride = a.takeIf { it.has("line") || it.has("to") }
