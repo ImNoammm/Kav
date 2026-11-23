@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -118,6 +119,9 @@ internal fun PaySetupHost() {
             Spacer(Modifier.height(K.gap2))
             RavPassLogo()
             Spacer(Modifier.height(K.gap4))
+            // Which app this setup is for, here too: switching swaps the logo, the store page and what the phone is
+            // checked for (rememberRavPass re-reads), and with nothing missing the flow finishes by itself.
+            if (page != Page.DONE) PayAppChoice()
             AnimatedContent(
                 page,
                 transitionSpec = {
@@ -165,13 +169,17 @@ internal fun PaySetupHost() {
     }
 }
 
-// Rav-Pass's launcher icon as a launcher shows it: its foreground on its white background, cropped to the middle 72 of
-// its 108 dp (at 72 dp; scaled at any other size).
+// The chosen payment app's mark as a launcher shows it: Rav-Pass's own launcher icon (its foreground on its white
+// background, cropped to the middle 72 of its 108 dp; scaled at any other size). egg has no icon of Kav's to show yet,
+// so a QR mark in Kav's accent stands in for it.
 @Composable
 internal fun RavPassLogo(size: androidx.compose.ui.unit.Dp = 72.dp) {
     val shape = RoundedCornerShape(size / 4)
     Box(Modifier.size(size).clip(shape).background(Color.White).border(0.5.dp, K.separator, shape), contentAlignment = Alignment.Center) {
-        Image(painterResource(R.drawable.ravpass_logo), contentDescription = T("Rav-Pass", "רב-פס"), modifier = Modifier.requiredSize(size * 1.5f))
+        if (PayApp.current == PayApp.RAV_PASS)
+            Image(painterResource(R.drawable.ravpass_logo), contentDescription = PayApp.current.label(), modifier = Modifier.requiredSize(size * 1.5f))
+        else
+            Icon(Icons.Rounded.QrCodeScanner, contentDescription = PayApp.current.label(), tint = K.accentInk, modifier = Modifier.size(size * 0.6f))
     }
 }
 
@@ -182,21 +190,22 @@ private fun Title(text: String) = Text(text, style = K.type.title, color = K.tex
 @Composable
 private fun GetRavPass() {
     val ctx = LocalContext.current
-    val store = remember { RavPass.store(ctx) }
+    val store = remember(PayApp.current) { RavPass.store(ctx) }
     // That store's own icon, as it is on the phone.
     val icon = remember(store) {
         store.pkg?.let { runCatching { ctx.packageManager.getApplicationIcon(it).toBitmap(96, 96).asImageBitmap() }.getOrNull() }
     }
-    Title(T("Rav-Pass is required", "נדרשת רב-פס"))
+    Title(T("${PayApp.current.label()} is required", "נדרשת ${PayApp.current.he}"))
     Spacer(Modifier.height(K.gap2))
-    Text(T("Since Kav 5, paying goes through the Rav-Pass app. Install it, sign in and add a way to pay, then come back to Kav.",
-        "מ-Kav 5 התשלום עובר דרך האפליקציה רב-פס. התקינו אותה, התחברו והוסיפו אמצעי תשלום, ואז חזרו ל-Kav."),
+    Text(T("Since Kav 5, paying goes through the ${PayApp.current.label()} app. Install it, sign in and add a way to pay, then come back to Kav.",
+        "מ-Kav 5 התשלום עובר דרך האפליקציה ${PayApp.current.he}. התקינו אותה, התחברו והוסיפו אמצעי תשלום, ואז חזרו ל-Kav."),
         style = K.type.body, color = K.textSecondary, textAlign = TextAlign.Center)
     Spacer(Modifier.height(K.gap5))
     KavButton(when (store) {
         RavPass.Store.PLAY -> T("Open in Play Store", "פתיחה ב-Play Store")
         RavPass.Store.AURORA -> T("Open in Aurora Store", "פתיחה ב-Aurora Store")
-        RavPass.Store.APKMIRROR -> T("Download from APKMirror", "הורדה מ-APKMirror")
+        RavPass.Store.APKMIRROR -> if (PayApp.current == PayApp.RAV_PASS) T("Download from APKMirror", "הורדה מ-APKMirror")
+            else T("Open the Play Store page", "פתיחת הדף ב-Play Store")
     }, onClick = { RavPass.get(ctx, store) }, wide = true, image = icon)
 }
 
@@ -216,7 +225,7 @@ private fun Allow(rows: List<Need>, missing: List<Need>, greyed: Need?, onOverla
                 ) { if (it) onOverlay() }
                 Need.READER -> ToggleRow(T("Kav's ticket reader", "קורא הכרטיסים של Kav"), on,
                     { Icon(Icons.Rounded.ConfirmationNumber, contentDescription = null, tint = toggleInk(on), modifier = Modifier.size(22.dp)) },
-                    subtitle = T("Shows your Rav-Pass ticket in Kav", "מציג את הכרטיס שלכם מרב-פס ב-Kav"), subtitleMaxLines = 2,
+                    subtitle = T("Shows your ${PayApp.current.label()} ticket in Kav", "מציג את הכרטיס שלכם ${PayApp.current.heFrom} ב-Kav"), subtitleMaxLines = 2,
                 ) { if (it) onReader() }
                 Need.APP -> {}
             }
@@ -247,7 +256,7 @@ private fun AboutReader(onAgree: () -> Unit, onBack: () -> Unit) {
     Spacer(Modifier.height(K.gap4))
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
         for ((icon, line) in listOf(
-            Icons.Rounded.ConfirmationNumber to T("Reads only Rav-Pass's ticket screens", "קורא רק את מסכי הכרטיס של רב-פס"),
+            Icons.Rounded.ConfirmationNumber to T("Reads only ${PayApp.current.en}'s ticket screens", "קורא רק את מסכי הכרטיס ${PayApp.current.heOf}"),
             Icons.Rounded.CloudOff to T("Fully offline, never sent to Kav's servers", "אופליין לגמרי, לא נשלח לשרתים של Kav"),
             Icons.Rounded.Replay to T("Brings you back to Kav after you pay", "מחזיר אתכם ל-Kav אחרי התשלום"),
         )) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
@@ -271,6 +280,6 @@ private fun Done() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
         modifier = Modifier.padding(vertical = K.gap3)) {
         Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = K.accentInk, modifier = Modifier.size(26.dp))
-        Title(T("Paying with Rav-Pass is on", "התשלום עם רב-פס פועל"))
+        Title(T("Paying with ${PayApp.current.label()} is on", "התשלום עם ${PayApp.current.he} פועל"))
     }
 }

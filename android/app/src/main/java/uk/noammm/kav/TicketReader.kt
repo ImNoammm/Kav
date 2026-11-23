@@ -63,6 +63,9 @@ class TicketReader : AccessibilityService() {
     private var pendingSince = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // The chosen payment app, read again here: the service can outlive Kav's own screens. An event from the other
+        // payment app (not chosen) is ignored, as every other app's is.
+        uk.noammm.kav.ui.PayApp.refresh(this)
         if (event?.packageName != TicketScreens.PACKAGE || !Prefs.tickets(this) || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val now = System.currentTimeMillis()
         if (pendingSince == 0L) pendingSince = now
@@ -85,7 +88,7 @@ class TicketReader : AccessibilityService() {
         if (BuildConfig.TICKET_TIMING) android.util.Log.d("KavTicketTiming", "$step +${System.currentTimeMillis() - TicketStore.payTapped(this)} ms")
     }
 
-    // Only HopOn's own Rav-Pass is read (a debug build reads Kav's test stand-in too).
+    // Only the chosen app, signed by its own certificate, is read (a debug build reads Kav's test stand-in too).
     @RequiresApi(Build.VERSION_CODES.R)
     private fun genuine(): Boolean = BuildConfig.DEBUG || runCatching {
         packageManager.hasSigningCertificate(TicketScreens.PACKAGE, TicketScreens.SIGNER.chunked(2).map { it.toInt(16).toByte() }.toByteArray(),

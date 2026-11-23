@@ -1891,6 +1891,10 @@ object Prefs {
     fun ravPassDecided(ctx: Context): Boolean = store(ctx).contains("ravPass")
     fun ravPass(ctx: Context): Boolean = store(ctx).getBoolean("ravPass", false)
     fun setRavPass(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("ravPass", on).apply()
+
+    // Which app paying goes through (ui.PayApp): its enum name, empty until chosen (then Rav-Pass).
+    fun payApp(ctx: Context): String = store(ctx).getString("payApp", "") ?: ""
+    fun setPayApp(ctx: Context, app: String) = store(ctx).edit().putString("payApp", app).apply()
     fun ravPassOffer(ctx: Context): Boolean = store(ctx).getBoolean("ravPassOffer", false)
     fun setRavPassOffer(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("ravPassOffer", on).apply()
 
@@ -2250,6 +2254,7 @@ object Prefs {
             .put("stopPhotos", stopPhotos(ctx))
             .put("pipNavigation", pipNavigation(ctx))
             .put("ravPass", ravPass(ctx))
+            .put("payApp", payApp(ctx))
             .put("updatePrompts", updatePrompts(ctx))
             .put("autoUpdate", autoUpdate(ctx))
             .put("updatesOnMobile", updatesOnMobile(ctx))
@@ -2301,6 +2306,7 @@ object Prefs {
         if (o.has("showAccessibility")) e.putBoolean("showAccessibility", o.optBoolean("showAccessibility"))
         o.optString("fareProfile").takeIf { name -> uk.noammm.kav.data.FareProfile.entries.any { it.name == name } }
             ?.let { e.putString("fareProfile", it) }
+        o.optString("payApp").takeIf { it.isNotEmpty() }?.let { e.putString("payApp", it) }
         o.optString("planSettings").takeIf { it.isNotEmpty() }?.let { e.putString("planSettings", uk.noammm.kav.data.PlanSettings.of(it).letters) }
         uk.noammm.kav.data.SavedTime.restored(o)?.let { e.putString(uk.noammm.kav.data.SavedTime.KEY, uk.noammm.kav.data.SavedTime.text(it)) }
         o.optString("plannerTabs").takeIf { it.isNotEmpty() }?.let { e.putString("plannerTabs", it) }

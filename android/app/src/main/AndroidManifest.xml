@@ -55,6 +55,8 @@
         <package android:name="com.gettaxi.android" />
         <!-- Rav-Pass, to hand a rider over to it to pay (RavPass.kt), else its store page. -->
         <package android:name="co.hopon.client" />
+        <!-- egg, Egged's app on the same HopOn platform, the other payment app the rider can choose (PayApp). -->
+        <package android:name="com.egged.egg" />
         <!-- The apps that open Rav-Pass's store link, to offer the Play Store or Aurora Store for getting it (RavPass.store). -->
         <intent>
             <action android:name="android.intent.action.VIEW" />

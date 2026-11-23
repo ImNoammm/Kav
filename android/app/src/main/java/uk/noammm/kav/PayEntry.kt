@@ -45,6 +45,23 @@ internal object PayEntry {
     // In the rider's language in Kav, for what Kav posts while none of its screens is open.
     fun t(ctx: Context, en: String, he: String) = if (Prefs.lang(ctx) == Lang.HE) he else en
 
+    // The chosen payment app's name in the rider's language.
+    fun appName(ctx: Context): String {
+        val app = uk.noammm.kav.ui.PayApp.current
+        return if (Prefs.lang(ctx) == Lang.HE) app.he else app.en
+    }
+
+    // It with a Hebrew "in" / "from" folded in ("ברב-פס", "מ-egg"); in English the bare name serves.
+    fun appIn(ctx: Context): String {
+        val app = uk.noammm.kav.ui.PayApp.current
+        return if (Prefs.lang(ctx) == Lang.HE) app.heIn else app.en
+    }
+
+    fun appFrom(ctx: Context): String {
+        val app = uk.noammm.kav.ui.PayApp.current
+        return if (Prefs.lang(ctx) == Lang.HE) app.heFrom else app.en
+    }
+
     fun pay(ctx: Context, s: RavPass.Section, ride: PayFor? = null): Intent = Intent(ctx, MainActivity::class.java).setAction(ACTION_PAY)
         .putExtra(EXTRA_SECTION, s.name).putExtra(EXTRA_LINE, ride?.line).putExtra(EXTRA_OFF, ride?.off).putExtra(EXTRA_RIDE, ride?.ride)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -153,7 +170,7 @@ class PayTile : TileService() {
         val live = live()
         tile.state = when { !PayEntry.chosen(this) -> Tile.STATE_UNAVAILABLE; live != null -> Tile.STATE_ACTIVE; else -> Tile.STATE_INACTIVE }
         tile.label = if (live != null) PayEntry.t(this, "Show ticket", "הצגת הכרטיס") else PayEntry.t(this, "Pay for a ride", "תשלום על נסיעה")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = live?.let { ticketName(it) } ?: PayEntry.t(this, "Rav-Pass", "רב-פס")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tile.subtitle = live?.let { ticketName(it) } ?: PayEntry.appName(this)
         tile.icon = Icon.createWithResource(this, if (live != null) R.drawable.ic_ticket else R.drawable.ic_pay)
         tile.updateTile()
     }
@@ -191,12 +208,14 @@ internal object TicketNotice {
         nm.createNotificationChannel(
             NotificationChannelCompat.Builder(CHANNEL, NotificationManagerCompat.IMPORTANCE_LOW)
                 .setName(PayEntry.t(ctx, "Live ticket", "כרטיס בתוקף"))
-                .setDescription(PayEntry.t(ctx, "The ticket read from Rav-Pass, one tap from its code", "הכרטיס שנקרא מרב-פס, במרחק הקשה אחת מהקוד שלו"))
+                .setDescription(if (Prefs.lang(ctx) == Lang.HE) "הכרטיס שנקרא ${PayEntry.appFrom(ctx)}, במרחק הקשה אחת מהקוד שלו"
+                    else "The ticket read from ${PayEntry.appName(ctx)}, one tap from its code")
                 .build(),
         )
         val text = (live.paidAt?.let { PayEntry.t(ctx, "Paid at ${TicketTimes.clock(it)}", "שולם ב-${TicketTimes.clock(it)}") }
             ?: PayEntry.t(ctx, "Read at ${TicketTimes.clock(live.readAt)}", "נקרא ב-${TicketTimes.clock(live.readAt)}")) + " · " +
-            if (live.passengers.isEmpty()) PayEntry.t(ctx, "Its code is in Rav-Pass", "הקוד שלו ברב-פס") else PayEntry.t(ctx, "Tap for its code", "הקישו לקוד שלו")
+            if (live.passengers.isEmpty()) PayEntry.t(ctx, "Its code is in ${PayEntry.appName(ctx)}", "הקוד שלו ${PayEntry.appIn(ctx)}")
+            else PayEntry.t(ctx, "Tap for its code", "הקישו לקוד שלו")
         val title = ticketName(live)
         val n = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_ticket)
@@ -210,7 +229,7 @@ internal object TicketNotice {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_ticket)
-                .setContentTitle(PayEntry.t(ctx, "Ticket from Rav-Pass", "כרטיס מרב-פס")).setColor(Prefs.accent(ctx)).build())
+                .setContentTitle(PayEntry.t(ctx, "Ticket from ${PayEntry.appName(ctx)}", "כרטיס ${PayEntry.appFrom(ctx)}")).setColor(Prefs.accent(ctx)).build())
             .build()
         runCatching { nm.notify(ID, n) }
         posted(ctx).edit().putString("key", live.key).apply()

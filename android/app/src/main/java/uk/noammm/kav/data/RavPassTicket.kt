@@ -14,12 +14,15 @@ import java.util.TimeZone
 // ipsdk_fragment_train_entrance, ipsdk_fragment_train_exit, ipsdk_fragment_other_trains_entrance and the boarding pass
 // list items; kav-payment-research/RAVPASS-TICKET.md). A screen that doesn't match exactly is not a ticket screen.
 internal object TicketScreens {
-    const val PACKAGE = "co.hopon.client"
-    const val VERIFIED = "Rav-Pass 10.2.16, 10.2.30"
-    // The same versions as Rav-Pass names them (its versionName): another one says Kav may not read its tickets.
-    val VERSIONS = setOf("10.2.16", "10.2.30")
-    // HopOn's signing certificate for co.hopon.client (SHA-256, the same in 10.2.16 and 10.2.30): only that app is read.
-    const val SIGNER = "a8d44a2e28a995d71aa308ee08e400c8f083fe30632aba077fd786789c65396d"
+    // The app whose ticket screens are read: the rider's chosen payment app (PayApp). Rav-Pass and egg are the same
+    // HopOn platform, so the screens are the same and only the package (the view ids' prefix), the signer and the
+    // checked versions differ.
+    val PACKAGE: String get() = uk.noammm.kav.ui.PayApp.current.pkg
+    const val VERIFIED = "Rav-Pass 10.2.16, 10.2.30; egg assumed the same HopOn build"
+    // The same versions as the app names them (its versionName): another one says Kav may not read its tickets.
+    val VERSIONS: Set<String> get() = uk.noammm.kav.ui.PayApp.current.versions
+    // The chosen app's signing certificate (SHA-256, from its links host's assetlinks.json): only that app is read.
+    val SIGNER: String get() = uk.noammm.kav.ui.PayApp.current.signer
 
     enum class Kind { BUS, TRAIN_ENTRANCE, TRAIN_EXIT, LIGHT_RAIL }
 
@@ -38,7 +41,7 @@ internal object TicketScreens {
     // or the list's own count where that is larger (a card scrolled out of sight).
     data class Screen(val kind: Kind, val cards: List<Card>, val expected: Int = cards.size)
 
-    private const val PREFIX = "$PACKAGE:id/"
+    private val PREFIX: String get() = "$PACKAGE:id/"
     private val CARDS = setOf("boarding_pass_bus_card", "boarding_pass_train_card")
     private val CODES = setOf("boarding_pass_qr", "boarding_pass_train_qr", "boarding_pass_train")
 
