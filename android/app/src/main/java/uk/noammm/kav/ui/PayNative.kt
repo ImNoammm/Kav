@@ -61,7 +61,7 @@ internal fun EntranceAskHost() {
     BottomSheet(onDismiss = { EntranceAsk.pending = null }) { close ->
         Text(T("Your train entrance is still open", "הכניסה שלכם לרכבת עדיין פתוחה"), style = K.type.title, color = K.text)
         Spacer(Modifier.height(K.gap2))
-        Text(T("Make the exit ticket in Rav-Pass first?", "ליצור קודם את כרטיס היציאה ברב-פס?"), style = K.type.body, color = K.textSecondary)
+        Text(T("Make the exit ticket in ${PayApp.current.label()} first?", "ליצור קודם את כרטיס היציאה ${PayApp.current.heIn}?"), style = K.type.body, color = K.textSecondary)
         Spacer(Modifier.height(K.gap4))
         KavButton(T("Exit ticket", "כרטיס יציאה"), onClick = {
             close { EntranceAsk.pending = null; RavPass.own(ctx, RavPass.Section.TRAIN) }
@@ -102,8 +102,8 @@ internal fun RavPassUpdatedLine(home: Boolean) {
         }
     }
     if (!unchecked || home && !RavPassVersion.missed(TicketStore.kept, tapped, System.currentTimeMillis())) return
-    val text = T("Rav-Pass has updated, so tickets may not show in Kav until Kav's next update.",
-        "רב-פס התעדכנה, ולכן ייתכן שכרטיסים לא יוצגו ב-Kav עד העדכון הבא של Kav.")
+    val text = T("${PayApp.current.label()} has updated, so tickets may not show in Kav until Kav's next update.",
+        "${PayApp.current.he} התעדכנה, ולכן ייתכן שכרטיסים לא יוצגו ב-Kav עד העדכון הבא של Kav.")
     if (home) {
         Separator()
         Text(text, style = K.type.subhead, modifier = Modifier.padding(horizontal = K.gap4, vertical = K.gap3))

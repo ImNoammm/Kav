@@ -507,9 +507,9 @@ private fun actionWords(name: String) = when (name) {
     "share.send" -> T("sharing trips", "שיתוף נסיעות")
     "pay.mode" -> T("turning paying on and off", "הפעלה וכיבוי של התשלום")
     "pay.offer.hide" -> T("hiding the offer to pay", "הסתרת ההצעה לשלם")
-    "pay.place.open" -> T("opening Rav-Pass's pages", "פתיחת עמודים ברב-פס")
+    "pay.place.open" -> T("opening ${PayApp.current.en}'s pages", "פתיחת עמודים ${PayApp.current.heIn}")
     "pay.history.clear" -> T("clearing ride history", "מחיקת היסטוריית הנסיעות")
-    "ticket.ravpass.open" -> T("showing tickets in Rav-Pass", "הצגת כרטיסים ברב-פס")
+    "ticket.ravpass.open" -> T("showing tickets in ${PayApp.current.label()}", "הצגת כרטיסים ${PayApp.current.heIn}")
     else -> T.ltr(name)
 }
 

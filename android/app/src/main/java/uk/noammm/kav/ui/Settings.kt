@@ -153,7 +153,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         T("Paying", "תשלום"),
         when {
             PayMode.lost.isNotEmpty() -> T("Action required", "נדרשת פעולה")
-            Shown.payments -> uk.noammm.kav.ext.Actions.firstName("pay")?.let { T("With \u2068$it\u2069", "עם \u2068$it\u2069") } ?: T("With Rav-Pass", "עם רב-פס")
+            Shown.payments -> uk.noammm.kav.ext.Actions.firstName("pay")?.let { T("With \u2068$it\u2069", "עם \u2068$it\u2069") } ?: T("With ${PayApp.current.label()}", "עם ${PayApp.current.he}")
             else -> T("Not set up", "לא מוגדר")
         },
         if (PayMode.lost.isNotEmpty()) K.problem else null,

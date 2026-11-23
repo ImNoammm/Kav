@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Kav's ticket reader (TicketReader.kt): Rav-Pass alone, its window's views and their ids to recognise its ticket
+<!-- Kav's ticket reader (TicketReader.kt): the chosen payment app alone (Rav-Pass or egg, the same HopOn platform),
+     its window's views and their ids to recognise its ticket
      screens, and a screenshot only to read a recognised ticket's code. One accessibility click, the inspection drawer's bar
      right after a purchase (no gesture), so its code can be read. No gestures, no key events, no other app.
      flagRetrieveInteractiveWindows only so Kav can tell whether Rav-Pass's own window is the one in front (not under the
      notification shade, a call or a dialog) before it takes a picture or brings the rider back; no other window is read. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:packageNames="co.hopon.client"
+    android:packageNames="co.hopon.client,com.egged.egg"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"

@@ -101,14 +101,14 @@ private fun PayHistoryScreen(onClose: () -> Unit) {
                             Stat(T("This month", "החודש"), rides(thisMonth.size), thisTotal)
                             Stat(T("Last month", "חודש שעבר"), rides(lastMonth.size), lastTotal)
                         }
-                        if (thisTotal != null || lastTotal != null) Note(T("Prices are what Rav-Pass quoted when you paid. Monthly caps can lower the charge.",
-                            "המחירים הם מה שרב-פס הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
+                        if (thisTotal != null || lastTotal != null) Note(T("Prices are what ${PayApp.current.label()} quoted when you paid. Monthly caps can lower the charge.",
+                            "המחירים הם מה ש${PayApp.current.he} הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
                     }
                 }
             }
             if (months.isEmpty()) item(key = "none") {
                 KavPart("pay.history.empty", Unit, { JSONObject() }) {
-                    NoteCard(T("Rides you pay for with Rav-Pass show here.", "נסיעות שתשלמו עליהן ברב-פס יופיעו כאן."), Modifier.padding(top = K.gap4))
+                    NoteCard(T("Rides you pay for with ${PayApp.current.label()} show here.", "נסיעות שתשלמו עליהן ${PayApp.current.heIn} יופיעו כאן."), Modifier.padding(top = K.gap4))
                 }
             }
             months.forEach { (key, list) ->
