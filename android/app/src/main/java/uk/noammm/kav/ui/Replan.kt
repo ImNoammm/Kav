@@ -47,6 +47,27 @@ internal const val CHANGE_LATE_S = 120L
 // Far off the route: this far from everything still ahead in the trip.
 internal const val OFF_ROUTE_M = 500.0
 
+// Off the route on a walk for sure, for a new route without a tap: OFF_WALK_FIXES sharp fixes off it in a row (each at
+// most OFF_WALK_ACCURACY_M off, as the phone says), the first and last OFF_WALK_S apart, none more than OFF_WALK_GAP_S
+// after the one before. A rough fix decides nothing; a sharp one on the route starts it over.
+private const val OFF_WALK_FIXES = 3
+private const val OFF_WALK_S = 15L
+private const val OFF_WALK_GAP_S = 60L
+private const val OFF_WALK_ACCURACY_M = 50f
+
+// The fixes off the walk in a row: since, the first one's time, 0 with none; last, the last fix looked at.
+internal data class OffWalk(val since: Long = 0, val fixes: Int = 0, val last: Long = 0) {
+    val sure get() = fixes >= OFF_WALK_FIXES && last - since >= OFF_WALK_S
+}
+
+// The watch after a fix. off: the trip's plan fails as off the route by this fix, on a walk.
+internal fun offWalk(w: OffWalk, fix: Fix?, off: Boolean, now: Long): OffWalk = when {
+    fix == null || !fix.isFresh(now) || fix.at <= w.last || fix.accuracy > OFF_WALK_ACCURACY_M -> w
+    !off -> OffWalk(last = fix.at)
+    w.fixes == 0 || fix.at - w.last > OFF_WALK_GAP_S -> OffWalk(fix.at, 1, fix.at)
+    else -> w.copy(fixes = w.fixes + 1, last = fix.at)
+}
+
 private fun choice(step: Step.Wait, chosen: Map<Int, Int>) = boardingChoice(step.ride, step.wait, chosen[step.legIndex] ?: 0)
 
 private fun departureOf(ride: Transit.Leg, wait: Transit.Leg?, r: Transit.Resolved, now: Long) =

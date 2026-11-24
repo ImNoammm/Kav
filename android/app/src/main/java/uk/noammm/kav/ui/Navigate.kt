@@ -318,16 +318,29 @@ fun NavigateScreen(
     val failure = (failing ?: held?.takeIf { it.first == currentStep }?.second)?.takeIf { it.key !in kept }
     var replanning by remember(trip) { mutableStateOf(false) }
     var replanFailed by remember(trip) { mutableStateOf(false) }
+    // Walked off the route for sure: a new route by itself after a countdown, once for each time off it. Cancel keeps
+    // the route until the rider is back on it and off it again.
+    val walking = steps.getOrNull(currentStep) is Step.Walk
+    var offWalk by remember(trip, currentStep) { mutableStateOf(OffWalk()) }
+    var autoRan by remember(trip) { mutableLongStateOf(0L) }
+    if (walking) SideEffect {
+        val w = offWalk(offWalk, fix, failing?.kind == Broken.OFF_ROUTE, now)
+        if (w != offWalk && w.fixes == 0 && "off-$currentStep" in kept) kept = kept - "off-$currentStep"
+        offWalk = w
+    }
     // One tap: the planner's first route from where the failure says, and the trip goes on with it.
     fun replan(f: Failure) {
         val current = model.activeJourney?.takeIf { it.trip === trip } ?: return
         val step = currentStep
+        if (f.kind == Broken.OFF_ROUTE) autoRan = offWalk.since
         replanning = true; replanFailed = false
         scope.launch {
             val next = withContext(Dispatchers.IO) { runCatching { replanned(current, f.from, routeTypesFor(model.filters), step) }.getOrNull() }
             replanning = false
             // The trip moved on, or was ended, while it planned: the new route was planned for a trip no longer there.
             if (model.activeJourney?.trip !== trip) return@launch
+            // Kept while it planned (Cancel just as the countdown ran out): the rider stays on this route.
+            if (f.key in kept) return@launch
             if (next == null) { replanFailed = true; return@launch }
             model.journeyStep = next.second
             model.activeJourney = next.first
@@ -352,6 +365,17 @@ fun NavigateScreen(
         uk.noammm.kav.ext.Actions.own("nav.board.select") { _, a -> a.optInt("leg", -1).takeIf { it >= 0 }?.let { choose(it, a.optInt("option", 0)) } }
         uk.noammm.kav.ext.Actions.own("nav.replan") { _, _ -> failure?.let(::replan) }
         uk.noammm.kav.ext.Actions.own("nav.replan.keep") { _, _ -> failure?.let(::keep) }
+    }
+    fun replanTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(f) }) replan(f) }
+    fun keepTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(f) }) keep(f) }
+    val counting = walking && failure?.kind == Broken.OFF_ROUTE && offWalk.sure && autoRan != offWalk.since && !replanning
+    var countdown by remember(trip) { mutableIntStateOf(0) }
+    val shownFailure by rememberUpdatedState(failure)
+    LaunchedEffect(if (counting) offWalk.since else 0L) {
+        if (!counting) { countdown = 0; return@LaunchedEffect }
+        for (s in AUTO_REPLAN_S downTo 1) { countdown = s; kotlinx.coroutines.delay(1000) }
+        countdown = 0
+        shownFailure?.takeIf { it.kind == Broken.OFF_ROUTE }?.let(::replanTapped)
     }
 
     val liquid = rememberLiquidBackdrop()
@@ -399,9 +423,8 @@ fun NavigateScreen(
                 if (!compact) StepStrip(pager, steps.size, currentStep, ::stepTapped)
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
                 if (failure != null) KavPart("nav.problem", failure.key, { failureArgs(failure) }) {
-                    ReplanCard(failure, r, now, replanning, replanFailed,
-                        onReplan = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(failure) }) replan(failure) },
-                        onKeep = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(failure) }) keep(failure) })
+                    ReplanCard(failure, r, now, replanning, replanFailed, countdown.takeIf { counting && it > 0 },
+                        onReplan = { replanTapped(failure) }, onKeep = { keepTapped(failure) })
                 }
             }
 
@@ -477,10 +500,14 @@ fun NavigateScreen(
     }
 }
 
-// The plan stopped working: why, and a new route from here in one tap; the close button keeps the route.
+// A new route by itself this long after Kav is sure the rider walked off the route.
+private const val AUTO_REPLAN_S = 5
+
+// The plan stopped working: why, and a new route from here in one tap; the close button keeps the route. countdown: the
+// seconds left before the new route comes by itself, with Cancel beside it, which keeps the route.
 @Composable
 private fun ReplanCard(
-    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean,
+    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean, countdown: Int?,
     onReplan: () -> Unit, onKeep: () -> Unit,
 ) {
     Column(Modifier.padding(horizontal = K.gap3).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
@@ -494,13 +521,25 @@ private fun ReplanCard(
             LiveText(it, style = K.type.subhead, color = K.textSecondary)
         }
         Spacer(Modifier.height(K.gap2))
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(K.capsule).background(K.live)
-                .clickable(enabled = !planning, role = Role.Button, onClick = onReplan).padding(horizontal = K.gap3),
-            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(if (planning) T("Finding a new route…", "מחפשים מסלול חדש…") else T("New route from here", "מסלול חדש מכאן"),
-                style = K.type.bodyStrong, color = K.onAccent)
+        Row(horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+            Row(
+                Modifier.weight(1f).heightIn(min = 48.dp).clip(K.capsule).background(K.live)
+                    .clickable(enabled = !planning, role = Role.Button, onClick = onReplan).padding(horizontal = K.gap3),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(when {
+                    planning -> T("Finding a new route…", "מחפשים מסלול חדש…")
+                    countdown != null -> T("Finding a new route in $countdown", "מחפשים מסלול חדש בעוד $countdown")
+                    else -> T("New route from here", "מסלול חדש מכאן")
+                }, style = K.type.bodyStrong.tabular, color = K.onAccent, maxLines = 1)
+            }
+            if (countdown != null) Row(
+                Modifier.heightIn(min = 48.dp).clip(K.capsule).background(K.fill)
+                    .clickable(role = Role.Button, onClick = onKeep).padding(horizontal = K.gap4),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(T("Cancel", "ביטול"), style = K.type.bodyStrong, color = K.text)
+            }
         }
         if (failed) Text(T("Couldn't find a new route. Try again.", "לא נמצא מסלול חדש. נסו שוב."),
             style = K.type.subhead, color = K.critical, modifier = Modifier.padding(top = K.gap1))
