@@ -50,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.core.spring
@@ -1527,6 +1528,8 @@ private fun LinePage(
                     }
                 }
             }
+            if (all.size > 1) { KavIconButton(Icons.Rounded.SwapVert, T("Change direction", "החלפת כיוון"), { val cur = all.getOrNull(pick); val back = cur?.let { c -> all.indices.firstOrNull { i -> i != pick && all[i].stops.firstOrNull()?.code == c.stops.lastOrNull()?.code && all[i].stops.lastOrNull()?.code == c.stops.firstOrNull()?.code } }; picked = back ?: ((pick + 1) % all.size); focus = -1 }, floating = true, tint = K.textSecondary) }
+            if (all.size <= 1 && route >= 0) { val rev = remember(route) { val t0 = net.representativeTrip(route); if (t0 < 0) -1 else { val f = net.stStop[net.tripStart[t0]]; val l = net.stStop[net.tripStart[t0 + 1] - 1]; (0 until net.nRoutes).filter { r -> r != route && net.rShort[r] == net.rShort[route] && net.rType[r] == net.rType[route] && net.rAgency[r] == net.rAgency[route] }.mapNotNull { r -> val t = net.representativeTrip(r); if (t < 0) null else { val cf = net.stStop[net.tripStart[t]]; val cl = net.stStop[net.tripStart[t + 1] - 1]; if (net.cityName(cf) == net.cityName(l)) r to ((if (net.cityName(cl) == net.cityName(f)) 10 else 0) + (if (net.stopName(cf) == net.stopName(l)) 1 else 0) + (if (net.stopName(cl) == net.stopName(f)) 1 else 0)) else null } }.maxByOrNull { it.second }?.first ?: -1 } }; if (rev >= 0) KavIconButton(Icons.Rounded.SwapVert, T("Change direction", "החלפת כיוון"), { model.lineRoute = rev }, floating = true, tint = K.textSecondary) }
             // Kept at the top of the Lines tab, by the week's line it is.
             if (keyRoute >= 0) {
                 val key = lineKey(net, keyRoute)
