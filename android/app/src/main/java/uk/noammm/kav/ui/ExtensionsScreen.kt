@@ -291,11 +291,14 @@ private fun dayWords(s: Long): String {
 }
 
 // Its switch: on runs it at once, off stops it; one Kav turned off after crashes comes back on with its count cleared. A
-// tab it offers goes in the bar when no other extension's is there.
+// tab it offers goes in the bar when no other extension's is there, and a planner it brings gets its tab on the results.
 private fun switchOn(ctx: Context, hub: Hub, id: String, v: Boolean) {
     hub.setEnabled(id, v)
     if (v) {
         runCatching { uk.noammm.kav.ext.Hooks.refresh() }
+        hub.registry.get(id)?.takeIf { i ->
+            i.namespace !in Selections.planners && i.manifest.contributions.any { it.capability == Capabilities.PLAN }
+        }?.let { i -> runCatching { Selections.setPlanner(ExtApp.dir(ctx), i.namespace, true) } }
         hub.registry.get(id)?.takeIf { hub.active(it) && uk.noammm.kav.ext.Screens.tab == null }?.let { i ->
             runCatching { PageSpecs.of(i.manifest).tabs.firstOrNull() }.getOrNull()
                 ?.let { p -> uk.noammm.kav.ext.Screens.tabOf(i, p.id)?.let { uk.noammm.kav.ext.Screens.chooseTab(ExtApp.dir(ctx), it) } }
