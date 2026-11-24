@@ -52,11 +52,16 @@ internal object Operators {
     fun ofGtfs(agency: Int): Color? = byGtfs[agency]?.let { Color(it.argb) }
 
     // By name: the Hebrew before any brackets, else the English in them.
-    fun ofName(name: String?): Color? {
+    fun ofName(name: String?): Color? = named(name)?.let { Color(it.argb) }
+
+    // The ministry's id for an operator by its name in the timetable, for a trip Kav makes from it (OnBoard).
+    fun gtfsOf(name: String?): Int? = named(name)?.gtfs
+
+    private fun named(name: String?): Operator? {
         if (name.isNullOrBlank()) return null
         val hebrew = flat(name.substringBefore('('))
         val english = flat(name.substringAfter('(', "").substringBefore(')'))
-        return (byName[hebrew] ?: byName[english].takeIf { english.isNotEmpty() })?.let { Color(it.argb) }
+        return byName[hebrew] ?: byName[english].takeIf { english.isNotEmpty() }
     }
 
     // A ride's operator, from a trip's details: Kav's planner's by the ministry's id it carries, else by name.

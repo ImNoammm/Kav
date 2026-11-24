@@ -868,7 +868,10 @@ internal fun StepCard(
             }
             val scroll = rememberScrollState()
             var railTop by remember { mutableIntStateOf(0) }
-            Card(header, active, trailing = durMinutes(mins.toInt()), scroll = scroll) {
+            // On board, beside the time left, whether it goes by the bus's live times or by the timetable alone: in the
+            // header, which stays as the card follows the bus down its stops.
+            val timed = if (stops.any { (r.live[Transit.ArrivalKey(it, trip ?: 0L)]?.rtUtc ?: 0L) > 0 }) T("Live", "בזמן אמת") else T("Scheduled", "מתוזמן")
+            Card(header, active, trailing = durMinutes(mins.toInt()) + if (active) " · $timed" else "", scroll = scroll) {
                 StopLine(alight?.shown() ?: T("your stop", "התחנה שלכם"), alight?.code, legMode(ride, r), stopId = ride.toStop,
                     streetView = alight?.point?.let { lookAt(it, ride, r, alight) })
                 Spacer(Modifier.height(K.gap2))

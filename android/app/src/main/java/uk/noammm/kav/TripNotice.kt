@@ -241,9 +241,12 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
             val bus = riderTrip(ride, r, live, now)?.let { trip ->
                 ride.stops.asReversed().firstNotNullOfOrNull { stop -> r.live[Transit.ArrivalKey(stop, trip)]?.takeIf { it.rtUtc > 0 } }
             }
+            // Whether the time left goes by the bus's live times or by the timetable alone, as the trip screen says it.
+            val timed = if (bus != null)
+                T("Live", "בזמן אמת") else T("Scheduled", "מתוזמן")
             Say(
                 "$soon · ${place(ride.toStop)}",
-                T("On ${lineName(ride)} · $togo", "ב${lineName(ride)} · $togo"),
+                T("On ${lineName(ride)} · $togo · $timed", "ב${lineName(ride)} · $togo · $timed"),
                 soon, Glyph(legMode(ride, r)), colourOf(ride), soon, bus?.departure() ?: Transit.Departure(ride.tripId, ride.arr),
             )
         }

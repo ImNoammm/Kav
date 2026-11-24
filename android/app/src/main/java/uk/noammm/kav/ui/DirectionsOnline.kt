@@ -165,6 +165,11 @@ fun DirectionsOnline(model: KavModel) {
         asking = o
         if (!uk.noammm.kav.ext.Actions.take(ctx, "trip.open") { org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(o.trip, o.resolved)) }) open = o
     }
+    LaunchedEffect(model.openJourney) {
+        if (!model.openJourney) return@LaunchedEffect
+        model.openJourney = false
+        model.activeJourney?.let { j -> openTrip(OpenTrip(j.trip, j.resolved, j.fromLabel, j.toLabel, resume = true, stopovers = j.stopovers)) }
+    }
     // Kav's own search for Kav.kavAction("plan"): this search planned again, no extension asked.
     var planOwn by remember { mutableStateOf(false) }
     // Kav's own, for Kav.kavAction: the trip last tapped opens; the search on screen is planned.

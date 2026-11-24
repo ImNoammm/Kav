@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.data.KavLive
+import uk.noammm.kav.data.OnBoard
 import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.Net
 import uk.noammm.kav.data.Schedules
@@ -495,8 +496,9 @@ private fun threeDigitPlate(
     return width
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, onBoard: () -> Unit) {
+private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, getOff: (() -> Unit)? = null, onBoard: () -> Unit) {
     // Counted by the clock now, every second, as the stop's board and the trip page are.
     val now = rememberClockSec()
     val times = remember(routes, stop) {
@@ -533,12 +535,13 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, onB
         ) {
             Text(times.joinToString("   ") { hhmm(it) }, style = K.type.subhead.tabular, lineHeight = 22.sp)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(K.gap2), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             if (times.isNotEmpty()) KavButton(
                 if (all) T("Hide schedule", "הסתרת לוח הזמנים") else T("Today's schedule", "לוח הזמנים להיום"),
                 { all = !all }, style = ButtonStyle.Secondary,
             )
             KavButton(T("Stop board", "לוח התחנה"), onBoard, style = ButtonStyle.Secondary)
+            getOff?.let { KavButton(T("Get off here", "ירידה כאן"), it, style = ButtonStyle.Secondary) }
         }
     }
 }
@@ -1477,6 +1480,33 @@ private fun LinePage(
     val placed = remember(rows) { rows.orEmpty().indices.filter { rows!![it].lat.isFinite() && rows[it].lon.isFinite() } }
     val calls = remember(rows, placed) { placed.map { rows!![it].lat to rows[it].lon } }
     val shape = way?.shape?.ifEmpty { null } ?: live.shape.ifEmpty { road }
+    // Get off here (OnBoard): the timetable's routes of the line, both ways and any branch, the order of the way's stops
+    // telling which; a train's, every train of it.
+    val lineRoutes = remember(route, number, rt) {
+        if (number.isBlank()) routes else (0 until net.nRoutes).filterTo(HashSet()) {
+            net.rShort[it] == number && net.rType[it] == rt &&
+                net.agencyOf(it) == (if (route >= 0) net.agencyOf(route) else line?.operator)
+        }
+    }
+    fun getOff(stops: List<PageStop>, i: Int) {
+        val at = model.here?.takeIf { model.hereFresh }
+        val road = shape
+        scope.launch {
+            val built = withContext(Dispatchers.Default) {
+                OnBoard.trip(net, lineRoutes, stops.map { it.week }, i, at, System.currentTimeMillis() / 1000, road)
+            }
+            if (built == null) {
+                android.widget.Toast.makeText(ctx, T("No trip of this line gets there now.", "אין עכשיו נסיעה של הקו הזה שמגיעה לשם."),
+                    android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            // On board from the start: the trip opens on its ride, under way.
+            model.journeyStep = buildSteps(built.trip, built.from, built.to).indexOfFirst { it is Step.Ride }.coerceAtLeast(0)
+            model.activeJourney = uk.noammm.kav.ActiveJourney(built.trip, built.resolved, built.from, built.to)
+            model.openJourney = true
+            model.tab = uk.noammm.kav.Tab.Directions
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(K.bg)) {
         // A train has no number: its two ends, as its row in the list names it.
@@ -1641,7 +1671,7 @@ private fun LinePage(
                         transitionSpec = { fadeIn(tween(220, delayMillis = WAY_SWITCH_MS)) togetherWith fadeOut(tween(120)) },
                         contentKey = { it.key }, label = "way",
                     ) { l ->
-                        PageStops(model, net, line, l.way, routes, l.rows, l.keys, listFor(l.key), opened[l.key]) { k ->
+                        PageStops(model, net, line, l.way, routes, l.rows, l.keys, listFor(l.key), opened[l.key], ::getOff) { k ->
                             if (k == null) opened.remove(l.key) else opened[l.key] = k
                         }
                     }
@@ -1726,7 +1756,7 @@ private object StopTimes {
 @Composable
 private fun PageStops(
     model: KavModel, net: Net, line: Schedules.Line?, way: Schedules.Way?, routes: Set<Int>, rows: List<PageStop>,
-    keys: List<String>, state: LazyListState, open: String?, onOpen: (String?) -> Unit,
+    keys: List<String>, state: LazyListState, open: String?, onGetOff: (List<PageStop>, Int) -> Unit, onOpen: (String?) -> Unit,
 ) {
     // Every stop's times there, worked out ahead, so its card opens with them.
     LaunchedEffect(line, way) { if (line != null && way != null) withContext(Dispatchers.IO) { StopTimes.ahead(line, way) } }
@@ -1795,12 +1825,14 @@ private fun PageStops(
                         },
                         label = "stopTimes",
                     ) { provided ->
+                        // Not where the way starts: a rider on board gets off at any stop after it.
+                        val getOff = if (i > 0 && s.week >= 0) { { onGetOff(rows, i) } } else null
                         if (provided && way != null && line != null) {
                             ScheduleAtStop(net, s.week, line, way, i, last = i == rows.lastIndex, alight = i in way.alight, board = s.week.takeIf { it >= 0 }?.let { at ->
                                 { model.openStation(at) }
-                            })
+                            }, getOff = getOff)
                         } else if (s.week >= 0) {
-                            LineAtStop(net, routes, s.week, last = i == rows.lastIndex) { model.openStation(s.week) }
+                            LineAtStop(net, routes, s.week, last = i == rows.lastIndex, getOff = getOff) { model.openStation(s.week) }
                         }
                     }
                 }
@@ -1855,9 +1887,11 @@ private fun scheduleNextStart(net: Net, line: Schedules.Line, way: Schedules.Way
 
 // A provider's line at one of its way's stops: its next times there and today's all, as the week's line page has them.
 // alight: riders only get off it there, so it has no times to give.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ScheduleAtStop(
     net: Net, stop: Int, line: Schedules.Line, way: Schedules.Way, at: Int, last: Boolean, alight: Boolean, board: (() -> Unit)?,
+    getOff: (() -> Unit)? = null,
 ) {
     val now = rememberClockSec()
     var times by remember(way.id, at) { mutableStateOf(if (last || alight) emptyList() else StopTimes.get(way, at)) }
@@ -1904,7 +1938,7 @@ private fun ScheduleAtStop(
         ) {
             Text(list.joinToString("   ") { hhmm(it) }, style = K.type.subhead.tabular, lineHeight = 22.sp)
         }
-        Row {
+        FlowRow(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             // Its times come after the card opens: the schedule's button slides in before Stop board, not pushing it.
             androidx.compose.animation.AnimatedVisibility(
                 list.isNotEmpty(),
@@ -1918,7 +1952,9 @@ private fun ScheduleAtStop(
                     { all = !all }, style = ButtonStyle.Secondary, modifier = Modifier.padding(end = K.gap2),
                 )
             }
-            if (board != null) KavButton(T("Stop board", "לוח התחנה"), board, style = ButtonStyle.Secondary)
+            if (board != null) KavButton(T("Stop board", "לוח התחנה"), board, style = ButtonStyle.Secondary,
+                modifier = Modifier.padding(end = K.gap2))
+            getOff?.let { KavButton(T("Get off here", "ירידה כאן"), it, style = ButtonStyle.Secondary) }
         }
     }
 }

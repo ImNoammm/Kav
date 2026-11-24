@@ -404,6 +404,8 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     }
     internal fun reportOwn() { reportAsked?.let { report = it } }
     var activeJourney by mutableStateOf<ActiveJourney?>(null)
+    // A trip started away from Directions (Get off here, on a line's page), for Directions to open under way.
+    var openJourney by mutableStateOf(false)
     var returnHome by mutableStateOf(false)
 
     var navigating by mutableStateOf(false)
