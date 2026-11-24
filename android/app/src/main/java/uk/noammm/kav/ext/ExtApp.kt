@@ -59,6 +59,7 @@ object ExtApp {
         // The rider's Home body, tab and theme (ext/Screens.kt), shown at once and checked after.
         Screens.open(d)
         Slots.Picks.open(d)
+        TripAccess.open(d)
         uk.noammm.kav.ui.ExtShown.start(ctx)
         // Native extensions' crashes are counted from the first moment (NativeGuard).
         NativeGuard.open(d)

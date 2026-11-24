@@ -51,6 +51,8 @@ object Native {
         val unhooks: MutableList<Kav.Unhook> = java.util.concurrent.CopyOnWriteArrayList()
         @Volatile var onSettings: Kav.SettingsChanged? = null
         @Volatile var settingsScreen: Kav.Screen? = null
+        // API 5: told about the trip the rider follows (TripEvents), while the rider allows it.
+        @Volatile var onTrip: Kav.TripListener? = null
     }
 
     private val loaded = ConcurrentHashMap<String, Loaded>()
@@ -116,6 +118,20 @@ object Native {
             Result.failure(IllegalStateException("late"))
         } catch (e: Exception) {
             Result.failure(IllegalStateException("interrupted"))
+        }
+    }
+
+    // Whether any extension listens to trips (Kav.onTrip): only then are trip events worked out.
+    fun listensToTrips(): Boolean = loaded.values.any { it.onTrip != null }
+
+    // A trip event (TripEvents) to each extension listening that the rider allows to follow trips, or to one alone, on a
+    // thread of Kav's.
+    fun tripEvent(event: String, only: String? = null) {
+        for (l in loaded.values) {
+            if (only != null && l.identity != only) continue
+            val listener = l.onTrip ?: continue
+            if (!TripAccess.allows(l.identity, TripAccess.FOLLOW)) continue
+            hooks.execute { NativeGuard.call(l.identity, "trip") { listener.trip(event) } }
         }
     }
 
@@ -191,6 +207,8 @@ object Native {
                 loaded[i.identity] = l
             }
             if (l.actions.isNotEmpty()) Actions.notifyChanged()
+            // Listening to trips from its start: told the trip under way, if there is one.
+            if (l.onTrip != null) runCatching { TripEvents.catchUp(i.identity) }
             Log.i(TAG, "${i.identity}: started, ${l.cards.size} cards, ${l.screens.size} screens")
         } finally {
             synchronized(loaded) {
@@ -224,6 +242,25 @@ object Native {
         override fun id() = i.identity
         override fun locale() = uk.noammm.kav.ui.T.lang.code
         override fun prefs() = Extensions.prefs().toString()
+
+        // API 5: the rider's trips, each behind its own contribution and the rider's switch (TripAccess).
+        override fun trips(): String? {
+            declares("trips", TripAccess.HISTORY)
+            if (!TripAccess.allows(i.identity, TripAccess.HISTORY)) return null
+            return TripAccess.history(uk.noammm.kav.Prefs.trips(app)).toString()
+        }
+
+        override fun onTrip(listener: Kav.TripListener?) {
+            declares("onTrip", TripAccess.FOLLOW)
+            l.onTrip = listener
+            // Set after its start (from start() itself, Native tells it once started): told the trip under way at once.
+            if (listener != null && loaded[i.identity] === l) runCatching { TripEvents.catchUp(i.identity) }
+        }
+
+        private fun declares(what: String, capability: String) {
+            if (i.manifest.contributions.none { it.capability == capability })
+                throw IllegalStateException("$what needs a contribution with capability \"$capability\" in the manifest")
+        }
         override fun card(on: String, card: Kav.Card) { l.cards[on] = card }
         override fun screen(page: String, screen: Kav.Screen) { l.screens[page] = screen }
         override fun home(screen: Kav.Screen) { l.screens[PageSpecs.HOME_PAGE] = screen }

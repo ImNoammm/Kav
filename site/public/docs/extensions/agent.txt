@@ -118,7 +118,7 @@ loads your code, so they never go into your dex.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
   with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
-  `kav.prefs()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  `kav.prefs()`, `kav.trips()` and `kav.onTrip()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
   code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
@@ -141,6 +141,8 @@ declares it too:
 | `kav.provide("board.stops", ...)`, `"board.departures"` | a contribution `board.provide` |
 | `kav.provide("stop.photo", ...)` | a contribution `stop.photo` ([hooks.md](https://kavapp.link/docs/extensions/hooks#stop-photos-stopphoto)) |
 | `kav.prefs()` | `"api": 5` |
+| `kav.trips()` | `"api": 5` and a contribution `trips.history` ([hooks.md](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
+| `kav.onTrip(...)` | `"api": 5` and a contribution `trips.follow` (the same) |
 | `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](https://kavapp.link/docs/extensions/screens)) |
 | `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
 
@@ -180,6 +182,8 @@ class Hello : KavExtension {
 | `id()` | your identity: your source and your name, `"github.<owner>.<repo>/<name>"`, or `"file.<digest>/<name>"` for a bundle added from a file |
 | `locale()` | Kav's language, `"en"` or `"he"` |
 | `prefs()` | API 5: the rider's display settings as JSON text, `{"stopNames": "en", "clock": 24, "locale": "en"}` ([hooks.md](https://kavapp.link/docs/extensions/hooks#planner-tabs-and-display-settings)) |
+| `trips()` | API 5: the rider's recent trips as JSON text, `null` until the rider allows it ([hooks.md](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
+| `onTrip(listener)` | API 5: told as the trip the rider follows starts, moves from step to step and ends, once the rider allows it (the same) |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -491,6 +495,8 @@ its cards.
 | `nav.header` | `{"trip"}` | Navigation's top bar: Back to Home, the time left, and Show trip plan. | `ui/Navigate.kt:377` |
 | `nav.problem` | `{"trip", "reason", "key"}` | The warning when the plan stopped working, with New route from here. | `ui/Navigate.kt:401` |
 | `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:452` |
+| `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:804` |
+| `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:847` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
 | `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:130` |
@@ -642,6 +648,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `parts-sample` | API 4: a row after Home's pay card, and each ride of a trip drawn its own way |
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
+| `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, and adds a line to the wait and ride cards |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 
@@ -664,7 +671,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip. */
     int API = 5;
 
     int apiVersion();
@@ -679,6 +686,20 @@ public interface Kav {
 
     /** API 5. Rider display settings as JSON: stopNames ("en" or "he"), clock (12 or 24), and locale. */
     default String prefs() { return "{}"; }
+
+    /** API 5. The rider's recent trips, newest first, as Kav's Recent trips list has them: a JSON array of {"from", "to",
+     *  "stopovers", "at", "planner"}. Each place is {"name", "detail", "lat", "lon"}; from is null for a trip from where
+     *  the rider was; at is when it was searched, in seconds since 1970; planner is the extension that planned it
+     *  ("ext:<publisher>/<dataset>"), "" for Kav's. null until the rider allows it on the extension's page. Needs a
+     *  contribution with capability "trips.history"; without it, it throws. */
+    default String trips() { return null; }
+
+    /** API 5. Told about the trip the rider follows (Start on a trip's page), as JSON text: {"event", "trip", "from",
+     *  "to", "step", "reason"}. event: "start", "step" (the rider moved on to another step), "replan" (a new route on
+     *  the way) or "end" (reason "arrived", or "ended" when the rider ended it before). A trip already under way is told
+     *  at once, as "start". Only while the rider allows it on the extension's page; on a thread of Kav's, never the main
+     *  one. null stops it. Needs a contribution with capability "trips.follow"; without it, it throws. */
+    default void onTrip(TripListener listener) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -782,6 +803,11 @@ public interface Kav {
     /** A screen's view. args: the page's arguments, as JSON text. */
     interface Screen {
         android.view.View create(Context context, String args);
+    }
+
+    /** API 5. A trip event (onTrip), as JSON text. */
+    interface TripListener {
+        void trip(String event);
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */
@@ -1451,6 +1477,65 @@ it. With none, Kav shows Street View's, as before, and keeps the photo it showed
 image is at most 5 MB, in a format Android reads (JPEG, PNG or WebP); Kav scales it down to what it shows. Kav asks
 only while the rider has stop photos on, and logs why an answer wasn't used (tag `KavStopPhoto` in `adb logcat`). A
 Kav from before `stop.photo` ignores the contribution.
+
+### The rider's trips: `trips.history` and `trips.follow` (API 5)
+
+Two capabilities give an extension the rider's trips. Each is a contribution in the manifest, and each has its own
+line on your extension's page ("Reads your recent trips, if you allow it", "Follows the trips you take, if you allow
+it") and its own switch there, **off until the rider turns it on**: "Read your trip history" and "Follow your trips".
+Kav never turns them on for the rider. Turned off, Kav stops at once: `kav.trips()` gives `null` again, and no more
+events come.
+
+```json
+"contributions": [
+  {"id": "history", "capability": "trips.history"},
+  {"id": "follow", "capability": "trips.follow"}
+]
+```
+
+**Trip history: `kav.trips()`.** The trips of Kav's Recent trips list (Home › Recent trips), newest first, as JSON
+text, or `null` while the rider hasn't allowed it:
+
+```json
+[{"from": {"name": "Home", "detail": "Herzl 1", "lat": 32.0853, "lon": 34.7818},
+  "to": {"name": "Azrieli", "detail": "Tel Aviv", "lat": 32.0745, "lon": 34.7920},
+  "stopovers": [], "at": 1795421100, "planner": ""}]
+```
+
+`from` is `null` for a trip from where the rider was. `at` is when the rider searched it, in Unix seconds. `planner`
+is the extension that planned it (`"ext:<publisher>/<dataset>"`), or `""` for Kav's own planners. Ask again when you
+need it: the list changes with every search. Without a `trips.history` contribution `kav.trips()` throws.
+
+**Following trips: `kav.onTrip(listener)`.** Told about the trip the rider follows (Start on a trip's page) as it
+changes, on a thread of Kav's, never the main one:
+
+```kotlin
+kav.onTrip { event ->
+    val e = JSONObject(event)
+    kav.log("${e.getString("event")}: step ${e.getJSONObject("step").getString("kind")}")
+}
+```
+
+```json
+{"event": "step", "from": "Home", "to": "Azrieli",
+ "trip": {"provider": "", "dep": 1795421100, "arr": 1795422900, "legs": [...]},
+ "step": {"index": 2, "count": 6, "kind": "wait", "legIndex": 1, "leg": {"kind": "ride", "lineNumber": "18", ...}}}
+```
+
+- `event`: `"start"` (the rider started following it, or Kav started again with it under way), `"step"` (the rider
+  moved on to another step: off a bus, the next walk or wait, and so on), `"replan"` (Kav planned a new route on the
+  way; `trip` is the new one) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or `"ended"` when
+  the rider ended it before.
+- `trip`: the trip as slots, parts and route rules get it (its legs, stops, lines and times).
+- `step`: the step the navigation screen shows as current: its `index` and the `count` of steps, its `kind` (`start`,
+  `walk`, `wait`, `ride`, `taxi`, `cycle` or `arrive`), its leg (`leg`, as a leg of `trip`; for a wait or a ride, the
+  line the rider chose to take) and that leg's place in `trip.legs` (`legIndex`, `-1` for a walk or the start and end).
+  Getting off a bus is the step after its ride.
+- Set while a trip is under way (from `start()`, or when the rider allows it during a trip), the listener is told that
+  trip at once, as `"start"`. `null` stops it. Without a `trips.follow` contribution `kav.onTrip` throws.
+
+Both need `"api": 5` in the manifest (an older Kav has neither method). A Kav without these capabilities installs your
+extension and never calls you.
 
 
 ## Screens: cards, pages, settings, the Home body and themes

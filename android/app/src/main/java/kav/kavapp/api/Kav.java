@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip. */
     int API = 5;
 
     int apiVersion();
@@ -24,6 +24,20 @@ public interface Kav {
 
     /** API 5. Rider display settings as JSON: stopNames ("en" or "he"), clock (12 or 24), and locale. */
     default String prefs() { return "{}"; }
+
+    /** API 5. The rider's recent trips, newest first, as Kav's Recent trips list has them: a JSON array of {"from", "to",
+     *  "stopovers", "at", "planner"}. Each place is {"name", "detail", "lat", "lon"}; from is null for a trip from where
+     *  the rider was; at is when it was searched, in seconds since 1970; planner is the extension that planned it
+     *  ("ext:<publisher>/<dataset>"), "" for Kav's. null until the rider allows it on the extension's page. Needs a
+     *  contribution with capability "trips.history"; without it, it throws. */
+    default String trips() { return null; }
+
+    /** API 5. Told about the trip the rider follows (Start on a trip's page), as JSON text: {"event", "trip", "from",
+     *  "to", "step", "reason"}. event: "start", "step" (the rider moved on to another step), "replan" (a new route on
+     *  the way) or "end" (reason "arrived", or "ended" when the rider ended it before). A trip already under way is told
+     *  at once, as "start". Only while the rider allows it on the extension's page; on a thread of Kav's, never the main
+     *  one. null stops it. Needs a contribution with capability "trips.follow"; without it, it throws. */
+    default void onTrip(TripListener listener) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -127,6 +141,11 @@ public interface Kav {
     /** A screen's view. args: the page's arguments, as JSON text. */
     interface Screen {
         android.view.View create(Context context, String args);
+    }
+
+    /** API 5. A trip event (onTrip), as JSON text. */
+    interface TripListener {
+        void trip(String event);
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */

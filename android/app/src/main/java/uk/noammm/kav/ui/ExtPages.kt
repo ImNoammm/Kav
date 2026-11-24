@@ -398,12 +398,16 @@ internal fun ExtSettingsForm(identity: String, header: String? = null, first: Li
             }
         }
     }
-    // Its own view, as its code makes it, each time the page shows.
-    if (own != null) androidx.compose.ui.viewinterop.AndroidView(
-        factory = { c -> uk.noammm.kav.ext.Native.view(identity, "settings") { own.create(c, "{}") } ?: android.widget.FrameLayout(c) },
-        // Under the Settings card at the gap between cards of one section; straight under the title when there's no card.
-        modifier = Modifier.fillMaxWidth().padding(top = if (card) K.gap3 else 0.dp),
-    )
+    // Its own view, as its code makes it, each time the page shows, and again when the rider turns one of its trip
+    // switches on or off (TripAccess), which its code has no other way to know.
+    val grants = ExtUi.tick.let { uk.noammm.kav.ext.TripAccess.allowed.filter { it.substringBeforeLast('|') == identity } }
+    if (own != null) androidx.compose.runtime.key(grants) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { c -> uk.noammm.kav.ext.Native.view(identity, "settings") { own.create(c, "{}") } ?: android.widget.FrameLayout(c) },
+            // Under the Settings card at the gap between cards of one section; straight under the title when there's no card.
+            modifier = Modifier.fillMaxWidth().padding(top = if (card) K.gap3 else 0.dp),
+        )
+    }
     picking?.let { s ->
         val done = { picking = null }
         when (s.type) {

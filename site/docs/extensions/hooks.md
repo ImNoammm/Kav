@@ -462,4 +462,63 @@ image is at most 5 MB, in a format Android reads (JPEG, PNG or WebP); Kav scales
 only while the rider has stop photos on, and logs why an answer wasn't used (tag `KavStopPhoto` in `adb logcat`). A
 Kav from before `stop.photo` ignores the contribution.
 
+## The rider's trips: `trips.history` and `trips.follow` (API 5)
+
+Two capabilities give an extension the rider's trips. Each is a contribution in the manifest, and each has its own
+line on your extension's page ("Reads your recent trips, if you allow it", "Follows the trips you take, if you allow
+it") and its own switch there, **off until the rider turns it on**: "Read your trip history" and "Follow your trips".
+Kav never turns them on for the rider. Turned off, Kav stops at once: `kav.trips()` gives `null` again, and no more
+events come.
+
+```json
+"contributions": [
+  {"id": "history", "capability": "trips.history"},
+  {"id": "follow", "capability": "trips.follow"}
+]
+```
+
+**Trip history: `kav.trips()`.** The trips of Kav's Recent trips list (Home › Recent trips), newest first, as JSON
+text, or `null` while the rider hasn't allowed it:
+
+```json
+[{"from": {"name": "Home", "detail": "Herzl 1", "lat": 32.0853, "lon": 34.7818},
+  "to": {"name": "Azrieli", "detail": "Tel Aviv", "lat": 32.0745, "lon": 34.7920},
+  "stopovers": [], "at": 1795421100, "planner": ""}]
+```
+
+`from` is `null` for a trip from where the rider was. `at` is when the rider searched it, in Unix seconds. `planner`
+is the extension that planned it (`"ext:<publisher>/<dataset>"`), or `""` for Kav's own planners. Ask again when you
+need it: the list changes with every search. Without a `trips.history` contribution `kav.trips()` throws.
+
+**Following trips: `kav.onTrip(listener)`.** Told about the trip the rider follows (Start on a trip's page) as it
+changes, on a thread of Kav's, never the main one:
+
+```kotlin
+kav.onTrip { event ->
+    val e = JSONObject(event)
+    kav.log("${e.getString("event")}: step ${e.getJSONObject("step").getString("kind")}")
+}
+```
+
+```json
+{"event": "step", "from": "Home", "to": "Azrieli",
+ "trip": {"provider": "", "dep": 1795421100, "arr": 1795422900, "legs": [...]},
+ "step": {"index": 2, "count": 6, "kind": "wait", "legIndex": 1, "leg": {"kind": "ride", "lineNumber": "18", ...}}}
+```
+
+- `event`: `"start"` (the rider started following it, or Kav started again with it under way), `"step"` (the rider
+  moved on to another step: off a bus, the next walk or wait, and so on), `"replan"` (Kav planned a new route on the
+  way; `trip` is the new one) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or `"ended"` when
+  the rider ended it before.
+- `trip`: the trip as slots, parts and route rules get it (its legs, stops, lines and times).
+- `step`: the step the navigation screen shows as current: its `index` and the `count` of steps, its `kind` (`start`,
+  `walk`, `wait`, `ride`, `taxi`, `cycle` or `arrive`), its leg (`leg`, as a leg of `trip`; for a wait or a ride, the
+  line the rider chose to take) and that leg's place in `trip.legs` (`legIndex`, `-1` for a walk or the start and end).
+  Getting off a bus is the step after its ride.
+- Set while a trip is under way (from `start()`, or when the rider allows it during a trip), the listener is told that
+  trip at once, as `"start"`. `null` stops it. Without a `trips.follow` contribution `kav.onTrip` throws.
+
+Both need `"api": 5` in the manifest (an older Kav has neither method). A Kav without these capabilities installs your
+extension and never calls you.
+
 </div>

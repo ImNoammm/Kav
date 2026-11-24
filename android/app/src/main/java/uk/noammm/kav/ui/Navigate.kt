@@ -479,6 +479,7 @@ fun NavigateScreen(
                                     onChoose = ::busTapped,
                                     pay = Shown.payments,
                                     report = { model.openReport(it) },
+                                    tripArgs = ::tripArgs,
                                 )
                             }
                         }
@@ -691,6 +692,9 @@ internal fun StepCard(
     pay: Boolean = false,
     // Reporting the bus ridden to the ministry.
     report: ((ReportFor) -> Unit)? = null,
+    // The trip under way as its parts are told it (tripArgs), on the navigation screen only: with it, extensions' views
+    // go in the wait and ride cards (nav.wait.details, nav.ride.details).
+    tripArgs: (() -> org.json.JSONObject)? = null,
 ) {
     when (step) {
         is Step.Start -> Card(T("Start from", "התחלה מ-"), active) {
@@ -836,6 +840,9 @@ internal fun StepCard(
                         val lineDeps = depsOf[index]
                         DepartureTimes(lineDeps, now)
                         CrowdMeter(ride, r, lineDeps.firstOrNull())
+                        if (tripArgs != null) KavPart("nav.wait.details", Triple(step.legIndex, index, ride.tripId), {
+                            tripArgs().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.legIndex).put("option", index)
+                        }, ownGap = true) {}
                         // A train late by the railway's forecast says by how much, as its own list does.
                         if (r.isTrain(ride)) r.departures(ride, wait).firstOrNull { it.tripId == ride.tripId }?.let(::lateBy)?.let {
                             Text(lateLabel(it), fontSize = 14.sp, color = K.critical, modifier = Modifier.padding(top = K.gap1))
@@ -879,6 +886,9 @@ internal fun StepCard(
                     Box(Modifier.weight(1f)) { LineRow(ride, r) }
                     if (report != null) rideReport(ride, r, busOn(ride, r, trip), now)?.let { ReportButton { report(it) } }
                 }
+                if (tripArgs != null) KavPart("nav.ride.details", step.legIndex to ride.tripId, {
+                    tripArgs().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.legIndex)
+                }, ownGap = true) {}
                 // On board, with a change after the ride: how much later the next bus there leaves, if this one is missed.
                 if (active) missedChangeNext(step, r, chosen, now)?.let {
                     LiveText(T("If you miss your change, the next one is $it min later", "אם תפספסו את ההחלפה, היציאה הבאה $it דק׳ אחריה"),

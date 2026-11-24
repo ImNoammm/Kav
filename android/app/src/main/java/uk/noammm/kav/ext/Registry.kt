@@ -154,6 +154,7 @@ class Registry(val dir: File) {
     private fun forget(gone: Installed) {
         File(File(dir, "net"), stateKey(gone.identity) + ".json").delete()
         Slots.Picks.drop(dir, gone.identity)
+        TripAccess.drop(dir, gone.identity)
         Screens.drop(dir, gone.identity)
         Selections.drop(dir, gone.namespace)
     }

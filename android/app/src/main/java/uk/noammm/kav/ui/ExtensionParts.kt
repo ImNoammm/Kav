@@ -50,6 +50,8 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -409,6 +411,8 @@ private fun kindIcon(cap: String): ImageVector = when (cap) {
     Capabilities.PLAN -> Icons.Rounded.Route
     Capabilities.BOARD -> Icons.Rounded.DepartureBoard
     uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> Icons.Rounded.PhotoCamera
+    uk.noammm.kav.ext.TripAccess.HISTORY -> Icons.Rounded.History
+    uk.noammm.kav.ext.TripAccess.FOLLOW -> Icons.Rounded.Navigation
     Pipeline.WALK -> Icons.AutoMirrored.Rounded.DirectionsWalk
     Pipeline.TRANSFER -> Icons.Rounded.SwapHoriz
     Pipeline.FILTER -> Icons.Rounded.FilterList
@@ -420,6 +424,8 @@ private fun kindWords(cap: String) = when (cap) {
     Capabilities.PLAN -> T("Trip planner", "מתכנן מסלולים")
     Capabilities.BOARD -> T("Provides timetables and stop boards", "מספק לוחות זמנים ולוחות תחנה")
     uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> T("Stop photos", "תמונות של תחנות")
+    uk.noammm.kav.ext.TripAccess.HISTORY -> T("Trip history", "היסטוריית נסיעות")
+    uk.noammm.kav.ext.TripAccess.FOLLOW -> T("Your trips", "הנסיעות שלכם")
     Pipeline.WALK -> T("Walking model", "מודל הליכה")
     Pipeline.TRANSFER -> T("Transfer rule", "כלל החלפות")
     Pipeline.FILTER -> T("Route filter", "מסנן מסלולים")
@@ -554,6 +560,8 @@ private fun partWords(name: String) = when (name) {
     "nav.header" -> T("the top of a trip under way", "החלק העליון של נסיעה בדרך")
     "nav.problem" -> T("problems on the way", "בעיות בדרך")
     "nav.card" -> T("a trip's step cards", "כרטיסי השלבים של נסיעה")
+    "nav.wait.details" -> T("each line on a trip's waiting card", "כל קו בכרטיס ההמתנה של נסיעה")
+    "nav.ride.details" -> T("the line on a trip's riding card", "הקו בכרטיס הנסיעה")
     "share.targets" -> T("ways to share a trip", "דרכים לשתף נסיעה")
     "ticket.codes" -> T("ticket codes", "קודי כרטיסים")
     "pay.setup" -> T("setting up paying", "הגדרת התשלום")
@@ -661,7 +669,12 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
 // A line's short label, for the list of what an extension can do: Kav's words, a few of them.
 internal fun lineLabel(l: ExtUses.Line): String {
     return when (l.what) {
-        ExtUses.What.KIND -> if (l.detail.first() == Capabilities.BOARD) T("Timetables and stop boards", "לוחות זמנים ולוחות תחנה") else kindWords(l.detail.first())
+        ExtUses.What.KIND -> when (l.detail.first()) {
+            Capabilities.BOARD -> T("Timetables and stop boards", "לוחות זמנים ולוחות תחנה")
+            uk.noammm.kav.ext.TripAccess.HISTORY -> T("Reads your recent trips, if you allow it", "קורא את הנסיעות האחרונות שלכם, אם תאשרו")
+            uk.noammm.kav.ext.TripAccess.FOLLOW -> T("Follows the trips you take, if you allow it", "עוקב אחרי הנסיעות שלכם, אם תאשרו")
+            else -> kindWords(l.detail.first())
+        }
         ExtUses.What.KEEPS_DATA -> T("Keeps data on this phone", "שומר מידע בטלפון הזה")
         ExtUses.What.SCREENS -> T("Own screens", "מסכים ייעודיים")
         ExtUses.What.TAB -> T("A tab you can pin", "לשונית שאפשר להצמיד")

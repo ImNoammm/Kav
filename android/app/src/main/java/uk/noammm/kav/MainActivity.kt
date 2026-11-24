@@ -912,6 +912,37 @@ private fun Shell(model: KavModel) {
         }
     }
 
+    // Extensions listening to trips (Kav.onTrip) are told as the trip followed starts, moves on to another step, is
+    // planned again on the way, and ends (TripEvents). Followed here whether any listens or not, so one that starts
+    // listening during a trip is told what comes next right.
+    LaunchedEffect(model) {
+        var was: uk.noammm.kav.ext.TripEvents.Seen? = null
+        var wasJourney: ActiveJourney? = null
+        var steps: Pair<Transit.Itinerary, List<uk.noammm.kav.ui.Step>>? = null
+        snapshotFlow { model.activeJourney to model.journeyStep }.collect { (journey, step) ->
+            val now = journey?.let { j ->
+                val s = steps?.takeIf { it.first === j.trip }?.second
+                    ?: buildSteps(j.trip, j.fromLabel, j.toLabel).also { steps = j.trip to it }
+                uk.noammm.kav.ext.TripEvents.Seen(j.trip, step, s.lastIndex)
+            }
+            val events = uk.noammm.kav.ext.TripEvents.changes(was, now)
+            val before = was; val ended = wasJourney
+            was = now; wasJourney = journey
+            if (events.isEmpty() || !uk.noammm.kav.ext.Native.listensToTrips()) return@collect
+            val stepsNow = steps?.second.orEmpty()
+            withContext(Dispatchers.Default) {
+                for (e in events) runCatching {
+                    val json = if (e == "end" && ended != null && before != null)
+                        uk.noammm.kav.ext.TripEvents.json(e, ended, before.step, buildSteps(ended.trip, ended.fromLabel, ended.toLabel),
+                            uk.noammm.kav.ext.TripEvents.reason(before))
+                    else if (journey != null) uk.noammm.kav.ext.TripEvents.json(e, journey, step, stepsNow)
+                    else null
+                    json?.let { uk.noammm.kav.ext.Native.tripEvent(it.toString()) }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(model) {
         snapshotFlow { PendingStop.key }.collect { key ->
             if (key == null) return@collect

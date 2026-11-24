@@ -786,6 +786,16 @@ private fun addsRows(hub: Hub, i: Registry.Installed): ListGroupScope.() -> Unit
         Slots.Kind.HOME to T("Home card", "כרטיס במסך הבית"), Slots.Kind.RESULTS to T("Line under each route", "שורה מתחת לכל מסלול"),
         Slots.Kind.TRIP to T("Part of a trip's page", "חלק בעמוד של נסיעה"), Slots.Kind.STOP to T("Row on stop boards", "שורה בלוחות תחנה"),
     )) if (k.capability in caps) items += Item(words, Slots.Picks.isOn(i.identity, k)) { v -> Slots.Picks.set(dir, i.identity, k, v); ExtShown.publish(); ExtUi.changed() }
+    // The rider's trips (TripAccess): each off until the rider allows it here. Allowed during a trip, it's told that
+    // trip at once.
+    for ((cap, words) in listOf(
+        uk.noammm.kav.ext.TripAccess.HISTORY to T("Read your trip history", "קריאת היסטוריית הנסיעות שלכם"),
+        uk.noammm.kav.ext.TripAccess.FOLLOW to T("Follow your trips", "מעקב אחרי הנסיעות שלכם"),
+    )) if (cap in caps) items += Item(words, uk.noammm.kav.ext.TripAccess.allows(i.identity, cap)) { v ->
+        uk.noammm.kav.ext.TripAccess.set(dir, i.identity, cap, v)
+        if (v && cap == uk.noammm.kav.ext.TripAccess.FOLLOW) Thread { runCatching { uk.noammm.kav.ext.TripEvents.catchUp(i.identity) } }.start()
+        ExtUi.changed()
+    }
     // The planner and route rules, each the rider's choice.
     val mine = i.manifest.contributions.filter { it.capability == Capabilities.PLAN || it.capability in Pipeline.HOOKS }
     val r = Selections.rules
