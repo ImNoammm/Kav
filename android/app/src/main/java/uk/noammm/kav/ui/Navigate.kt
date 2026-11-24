@@ -662,7 +662,7 @@ internal fun StepCard(
                     stop.shown(), stop.code, legMode(board, r),
                     platform = boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).let { (ride, wait) -> r.platform(ride, wait) },
                     stopId = board.fromStop,
-                    streetView = stop.point?.let { lookAt(it, board, r) },
+                    streetView = stop.point?.let { lookAt(it, board, r, stop) },
                 )
                 Spacer(Modifier.height(K.gap2))
             } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -700,7 +700,7 @@ internal fun StepCard(
                     platform = step.toRide?.let { boardingChoice(it, step.toWait, chosen[step.toLeg] ?: 0) }
                         ?.let { (ride, wait) -> r.platform(ride, wait) }.orEmpty(),
                     stopId = step.toStop,
-                    streetView = step.toRide?.let { ride -> stop?.point?.let { lookAt(it, ride, r) } },
+                    streetView = step.toRide?.let { ride -> stop?.point?.let { lookAt(it, ride, r, stop) } },
                 )
                 // The walk's next turn, from where the rider is on it, rolling on as they pass each one.
                 nextTurn(step.leg, fix?.takeIf { active })?.let { (turn, metres) ->
@@ -831,7 +831,7 @@ internal fun StepCard(
             var railTop by remember { mutableIntStateOf(0) }
             Card(header, active, trailing = durMinutes(mins.toInt()), scroll = scroll) {
                 StopLine(alight?.shown() ?: T("your stop", "התחנה שלכם"), alight?.code, legMode(ride, r), stopId = ride.toStop,
-                    streetView = alight?.point?.let { lookAt(it, ride, r) })
+                    streetView = alight?.point?.let { lookAt(it, ride, r, alight) })
                 Spacer(Modifier.height(K.gap2))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                     Box(Modifier.weight(1f)) { LineRow(ride, r) }
@@ -1403,8 +1403,10 @@ internal fun platformChange(step: Step.Ride, ride: Transit.Leg, r: Transit.Resol
 
 // Where Street View stands and which way it looks, in degrees clockwise from north; without a heading Google picks one,
 // which tends to be down the road. target: what it looks at, so a panorama Google took a few metres off still faces it.
+// stop: the stop it shows, when Kav knows it, for extensions' stop photos (stop.photo).
 internal class StreetLook(
     val at: Pair<Double, Double>, val heading: Int? = null, val target: Pair<Double, Double>? = at.takeIf { heading == null },
+    val stop: Transit.StopInfo? = null,
 )
 
 // How far from the middle of the road a stop on it has its kerb, roughly.
@@ -1441,8 +1443,8 @@ internal fun lookAt(net: uk.noammm.kav.data.Net, stop: Int): StreetLook {
 
 // A stop of a ride, seen from the road the ride takes. A train's line, or a cable car's, is no road to stand on: the
 // station itself then.
-internal fun lookAt(stop: Pair<Double, Double>, ride: Transit.Leg, r: Transit.Resolved): StreetLook =
-    lookAt(stop, if (legMode(ride, r) in OFF_ROAD) emptyList() else ride.shape)
+internal fun lookAt(stop: Pair<Double, Double>, ride: Transit.Leg, r: Transit.Resolved, of: Transit.StopInfo? = null): StreetLook =
+    lookAt(stop, if (legMode(ride, r) in OFF_ROAD) emptyList() else ride.shape).let { if (of == null) it else StreetLook(it.at, it.heading, it.target, of) }
 
 private val OFF_ROAD = setOf(Mode.SUBWAY, Mode.TRAIN, Mode.FERRY, Mode.CABLE, Mode.GONDOLA, Mode.FUNICULAR)
 

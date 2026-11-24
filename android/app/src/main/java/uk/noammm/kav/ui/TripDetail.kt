@@ -467,7 +467,7 @@ private fun Timeline(
                                 hm.format(Date(l.dep * 1000)), mode,
                                 platform = r.platform(l, wait),
                                 stopId = l.fromStop,
-                                streetView = (board?.point ?: l.shape.firstOrNull())?.let { lookAt(it, l, r) },
+                                streetView = (board?.point ?: l.shape.firstOrNull())?.let { lookAt(it, l, r, board) },
                             )
                             Spacer(Modifier.height(K.gap2))
                             KavPart("trip.ride", l, { leg(trip, r, i) }) { BoardCard(l, wait, r, onTrack, onReport, asked) { RideSummary(l, r, fares[i]) } }
@@ -488,7 +488,7 @@ private fun Timeline(
                                 hm.format(Date(next.dep * 1000)), legMode(next, r),
                                 platform = r.platform(next, nextWait),
                                 stopId = l.toStop,
-                                streetView = alight?.point?.let { lookAt(it, l, r) },
+                                streetView = alight?.point?.let { lookAt(it, l, r, alight) },
                                 note = T("Change here · you arrive $arrive", "החלפה כאן · מגיעים ב-$arrive"),
                             )
                             change?.let {
@@ -509,7 +509,7 @@ private fun Timeline(
                                 hm.format(Date((if (r.isTrain(l)) r.alightAt(l) else l.arr) * 1000)), mode,
                                 platform = if (walkingToTrain) r.alightPlatform(l) else "",
                                 stopId = if (l === lastRide) l.toStop else -1,
-                                streetView = alight?.point?.let { lookAt(it, l, r) },
+                                streetView = alight?.point?.let { lookAt(it, l, r, alight) },
                             )
                         }
                     }

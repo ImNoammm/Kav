@@ -442,15 +442,18 @@ in code:
 
 ```kotlin
 kav.provide("stop.photo") { input ->
-    val stop = JSONObject(input)  // {"lat": 32.0853, "lon": 34.7818, "prefs": {...}}
-    val url = photoNear(stop.getDouble("lat"), stop.getDouble("lon"))
+    val o = JSONObject(input)  // {"lat": 32.0853, "lon": 34.7818, "stop": {"code": "778", "id": "s778"}, "prefs": {...}}
+    val mine = o.optJSONObject("stop")?.optString("id")?.takeIf { it.isNotEmpty() }
+    val url = if (mine != null) photoOf(mine) else photoNear(o.getDouble("lat"), o.getDouble("lon"))
     if (url == null) "null" else JSONObject.quote(url)
 }
 ```
 
-Kav sends the stop's place, not an id: know your own stops by where they are. Your code starts afresh each time Kav
-starts, so keep what you need (a file under `kav.context()`, or your own stop list) rather than only what your last
-plan returned.
+Kav always sends the place the photo shows (`lat`, `lon`). When Kav knows which stop it is, it adds `stop`: its `code`
+(the code riders see), and, for one of your own stops (one your plans or boards returned), `id`, your own id for it,
+exactly as you sent it. Another extension's stop comes as the place only. A Kav from before stop ids sends the place
+only, so fall back to it. Your code starts afresh each time Kav starts, so keep what you need (a file under
+`kav.context()`, or your own stop list) rather than only what your last plan returned.
 
 Answer an `https` image address as a JSON string, or `null` for none. Kav asks each extension with `stop.photo` in
 turn, within 3 seconds each; the first image that loads is shown, small on the stop's row and large when the rider taps

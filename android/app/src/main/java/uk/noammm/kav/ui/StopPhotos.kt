@@ -70,7 +70,7 @@ internal object StopPhotos {
     private suspend fun frame(look: StreetLook, k: String, w: Int, h: Int): Photo? {
         // An extension's photo of the stop (stop.photo) first; Street View's when none gives one that loads.
         val point = look.target ?: look.at
-        for ((identity, url) in uk.noammm.kav.ext.StopPhotoHook.urls(point.first, point.second)) {
+        for ((identity, url) in uk.noammm.kav.ext.StopPhotoHook.urls(point.first, point.second, look.stop)) {
             val got = runCatching { supplied(url, w, h) }
             got.getOrNull()?.let { return Photo(it, 0, 0) }
             uk.noammm.kav.ext.StopPhotoHook.failed(identity, url, got.exceptionOrNull())
