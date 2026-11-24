@@ -97,6 +97,8 @@ internal fun kavActions(model: KavModel) {
         LiveShow.entries.firstOrNull { liveShowKey(it) == a.optString("show") }?.let { model.liveShow = it }
     }
     Actions.own("pay.history.open") { _, _ -> PayHistory.open = true }
+    // Until the results' screen has opened (it takes this over then): only the tab results open on, with "default".
+    Actions.own("results.planner.select") { ctx, a -> if (a.optBoolean("default")) chooseOpensOn(ctx, a.optString("source")) }
     Actions.own("pay.mode") { ctx, a -> if (a.has("on")) payModeOwn(ctx, a.optBoolean("on")) }
     Actions.own("pay.offer.hide") { ctx, _ -> PayMode.dismissOffer(ctx) }
     Actions.own("pay.place.open") { ctx, a -> RavPass.placeNamed(a.optString("place"))?.let { RavPass.place(ctx, it) } }

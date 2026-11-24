@@ -188,10 +188,10 @@ fun DirectionsOnline(model: KavModel) {
     var linkError by remember { mutableStateOf<String?>(null) }
     var lastLink by remember { mutableStateOf<TripLink.Plan?>(null) }
     val filters = model.filters
-    // Whose routes show: the planner chosen in Settings, or the tab picked when every planner's are shown.
-    var tab by remember { mutableStateOf<Source?>(null) }
-    val tabs = if (KavPlan.everyPlanner) KavPlan.tabs() else emptyList()
-    val planner = tab?.takeIf { it in tabs } ?: KavPlan.source
+    // Whose routes show, by its tab's key (KavPlan.plannerTabs): the tab picked, else the one results open on.
+    var tab by remember { mutableStateOf<String?>(null) }
+    val tabs = KavPlan.plannerTabs()
+    val planner = tab?.takeIf { it in tabs } ?: KavPlan.opensOn(tabs) ?: KavPlan.source.key
     fun openSearch() {
         hereOrigin = null; stopovers = emptyList(); linkError = null; fromPlace = null
         departAt = 0L; timeType = Transit.TIME_DEPARTURE; picking = "to"
@@ -255,8 +255,13 @@ fun DirectionsOnline(model: KavModel) {
             Sort.entries.firstOrNull { it.name.lowercase() == a.optString("order") && (it != Sort.LOWEST_CO2 || Shown.co2) }
                 ?.let(::chooseOrder)
         }
-        onResults("results.planner.select") { a ->
-            if (KavPlan.everyPlanner) KavPlan.tabs().firstOrNull { it.key == a.optString("source") }?.let { tab = it }
+        // A tab picked on the results; with "default": true, also the one results open on from now (Settings has it),
+        // whether results are showing or not (kavActions has that before this screen opens).
+        Actions.own("results.planner.select") { c, a ->
+            val key = a.optString("source")
+            if (a.optBoolean("default")) chooseOpensOn(c, key)
+            if (model.tab == Tab.Directions && !model.settingsOpen && showResults && open == null)
+                KavPlan.plannerTabs().firstOrNull { it == key }?.let { tab = it }
         }
         onDispose { }
     }
@@ -412,7 +417,7 @@ fun DirectionsOnline(model: KavModel) {
             // A recent trip an extension planned is planned again by that extension only: if it's gone, it says so.
             val pinned = recent?.takeIf { it.to === toPlace && it.from === fromPlace && it.planner.isNotEmpty() }
                 ?.let { uk.noammm.kav.ext.Extensions.address(it.planner) }
-            val kav = if (link == null && planner in tabs && pinned == null) {
+            val kav = if (link == null && tabs.size > 1 && pinned == null) {
                 every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain, settings), planner, tabs,
                     if (departAt == 0L) LEAVE_NOW_KEPT_MS else Long.MAX_VALUE) { by ->
                     val at = KavPlan.plannerOf(by) ?: throw java.io.IOException("no planner answering")
@@ -524,7 +529,9 @@ fun DirectionsOnline(model: KavModel) {
                     "Kav's planner has no timetable for that day yet. Try a nearer date.",
                     "לתכנון של Kav עוד אין לוח זמנים ליום הזה. נסו תאריך קרוב יותר.",
                 )
-                KavLive.serverOf(planner) != KavLive.KAV_SERVER -> T("Your server didn't answer.", "השרת שלכם לא ענה.")
+                uk.noammm.kav.ext.Extensions.isAddress(planner) ->
+                    KavPlan.tabName(planner).let { T("$it didn't answer.", "$it לא ענה.") }
+                Source.of(planner)?.let(KavLive::serverOf) != KavLive.KAV_SERVER -> T("Your server didn't answer.", "השרת שלכם לא ענה.")
                 else -> T("Kav's server didn't answer.", "השרת של Kav לא ענה.")
             }
             planning = false
@@ -828,9 +835,9 @@ fun DirectionsOnline(model: KavModel) {
             // or empty answer too, so another can be picked.
             fun androidx.compose.foundation.lazy.LazyListScope.tabsRow() {
                 if (tabs.size > 1) item(key = "planners") {
-                    KavPart("results.planners", tabs to planner, { JSONObject().put("source", planner.key).put("sources", JSONArray(tabs.map { it.key })) }) {
+                    KavPart("results.planners", tabs to planner, { JSONObject().put("source", planner).put("sources", JSONArray(tabs)) }) {
                         PlannerTabs(tabs, planner, { picked ->
-                            resultAction("results.planner.select", { JSONObject().put("source", picked.key) }) { tab = picked }
+                            resultAction("results.planner.select", { JSONObject().put("source", picked) }) { tab = picked }
                         }, listMotion().padding(horizontal = K.gap4, vertical = K.gap2))
                     }
                 }

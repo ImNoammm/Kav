@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -407,6 +408,7 @@ internal fun listingIcon(capabilities: List<String>): ImageVector = when {
 private fun kindIcon(cap: String): ImageVector = when (cap) {
     Capabilities.PLAN -> Icons.Rounded.Route
     Capabilities.BOARD -> Icons.Rounded.DepartureBoard
+    uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> Icons.Rounded.PhotoCamera
     Pipeline.WALK -> Icons.AutoMirrored.Rounded.DirectionsWalk
     Pipeline.TRANSFER -> Icons.Rounded.SwapHoriz
     Pipeline.FILTER -> Icons.Rounded.FilterList
@@ -417,6 +419,7 @@ private fun kindIcon(cap: String): ImageVector = when (cap) {
 private fun kindWords(cap: String) = when (cap) {
     Capabilities.PLAN -> T("Trip planner", "מתכנן מסלולים")
     Capabilities.BOARD -> T("Provides timetables and stop boards", "מספק לוחות זמנים ולוחות תחנה")
+    uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> T("Stop photos", "תמונות של תחנות")
     Pipeline.WALK -> T("Walking model", "מודל הליכה")
     Pipeline.TRANSFER -> T("Transfer rule", "כלל החלפות")
     Pipeline.FILTER -> T("Route filter", "מסנן מסלולים")

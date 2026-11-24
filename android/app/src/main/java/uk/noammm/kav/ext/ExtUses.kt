@@ -17,9 +17,9 @@ object ExtUses {
     class Line(val key: String, val what: What, val detail: List<String>, val note: Pair<String, String>?)
 
     // The kinds Kav runs today, in the order they're listed.
-    val KINDS = listOf(Capabilities.PLAN, Capabilities.BOARD, Pipeline.WALK, Pipeline.TRANSFER, Pipeline.FILTER, Pipeline.RANK, Pipeline.ANNOTATE)
-    // The kinds that are given the rider's trip searches.
-    private val SEARCHING = KINDS - Capabilities.BOARD
+    val KINDS = listOf(Capabilities.PLAN, Capabilities.BOARD, StopPhotoHook.CAPABILITY, Pipeline.WALK, Pipeline.TRANSFER, Pipeline.FILTER, Pipeline.RANK, Pipeline.ANNOTATE)
+    // The kinds that are given the rider's trip searches (a stop photo is asked with the stop's place only).
+    private val SEARCHING = KINDS - Capabilities.BOARD - StopPhotoHook.CAPABILITY
     // The route rules, by what they change in a search's results.
     val CHANGES = listOf(Pipeline.WALK, Pipeline.TRANSFER, Pipeline.FILTER, Pipeline.RANK, Pipeline.ANNOTATE)
     // Every key an explanation can name, for the developer kit: a kind's capability, or one of these.

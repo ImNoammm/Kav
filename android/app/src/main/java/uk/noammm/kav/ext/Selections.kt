@@ -1,5 +1,8 @@
 package uk.noammm.kav.ext
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -11,8 +14,14 @@ object Selections {
     private const val FORMAT = 1
     @Volatile private var file: File? = null
 
-    // The planner the rider chose, when it's an extension's. Null: Kav's own choice (Settings › Live times and planners).
-    @Volatile var planner: Namespace? = null
+    // The extensions' planners the rider switched on, in the order they were: each plans in a tab of its own on the
+    // results, beside Kav's (KavPlan.plannerTabs).
+    var planners by mutableStateOf(emptyList<Namespace>())
+        private set
+
+    // The extension's tab results open on, when the rider (or an extension, with results.planner.select) chose one.
+    // Null: the tab of Kav's own planner (Settings › Live times and planners).
+    var opens by mutableStateOf<Namespace?>(null)
         private set
 
     // Reads the file, if there is one. KavApp calls this only when the extensions folder exists.
@@ -24,7 +33,11 @@ object Selections {
             val o = JSONObject(f.readText())
             if (o.optInt("format") != FORMAT) return
             val slots = o.optJSONObject("slots") ?: return
-            planner = slots.optJSONObject("planner")?.optString("namespace")?.let(Namespace::of)
+            val listed = slots.optJSONArray("planners").objects().mapNotNull { Namespace.of(it.optString("namespace")) }
+            // Before tabs, one extension's planner planned in place of Kav's: it keeps its tab, and results open on it.
+            val old = slots.optJSONObject("planner")?.optString("namespace")?.let(Namespace::of)
+            planners = if (slots.has("planners")) listed.distinct() else listOfNotNull(old)
+            opens = if (slots.has("planners")) slots.optJSONObject("opens")?.optString("namespace")?.let(Namespace::of) else old
             chosen = Rules(
                 slots.optJSONObject("walk")?.let(Rule::of), slots.optJSONObject("transfer")?.let(Rule::of),
                 slots.optJSONArray("filters").objects().mapNotNull(Rule::of), slots.optJSONObject("rank")?.let(Rule::of),
@@ -78,28 +91,37 @@ object Selections {
     // Saves the rules without the ones that no longer fit, after a source is added, updated or removed.
     @Synchronized fun prune(dir: File, installed: (Namespace) -> Manifest?) {
         val kept = chosen.fitting(installed)
-        if (kept.all.size != chosen.all.size) save(dir, planner, kept)
+        if (kept.all.size != chosen.all.size) save(dir, planners, opens, kept)
     }
 
     // Tests only: the choice forgotten in memory, the file left alone.
-    internal fun forget() { planner = null; chosen = Rules(); file = null; installed = null }
+    internal fun forget() { planners = emptyList(); opens = null; chosen = Rules(); file = null; installed = null }
 
-    @Synchronized fun choosePlanner(dir: File, ns: Namespace?) = save(dir, ns, chosen)
+    // An extension's planner switched on (its tab added, last) or off (its tab gone, and results no longer open on it).
+    @Synchronized fun setPlanner(dir: File, ns: Namespace, on: Boolean) {
+        val next = if (on) (planners - ns) + ns else planners - ns
+        save(dir, next, opens?.takeIf { it in next }, chosen)
+    }
 
-    @Synchronized fun chooseRules(dir: File, r: Rules) = save(dir, planner, r)
+    // The extension's tab results open on; null for Kav's own. One whose planner isn't switched on is switched on.
+    @Synchronized fun chooseOpens(dir: File, ns: Namespace?) =
+        save(dir, if (ns == null || ns in planners) planners else planners + ns, ns, chosen)
+
+    @Synchronized fun chooseRules(dir: File, r: Rules) = save(dir, planners, opens, r)
 
     // One extension's planner and rules, no longer chosen (it was uninstalled). Nothing written when none was its.
     @Synchronized fun drop(dir: File, ns: Namespace) {
         val c = chosen
-        if (planner != ns && c.all.none { it.namespace == ns }) return
+        if (ns !in planners && c.all.none { it.namespace == ns }) return
         fun keep(r: Rule?) = r?.takeIf { it.namespace != ns }
-        save(dir, planner?.takeIf { it != ns }, Rules(keep(c.walk), keep(c.transfer), c.filters.filter { it.namespace != ns }, keep(c.rank), c.annotate.filter { it.namespace != ns }))
+        save(dir, planners - ns, opens?.takeIf { it != ns }, Rules(keep(c.walk), keep(c.transfer), c.filters.filter { it.namespace != ns }, keep(c.rank), c.annotate.filter { it.namespace != ns }))
     }
 
-    private fun save(dir: File, ns: Namespace?, r: Rules) {
+    private fun save(dir: File, tabs: List<Namespace>, first: Namespace?, r: Rules) {
         val f = file ?: File(dir, "selections.json").also { file = it }
         val slots = JSONObject()
-        if (ns != null) slots.put("planner", JSONObject().put("namespace", ns.key))
+        slots.put("planners", org.json.JSONArray(tabs.map { JSONObject().put("namespace", it.key) }))
+        if (first != null) slots.put("opens", JSONObject().put("namespace", first.key))
         r.walk?.let { slots.put("walk", it.json()) }
         r.transfer?.let { slots.put("transfer", it.json()) }
         if (r.filters.isNotEmpty()) slots.put("filters", org.json.JSONArray(r.filters.map { it.json() }))
@@ -109,7 +131,8 @@ object Selections {
         val tmp = File(f.path + ".tmp")
         FileOutputStream(tmp).use { it.write(JSONObject().put("format", FORMAT).put("slots", slots).toString().toByteArray()); it.fd.sync() }
         if (!tmp.renameTo(f)) throw java.io.IOException("couldn't save the choice")
-        planner = ns
+        planners = tabs
+        opens = first
         chosen = r
     }
 }

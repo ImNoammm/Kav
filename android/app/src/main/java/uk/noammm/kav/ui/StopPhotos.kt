@@ -32,6 +32,7 @@ internal object StopPhotos {
     private const val FOV = 90
     private const val KEEP_DAYS = 60L
     private const val KEEP_NONE_DAYS = 7L
+    private const val SUPPLIED_MAX = 5_000_000
 
     private var dir: File? = null
     private val gate = Semaphore(3)
@@ -67,6 +68,13 @@ internal object StopPhotos {
     suspend fun full(look: StreetLook): Photo? = withContext(Dispatchers.IO) { frame(look, key(look) + "_full", FULL_W, FULL_H) }
 
     private suspend fun frame(look: StreetLook, k: String, w: Int, h: Int): Photo? {
+        // An extension's photo of the stop (stop.photo) first; Street View's when none gives one that loads.
+        val point = look.target ?: look.at
+        for ((identity, url) in uk.noammm.kav.ext.StopPhotoHook.urls(point.first, point.second)) {
+            val got = runCatching { supplied(url, w, h) }
+            got.getOrNull()?.let { return Photo(it, 0, 0) }
+            uk.noammm.kav.ext.StopPhotoHook.failed(identity, url, got.exceptionOrNull())
+        }
         val folder = dir ?: throw IOException("Stop photos are not initialized")
         val file = File(folder, "$k.jpg")
         val none = File(folder, "$k.none")
@@ -88,6 +96,34 @@ internal object StopPhotos {
             none.delete()
             read(file) ?: throw IOException("Street View sent no image")
         }
+    }
+
+    // An extension's image: at most SUPPLIED_MAX bytes, decoded no larger than the frame it fills needs.
+    private fun supplied(url: String, w: Int, h: Int): Bitmap? {
+        val c = (RiderProxy.open(URL(url)) as HttpURLConnection).apply { connectTimeout = 8000; readTimeout = 10000 }
+        val bytes = try {
+            if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode}")
+            if (c.contentType?.startsWith("image/") != true) throw IOException("not an image")
+            c.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(16 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    if (out.size() > SUPPLIED_MAX) throw IOException("larger than ${SUPPLIED_MAX / 1_000_000} MB")
+                }
+                out.toByteArray()
+            }
+        } finally {
+            c.disconnect()
+        }
+        val size = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, size)
+        if (size.outWidth <= 0 || size.outHeight <= 0) return null
+        var sample = 1
+        while (size.outWidth / (sample * 2) >= w && size.outHeight / (sample * 2) >= h) sample *= 2
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun read(file: File): Photo? {

@@ -298,7 +298,7 @@ show. What Kav sends the rider's route rules about your routes must also fit 512
 refused whole as too large. Short ids and no more stops and shape than a route needs keep you far from it.
 
 Ids in your plan are your own: an id that looks like the ministry's is not taken for the ministry's, so its rides
-get no live times from Kav.
+get no live times from the ministry. Their own board provider supplies live times as described below.
 
 ## Timetables and stop boards: `board.provide`
 
@@ -369,5 +369,94 @@ Deadline: 30 seconds.
 
 - The full shape of a plan (alternatives, fares, tags, sections, turns): see `plan.provide` above.
 - Saving one of your lines: Kav has no page for an extension's line yet, so only stops can be saved.
+
+## Planner tabs and display settings
+
+Each extension planner the rider switches on gets a tab of its own on the results, beside Kav's: its key is
+`ext:<publisher>/<dataset>` and its label is your extension's name. A search asks every tab's planner at once, so a
+tab opens on its routes as soon as they're in. In Settings › Live times and planners › Routes from every planner the
+rider orders the tabs, hides one, and picks the tab results open on; Kav's own tab can be hidden while an extension's
+is left. While your extension is switched off its tab stays and says it didn't answer, so the rider is never shown
+another planner's routes in its place. A rider who had chosen one extension's planner before tabs keeps it: it gets its
+tab, and results open on it.
+
+The part `results.planners` gets `{"source": "<the tab shown>", "sources": ["kav", "ext:<publisher>/<dataset>", ...]}`.
+The action `results.planner.select` shows a tab:
+
+```kotlin
+kav.kavAction("results.planner.select", kav.context(), """{"source": "ext:example/planner"}""")
+```
+
+With `"default": true` it is also the tab results open on from then, whether results are showing or not, as if the
+rider picked it in Settings (where they can change it back).
+
+**The rider's display settings.** Kav sends them as `prefs` in every `plan.provide` and `stop.photo` request, and
+`kav.prefs()` (API 5) answers them at any time:
+
+```json
+{"stopNames": "en", "clock": 24, "locale": "en"}
+```
+
+`stopNames` is `"en"` or `"he"`, the language the rider reads stop names in; `clock` is `12` or `24`; `locale` is
+Kav's language, as `kav.locale()`. Ask again when you need them: the rider can change them at any time. `kav.prefs()`
+needs `"api": 5` in the manifest, or check `kav.apiVersion() >= 5` before calling it: an older Kav has no such method.
+
+## Live times, vehicles and ride alerts (plan 2.1, board 1.1)
+
+Each of these is optional: a plan 2.0 or board 1.0 answer stays as it was.
+
+**Live times.** In a plan, a ride's `dep` is when it leaves and `sdep` its timetabled time (`dep` when left out).
+`"live": true` says `dep` is a live estimate; without it, a `dep` that isn't `sdep` is shown as an expected time,
+not a live one. `next` and `before` are the line's later and earlier departures from the boarding stop, each
+`[unix seconds, trip id]`, with a third item `1` when that time is live: the ride's card lists them.
+
+Once the results show, Kav keeps a ride's times fresh from its boarding stop's board: it asks the same extension's
+`board.departures` for that stop, and matches each departure by its line and trip ids. Use the same stop, line and
+trip ids in your plan and on your board, and give each departure an `estimated` time when you have one. Without
+`board.provide`, the plan's own times stay.
+
+**Vehicles.** A plan's ride and a board's departure can each say where the bus or train is:
+
+```json
+"vehicle": {"lat": 32.0853, "lon": 34.7818, "at": 1795421100, "bearing": 90}
+```
+
+`lat` and `lon` in degrees; `at` when it was there, in unix seconds (left out: when you answered); `bearing` its
+heading in degrees from north (optional). A ride with a vehicle gets Kav's Live location button, on its trip page and
+on its card. A board's position replaces the plan's, so a board that is asked again keeps the bus moving; a vehicle
+with coordinates out of range is left out.
+
+**Alerts.** A plan's ride can carry a service alert:
+
+```json
+"alert": {"text": "Board at the temporary stop on Herzl Street.", "severe": false}
+```
+
+Kav shows it in its own alert row, on the results, the trip page and while navigating, with the warning color when
+`severe` is `true`. Empty text is no alert.
+
+## Stop photos: `stop.photo`
+
+A photo of a stop, in place of Street View's. Declare a contribution with the capability `stop.photo`, and answer it
+in code:
+
+```kotlin
+kav.provide("stop.photo") { input ->
+    val stop = JSONObject(input)  // {"lat": 32.0853, "lon": 34.7818, "prefs": {...}}
+    val url = photoNear(stop.getDouble("lat"), stop.getDouble("lon"))
+    if (url == null) "null" else JSONObject.quote(url)
+}
+```
+
+Kav sends the stop's place, not an id: know your own stops by where they are. Your code starts afresh each time Kav
+starts, so keep what you need (a file under `kav.context()`, or your own stop list) rather than only what your last
+plan returned.
+
+Answer an `https` image address as a JSON string, or `null` for none. Kav asks each extension with `stop.photo` in
+turn, within 3 seconds each; the first image that loads is shown, small on the stop's row and large when the rider taps
+it. With none, Kav shows Street View's, as before, and keeps the photo it showed for that place until Kav restarts. An
+image is at most 5 MB, in a format Android reads (JPEG, PNG or WebP); Kav scales it down to what it shows. Kav asks
+only while the rider has stop photos on, and logs why an answer wasn't used (tag `KavStopPhoto` in `adb logcat`). A
+Kav from before `stop.photo` ignores the contribution.
 
 </div>

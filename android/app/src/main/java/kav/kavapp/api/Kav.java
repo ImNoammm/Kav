@@ -9,8 +9,8 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. */
-    int API = 4;
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs. */
+    int API = 5;
 
     int apiVersion();
 
@@ -21,6 +21,9 @@ public interface Kav {
     String id();
 
     String locale();
+
+    /** API 5. Rider display settings as JSON: stopNames ("en" or "he"), clock (12 or 24), and locale. */
+    default String prefs() { return "{}"; }
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or

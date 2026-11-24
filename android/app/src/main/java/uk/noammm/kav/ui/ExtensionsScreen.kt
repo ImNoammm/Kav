@@ -54,6 +54,7 @@ import uk.noammm.kav.ext.Extensions
 import uk.noammm.kav.ext.Hub
 import uk.noammm.kav.ext.GitHub
 import uk.noammm.kav.ext.Manifest
+import uk.noammm.kav.ext.Namespace
 import uk.noammm.kav.ext.PageSpecs
 import uk.noammm.kav.ext.Pipeline
 import uk.noammm.kav.ext.NativeGuard
@@ -596,11 +597,16 @@ private fun SafeModeCard(hub: Hub, onRestart: () -> Unit) {
     }
 }
 
-// The planner the rider chose from an extension, and why it doesn't plan when it doesn't. It never quietly becomes Kav's.
+// Each extension's planner the rider switched on, with a tab of its own on the results, and why it doesn't plan when it
+// doesn't. Its tab never quietly turns into Kav's.
 @Composable
 private fun PlannerChoice(hub: Hub) {
     ExtUi.tick
-    val ns = Selections.planner ?: return
+    for (ns in Selections.planners) PlannerCard(hub, ns)
+}
+
+@Composable
+private fun PlannerCard(hub: Hub, ns: Namespace) {
     val ctx = LocalContext.current
     val installed = hub.registry.installed.firstOrNull { it.namespace == ns }
     val name = installed?.displayName ?: T.ltr(ns.key)
@@ -613,10 +619,10 @@ private fun PlannerChoice(hub: Hub) {
         else -> T("No planner Kav can run, so Kav doesn't ask this extension.", "אין כאן מתכנן ש-Kav יכולה להריץ, ולכן Kav לא פונה לתוסף הזה.")
     }
     KavCard {
-        Text(T("Trips are planned by: ${named(name)}", "מתכנן המסלולים: ${named(name)}"), style = K.type.body)
+        Text(T("Plans trips in its own tab: ${named(name)}", "מתכנן מסלולים בלשונית משלו: ${named(name)}"), style = K.type.body)
         Text(why ?: T("Ready.", "מוכן."), style = K.type.subhead, color = if (why == null) K.realtime else K.problem)
-        KavButton(T("Use Kav's own planner", "שימוש במתכנן של Kav"), {
-            Selections.choosePlanner(ExtApp.dir(ctx), null); ExtUi.changed()
+        KavButton(T("Remove its tab", "הסרת הלשונית שלו"), {
+            Selections.setPlanner(ExtApp.dir(ctx), ns, false); ExtUi.changed()
         }, Modifier.padding(top = K.gap3), style = ButtonStyle.Secondary)
     }
 }
@@ -785,8 +791,8 @@ private fun addsRows(hub: Hub, i: Registry.Installed): ListGroupScope.() -> Unit
     fun save(next: Selections.Rules) { Selections.chooseRules(dir, next); ExtUi.changed() }
     for (c in mine) {
         when (c.capability) {
-            Capabilities.PLAN -> items += Item(T("Plan trips", "תכנון נסיעות"), Selections.planner == i.namespace) { v ->
-                Selections.choosePlanner(dir, if (v) i.namespace else null); ExtUi.changed() }
+            Capabilities.PLAN -> items += Item(T("Plan trips", "תכנון נסיעות"), i.namespace in Selections.planners) { v ->
+                Selections.setPlanner(dir, i.namespace, v); ExtUi.changed() }
             Pipeline.WALK -> items += Item(T("Time walks", "חישוב זמני הליכה"), isMine(r.walk, c)) { v ->
                 save(Selections.Rules(if (v) rule(c, true) else null, r.transfer, r.filters, r.rank, r.annotate)) }
             Pipeline.TRANSFER -> items += Item(T("Judge changes", "בדיקת החלפות"), isMine(r.transfer, c)) { v ->

@@ -65,6 +65,9 @@ object Hooks {
 
     fun installed(ns: Namespace): Registry.Installed? { refresh(); return byNs[ns.key] }
 
+    // The same, switched on or not.
+    fun anyInstalled(ns: Namespace): Registry.Installed? = hub?.registry?.installed?.firstOrNull { it.namespace == ns }
+
     // What the rider can pick for a rule: every active extension's contributions of that capability.
     fun offered(capability: String): List<Pair<Registry.Installed, Manifest.Declared>> {
         refresh()
@@ -130,7 +133,7 @@ object Hooks {
     // An installed extension's timetables and stop boards (Capabilities.BOARD), asked of its code: board.stops once for
     // its list of stops and lines, board.departures for one stop. Kav reads each answer (BoardAnswers).
     class NativeBoard(private val i: Registry.Installed) : BoardSource {
-        override val versions = listOf(ContractVersion("board", 1, 0))
+        override val versions = listOf(ContractVersion("board", 1, 1))
 
         override fun departures(stop: String, fromS: Long, limit: Int, v: ContractVersion, e: Execution): Outcome<List<BoardDeparture>> {
             val input = JSONObject().put("stop", stop).put("from", fromS).put("limit", limit).toString()
@@ -153,13 +156,13 @@ object Hooks {
     // An installed extension's planner, asked of its code: Plan v2 text back (Extensions.ExtensionPlanner reads it
     // through Kav's own parser).
     class NativePlanner(private val i: Registry.Installed) : PlanSource {
-        override val versions = listOf(ContractVersion("plan", 2, 0))
+        override val versions = listOf(ContractVersion("plan", 2, 1))
         override val stopovers = false
 
         override fun plan(q: PlanQuery, v: ContractVersion, e: Execution): Outcome<String> {
             val input = JSONObject().put("from", JSONArray().put(q.from.first).put(q.from.second))
                 .put("to", JSONArray().put(q.to.first).put(q.to.second)).put("at", q.atS).put("way", q.way.toString())
-                .put("modes", JSONArray(q.routeTypes)).put("settings", q.settings).toString()
+                .put("modes", JSONArray(q.routeTypes)).put("settings", q.settings).put("prefs", Extensions.prefs()).toString()
             val got = Native.hook(i.identity, Capabilities.PLAN, input, PLAN_MS) ?: return Outcome.Unavailable()
             return got.fold(
                 { if (it == "null") Outcome.Empty else Outcome.Ok(it) },

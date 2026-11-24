@@ -12,6 +12,7 @@ import uk.noammm.kav.ext.Names
 import uk.noammm.kav.ext.Namespace
 import uk.noammm.kav.ext.PlanChecks
 import uk.noammm.kav.ext.RefTable
+import uk.noammm.kav.ext.Selections
 import uk.noammm.kav.ui.T
 import java.util.Locale
 
@@ -44,14 +45,43 @@ object KavPlan {
     // Every planner's routes, a tab each on the results (Settings), in the rider's order; the rider's own server only
     // once it's set up.
     var everyPlanner by mutableStateOf(false)
-    var tabOrder by mutableStateOf(Source.PLANNING)
-    // Planners the rider took off the tabs, never asked then; the one chosen above keeps its tab, as results open on it.
+    // The tabs' order by their keys (plannerTabs): Kav's planners and the extensions' together.
+    var tabOrder by mutableStateOf(Source.PLANNING.map { it.key })
+    // Planners the rider took off the tabs, never asked then; the one chosen above keeps its tab, as results open on it,
+    // unless an extension's tab is left to open on.
     var hiddenTabs by mutableStateOf(emptySet<Source>())
-    fun offeredTabs(): List<Source> = tabOrder.filter { it != Source.OWN || KavLive.ownServer.isNotEmpty() }
+    fun offeredTabs(): List<Source> =
+        ordered(Source.PLANNING.filter { it != Source.OWN || KavLive.ownServer.isNotEmpty() }.map { it.key }, tabOrder).mapNotNull(Source::of)
     fun tabs(): List<Source> = offeredTabs().filter { it == source || it !in hiddenTabs }
 
-    // The server that plans for a tab: the chosen planner's as planner() has it, any other's as it's set.
-    fun plannerOf(s: Source): String? = if (s == source) planner() else KavLive.serverOf(s)
+    // Every tab on the results, by its key, as the results and extensions name it (results.planners,
+    // results.planner.select): Kav's own planners by their source's ("kav", "own"), an extension's by its address
+    // ("ext:<publisher>/<dataset>"), in the rider's order: Kav's (each planner above with a tab for each, else the
+    // chosen one), then each extension planner the rider switched on (Selections.planners), which always has one. Kav's
+    // own may be hidden while an extension's is left.
+    fun plannerTabs(): List<String> {
+        val theirs = Selections.planners.map(Extensions::address)
+        val kav = (if (everyPlanner) tabs() else listOf(source)).filter { theirs.isEmpty() || it !in hiddenTabs }.map { it.key }
+        return ordered(kav + theirs, tabOrder)
+    }
+
+    // Keys in the rider's order; any they haven't placed after, as they came.
+    internal fun ordered(keys: List<String>, order: List<String>): List<String> =
+        keys.sortedBy { k -> order.indexOf(k).let { if (it < 0) order.size + keys.indexOf(k) else it } }
+
+    // The tab results open on: the extension's the rider chose, else Kav's chosen planner's, else the first.
+    fun opensOn(tabs: List<String> = plannerTabs()): String? =
+        Selections.opens?.let(Extensions::address)?.takeIf { it in tabs } ?: source.key.takeIf { it in tabs } ?: tabs.firstOrNull()
+
+    // A tab's name: Kav's planner's, or the extension's (Extensions.nameOf).
+    fun tabName(key: String): String = Source.of(key)?.let { uk.noammm.kav.ui.sourceName(it) }
+        ?: Extensions.namespaceAt(key)?.let(Extensions::nameOf) ?: key
+
+    // The server that plans for a tab: Kav's chosen planner's as kavPlanner() has it, any other's as it's set.
+    fun plannerOf(s: Source): String? = if (s == source) kavPlanner() else KavLive.serverOf(s)
+
+    // The same by a tab's key: an extension's tab is planned at its address (Extensions.plannerAt).
+    fun plannerOf(key: String): String? = Source.of(key)?.let(::plannerOf) ?: key.takeIf(Extensions::isAddress)
 
     // The server chosen to plan: Kav's, or the rider's own once it's set up (Kav's until then).
     val server: String get() = KavLive.serverOf(source)
@@ -62,10 +92,9 @@ object KavPlan {
     var up by mutableStateOf(true)
     var offered by mutableStateOf(true)
 
-    // The server that plans now, through any stops the rider added and for the last way there tonight too; null while it
-    // isn't answering, or doesn't plan.
-    // An extension's planner, once the rider chose one, in place of the server.
-    fun planner(): String? = Extensions.selectedPlanner?.let(Extensions::address) ?: kavPlanner()
+    // The planner results open on (opensOn), through any stops the rider added and for the last way there tonight too:
+    // Kav's server, or an extension's planner; null while the server isn't answering, or doesn't plan.
+    fun planner(): String? = opensOn()?.let(::plannerOf)
     private fun kavPlanner(): String? = server.takeIf { up && offered }
     fun wanted(): Boolean = planner() != null
 
@@ -423,6 +452,14 @@ object KavPlan {
         val earlier = departures("before")
         val from = ids.firstOrNull() ?: -1
         val to = ids.lastOrNull() ?: -1
+        // An extension's vehicle for this ride (plan 2.1), for Live location until its board gives a newer one.
+        if (!id.ns.ministry) uk.noammm.kav.ext.BoardAnswers.vehicle(l.optJSONObject("vehicle"))?.let {
+            Extensions.planned(Transit.ArrivalKey(from, trip), it)
+        }
+        // An extension's alert for this ride (plan 2.1): its words, and whether it's severe, in Kav's own alert row.
+        val alert = l.optJSONObject("alert")
+        val alertText = alert?.optString("text").orEmpty().trim().take(2000)
+        val alertCategory = if (alertText.isEmpty()) 0 else if (alert?.optBoolean("severe") == true) 4 else 3
         // A train's headsign is its run number; its line's name describes the whole route.
         val label = l.optString("head").takeIf {
             types[lines[line]?.agencyId] == 2 && it.isNotBlank() && it.all(Char::isDigit)
@@ -430,9 +467,11 @@ object KavPlan {
         return Transit.Leg(
             Transit.LegKind.WAIT, lineId = line, dep = minOf(waitFrom, dep), arr = dep,
             fromStop = from, toStop = to, nextDeps = earlier + listOf(mine) + later,
+            alertCategory = alertCategory, alertText = alertText,
         ) to Transit.Leg(
             Transit.LegKind.RIDE, lineId = line, tripId = trip, dep = dep, arr = arr, stops = ids,
             fromStop = from, toStop = to, nextDeps = listOf(mine), shortName = label,
+            alertCategory = alertCategory, alertText = alertText,
             shape = shape.ifEmpty { ids.mapNotNull { stops[it]?.point } },
         )
     }

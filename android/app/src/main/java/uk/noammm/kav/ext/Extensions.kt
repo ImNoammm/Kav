@@ -34,10 +34,15 @@ interface BoardSource {
 }
 
 // route and trip are the provider's own ids. estimatedS: its estimate, 0 for none. headsign: where it goes, as the
-// provider names it ("" when its line's name says it).
+// provider names it ("" when its line's name says it). vehicle: where it is now, when the provider knows (board 1.1).
 class BoardDeparture(
     val route: String, val trip: String, val scheduledS: Long, val estimatedS: Long = 0, val platform: String = "", val headsign: String = "",
+    val vehicle: Vehicle? = null,
 )
+
+// Where a provider's bus or train is: degrees, when it was there (seconds since 1970, 0 for "as it answered"), and its
+// heading in degrees from north, -1 for none. Live location shows it (board 1.1, plan 2.1).
+class Vehicle(val lat: Double, val lon: Double, val atS: Long = 0, val bearing: Int = -1)
 
 // A provider's stops and lines: its own ids, names as it gives them (cleaned), and the kind of line (GTFS route type:
 // 0 tram, 1 metro, 2 train, 3 bus, 4 ferry, 5 cable car, 6 gondola, 7 funicular).
@@ -63,16 +68,14 @@ class ProviderProblem(val namespace: Namespace, val outcome: Outcome<*>, val mis
 // builds, the test fixtures'. In safe mode nothing registers. Nothing here starts
 // with Kav when nothing is registered.
 object Extensions {
-    val HOST_PLAN = listOf(ContractVersion("plan", 2, 0))
-    val HOST_BOARD = listOf(ContractVersion("board", 1, 0))
+    // plan 2.1: a ride's alert and vehicle, and the rider's display settings in the query; board 1.1: a departure's vehicle.
+    val HOST_PLAN = listOf(ContractVersion("plan", 2, 1))
+    val HOST_BOARD = listOf(ContractVersion("board", 1, 1))
     private const val ADDRESS = "ext:"
 
     private val contributions = ConcurrentHashMap<String, Contribution>()
     private val grants = ConcurrentHashMap<String, Grant>()
     private val generations = ConcurrentHashMap<String, Long>()
-
-    // The planner the rider chose, when it's an extension's: kept in the selections store.
-    val selectedPlanner: Namespace? get() = Selections.planner
 
     private fun key(ns: Namespace, capability: String) = "${ns.key} $capability"
 
@@ -90,7 +93,7 @@ object Extensions {
         grants.remove(k)
     }
 
-    internal fun clear() { contributions.clear(); grants.clear(); catalogues.clear(); Selections.forget() }
+    internal fun clear() { contributions.clear(); grants.clear(); catalogues.clear(); planned.clear(); Selections.forget() }
 
     fun registered(ns: Namespace, capability: String) = grants.containsKey(key(ns, capability))
 
@@ -202,7 +205,8 @@ object Extensions {
         else Ref.parse(key.removePrefix(SAVED))?.takeIf { it.kind == Kind.STOP && !it.namespace.ministry }?.let { RefTable.intern(it) }
 
     // The name the rider knows a provider by: its extension's.
-    fun nameOf(ns: Namespace): String = (if (Hooks.armed) Hooks.installed(ns)?.displayName else null) ?: ns.dataset
+    // Its name as installed, switched on or not (a tab of a planner switched off still says whose it is).
+    fun nameOf(ns: Namespace): String = (if (Hooks.armed) (Hooks.installed(ns) ?: Hooks.anyInstalled(ns))?.displayName else null) ?: ns.dataset
 
     // An extension's stop behind a handle, as its provider lists it; null for any other id, or one it doesn't list.
     fun stopOf(handle: Int): Pair<Namespace, StopEntry>? {
@@ -275,6 +279,8 @@ object Extensions {
     // Live times for the rides on extensions' stops, from their own publishers' boards: the ride's own trip and its line's
     // others from that stop, under a pattern of the line's (its handle, which no ministry pattern is: those are negative).
     // Rides on Kav's stops are left to Kav's live provider (KavPlan.live).
+    // A departure's vehicle, when the provider gave one, is the bus Live location shows (tracked, with its place). A
+    // ride's own vehicle as its plan gave it (planned) stands in while its board has no place for that trip.
     fun arrivals(list: List<Transit.Itinerary>, nowS: Long = System.currentTimeMillis() / 1000): KavLive.Rides {
         val rides = list.flatMap { it.rides }.flatMap { it.options }
             .filter { RefTable.isHandle(it.fromStop) && RefTable.isHandle(it.lineId) }
@@ -282,6 +288,12 @@ object Extensions {
         val boards = HashMap<Int, List<BoardDeparture>>()
         val live = HashMap<Transit.ArrivalKey, Transit.Arrival>()
         val patterns = HashMap<Int, List<Int>>()
+        fun arrival(ride: Transit.Leg, trip: Long, scheduledS: Long, estimatedS: Long, platform: String, v: Vehicle?) = Transit.Arrival(
+            ride.fromStop, ride.lineId, trip, scheduledS, estimatedS, 0, 0, 0, 0, false, false, v != null,
+            lat = v?.lat ?: 0.0, lon = v?.lon ?: 0.0,
+            sampleUtc = v?.let { it.atS.takeIf { s -> s > 0 } ?: nowS } ?: if (estimatedS > 0) nowS else 0L,
+            patternId = ride.lineId, platform = platform, bearing = v?.bearing ?: -1,
+        )
         for (ride in rides) {
             val stop = RefTable.ref(ride.fromStop) ?: continue
             val line = RefTable.ref(ride.lineId)?.takeIf { it.namespace == stop.namespace } ?: continue
@@ -289,16 +301,34 @@ object Extensions {
                 (departures(ride.fromStop, nowS - 3600, 80)?.outcome as? Outcome.Ok)?.value.orEmpty()
             }
             val mine = board.filter { it.route == line.localId }
-            if (mine.isEmpty()) continue
+            val own = planned[Transit.ArrivalKey(ride.fromStop, ride.tripId)]
+            if (mine.isEmpty() && own == null) continue
             patterns[ride.lineId] = ((patterns[ride.lineId] ?: listOf(ride.fromStop)) + ride.toStop).distinct()
             for (d in mine) {
                 val trip = RefTable.internTrip(stop.namespace.ref(Kind.TRIP, d.trip))
-                live[Transit.ArrivalKey(ride.fromStop, trip)] = Transit.Arrival(
-                    ride.fromStop, ride.lineId, trip, d.scheduledS, d.estimatedS, 0, 0, 0, 0, false, false, false,
-                    sampleUtc = if (d.estimatedS > 0) nowS else 0L, patternId = ride.lineId, platform = d.platform,
-                )
+                live[Transit.ArrivalKey(ride.fromStop, trip)] = arrival(ride, trip, d.scheduledS, d.estimatedS, d.platform, d.vehicle)
+            }
+            val key = Transit.ArrivalKey(ride.fromStop, ride.tripId)
+            if (own != null && live[key]?.tracked != true) {
+                val d = ride.nextDeps.firstOrNull { it.tripId == ride.tripId }
+                val before = live[key]
+                live[key] = arrival(ride, ride.tripId, before?.staticUtc ?: d?.staticUtc ?: ride.dep,
+                    before?.rtUtc ?: d?.rtUtc ?: 0L, before?.platform.orEmpty(), own)
             }
         }
         return KavLive.Rides(live, patterns)
     }
+
+    // The vehicles extensions' plans gave their rides, by the ride's boarding stop and trip (KavPlan.parse). Bounded:
+    // forgotten all at once.
+    private val planned = ConcurrentHashMap<Transit.ArrivalKey, Vehicle>()
+
+    internal fun planned(key: Transit.ArrivalKey, v: Vehicle) { if (planned.size > 5_000) planned.clear(); planned[key] = v }
+
+    // The rider's display settings, for an extension to show things as Kav does (Kav.prefs, and plan.provide's input):
+    // stop names in English or Hebrew, the 12- or 24-hour clock, and Kav's language.
+    fun prefs(): org.json.JSONObject = org.json.JSONObject()
+        .put("stopNames", if (uk.noammm.kav.data.StopNames.english) "en" else "he")
+        .put("clock", if (uk.noammm.kav.ui.Shown.twelveHour) 12 else 24)
+        .put("locale", uk.noammm.kav.ui.T.lang.code)
 }

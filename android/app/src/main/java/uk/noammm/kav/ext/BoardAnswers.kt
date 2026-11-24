@@ -50,6 +50,15 @@ object BoardAnswers {
         Outcome.Malformed(e.message ?: "bad stop list")
     }
 
+    // Optional positions use degrees and Unix seconds, just like the plan contract.
+    fun vehicle(o: JSONObject?): Vehicle? {
+        if (o == null) return null
+        val lat = o.optDouble("lat", Double.NaN)
+        val lon = o.optDouble("lon", Double.NaN)
+        if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+        return Vehicle(lat, lon, o.optLong("at").coerceIn(0, LAST_TIME), o.optInt("bearing", -1).takeIf { it in 0..359 } ?: -1)
+    }
+
     fun departures(text: String, limit: Int): Outcome<List<BoardDeparture>> = try {
         if (text == "null") Outcome.Empty
         else {
@@ -62,7 +71,7 @@ object BoardAnswers {
                 val est = d.opt("estimated")
                 if (est != null && (est !is Number || est.toLong() !in 0..LAST_TIME)) throw Bad("departure $k estimate")
                 BoardDeparture(id(d.opt("line"), "line"), id(d.opt("trip") ?: "${d.opt("line")}@$at", "trip"), at.toLong(),
-                    (est as? Number)?.toLong() ?: 0L, name(d.opt("platform")), name(d.opt("headsign")))
+                    (est as? Number)?.toLong() ?: 0L, name(d.opt("platform")), name(d.opt("headsign")), vehicle(d.optJSONObject("vehicle")))
             }
             if (out.isEmpty()) Outcome.Empty else Outcome.Ok(out.sortedBy { if (it.estimatedS > 0) it.estimatedS else it.scheduledS })
         }

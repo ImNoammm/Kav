@@ -35,8 +35,8 @@ object Fixtures {
         Extensions.register(Contribution(Gamma.ns, "planner", Capabilities.PLAN, "1", Gamma))
         Extensions.register(Contribution(Gamma.ns, "board", Capabilities.BOARD, "1", Gamma.board))
         lines.firstOrNull { it.startsWith("planner=") }?.removePrefix("planner=")?.let(Namespace::of)
-            ?.let { Selections.choosePlanner(ExtApp.dir(ctx), it) }
-        Log.i(TAG, "installed, planner ${Extensions.selectedPlanner?.key}, missing $missing")
+            ?.let { Selections.chooseOpens(ExtApp.dir(ctx), it) }
+        Log.i(TAG, "installed, planner ${Selections.opens?.key}, missing $missing")
     }
 
     // One publisher's metro: a walk to stop 17038, line 7 to stop 25565, a walk on. Line 7 leaves every 15 minutes, shift

@@ -1272,9 +1272,9 @@ internal fun PlanningSource() {
             KavPlan.offered = at == KavLive.KAV_SERVER || (c as? KavLive.Check.Answers)?.planner != null
         },
         note = when {
-            uk.noammm.kav.ext.Selections.planner != null ->
-                T("An extension you chose plans your trips instead. See Settings › Extensions.",
-                    "תוסף שבחרתם מתכנן את המסלולים שלכם במקום השרת. ראו הגדרות › תוספים.")
+            KavPlan.source.key !in KavPlan.plannerTabs() ->
+                T("Its tab is hidden, so an extension plans your trips. See Routes from every planner.",
+                    "הלשונית שלו מוסתרת, ולכן תוסף מתכנן את המסלולים שלכם. ראו מסלולים מכל המתכננים.")
             KavPlan.source == Source.OWN && KavLive.ownServer.isEmpty() ->
                 if (KavLive.source == Source.OWN) T("Set up your server above, under live locations. Until then, Kav's server plans trips.",
                     "הגדירו את השרת שלכם למעלה, תחת מיקומים בזמן אמת. עד אז, השרת של Kav מתכנן מסלולים.")
@@ -1913,8 +1913,9 @@ private fun serverUses(): String {
         else -> T("your server", "השרת שלכם")
     }
     val live = named(KavLive.server)
-    // An extension the rider chose to plan with is named, not called a server.
-    val trips = uk.noammm.kav.ext.Extensions.selectedPlanner?.let { uk.noammm.kav.ext.Extensions.nameOf(it) }
+    // The planner results open on; an extension's is named, not called a server.
+    val first = KavPlan.opensOn()
+    val trips = first?.takeIf(uk.noammm.kav.ext.Extensions::isAddress)?.let(KavPlan::tabName)
         ?: if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
     val timetable = if (Schedules.source.provider) sourceName(Schedules.source)
         else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else "Kav"

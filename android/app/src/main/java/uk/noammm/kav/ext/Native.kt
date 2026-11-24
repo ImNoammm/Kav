@@ -223,6 +223,7 @@ object Native {
         override fun context() = app
         override fun id() = i.identity
         override fun locale() = uk.noammm.kav.ui.T.lang.code
+        override fun prefs() = Extensions.prefs().toString()
         override fun card(on: String, card: Kav.Card) { l.cards[on] = card }
         override fun screen(page: String, screen: Kav.Screen) { l.screens[page] = screen }
         override fun home(screen: Kav.Screen) { l.screens[PageSpecs.HOME_PAGE] = screen }

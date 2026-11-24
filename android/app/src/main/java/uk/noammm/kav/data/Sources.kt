@@ -45,14 +45,14 @@ internal object Sources {
     }
 
     // 4.3.2: what the settings still hold of the providers this Kav no longer has, as it's written back. A choice of one
-    // is Kav's own; the planners' tabs go without them. Only what changes.
+    // is Kav's own; the planners' tabs go without them, an extension's planner's tab ("ext:") kept. Only what changes.
     fun migrated(stored: Map<String, *>): Map<String, String> {
         val out = mutableMapOf<String, String>()
         for (key in listOf("liveSource", "planSource", "timetableSource"))
             (stored[key] as? String)?.takeIf { it.isNotEmpty() && Source.of(it) == null }?.let { out[key] = Source.KAV.key }
         for (key in listOf("plannerTabs", "plannerTabsHidden")) {
             val tabs = stored[key] as? String ?: continue
-            val kept = tabs.split(',').filter { Source.of(it) != null }.joinToString(",")
+            val kept = tabs.split(',').filter { Source.of(it) != null || it.startsWith("ext:") }.joinToString(",")
             if (kept != tabs) out[key] = kept
         }
         return out

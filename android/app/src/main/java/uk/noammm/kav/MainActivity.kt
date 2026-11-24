@@ -2053,14 +2053,15 @@ object Prefs {
 
     fun everyPlanner(ctx: Context): Boolean = store(ctx).getBoolean("everyPlanner", false)
     fun setEveryPlanner(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("everyPlanner", on).apply()
-    // The tabs' order: the planners the rider moved first, then any they haven't placed, in Settings' order.
-    fun plannerTabs(ctx: Context): List<Source> {
-        val kept = store(ctx).getString("plannerTabs", null).orEmpty().split(',').mapNotNull(Source::of)
-            .filter { it in Source.PLANNING }.distinct()
-        return kept + Source.PLANNING.filter { it !in kept }
+    // The tabs' order by their keys (KavPlan.plannerTabs): the planners the rider moved first, then any they haven't
+    // placed, Kav's in Settings' order.
+    fun plannerTabs(ctx: Context): List<String> {
+        val kept = store(ctx).getString("plannerTabs", null).orEmpty().split(',')
+            .filter { Source.of(it) in Source.PLANNING || uk.noammm.kav.ext.Extensions.isAddress(it) }.distinct()
+        return kept + Source.PLANNING.map { it.key }.filter { it !in kept }
     }
-    fun setPlannerTabs(ctx: Context, order: List<Source>) =
-        store(ctx).edit().putString("plannerTabs", order.joinToString(",") { it.key }).apply()
+    fun setPlannerTabs(ctx: Context, order: List<String>) =
+        store(ctx).edit().putString("plannerTabs", order.joinToString(",")).apply()
     // The planners taken off the tabs.
     fun hiddenTabs(ctx: Context): Set<Source> =
         store(ctx).getString("plannerTabsHidden", null).orEmpty().split(',').mapNotNull(Source::of).filter { it in Source.PLANNING }.toSet()
@@ -2218,7 +2219,7 @@ object Prefs {
             .put("timetableSource", timetableSource(ctx).key)
             .put("everyPlanner", everyPlanner(ctx))
             .put("linkStyle", linkStyle(ctx).json())
-            .put("plannerTabs", plannerTabs(ctx).joinToString(",") { it.key })
+            .put("plannerTabs", plannerTabs(ctx).joinToString(","))
             .put("plannerTabsHidden", hiddenTabs(ctx).joinToString(",") { it.key })
             .apply { shareServer(ctx)?.let { put("shareServer", it.key) } }
             .put("liveFromKav", true)

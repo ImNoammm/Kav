@@ -98,8 +98,9 @@ loads your code, so they never go into your dex.
   no arguments.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
-  with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. A Kav with an older API than your
-  manifest says doesn't start your code.
+  with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
+  `kav.prefs()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
 
@@ -119,13 +120,15 @@ declares it too:
 | `kav.provide("plan.provide", ...)` | a contribution `plan.provide` |
 | `kav.provide("walk.time", ...)` and the other route rules | a contribution with that capability |
 | `kav.provide("board.stops", ...)`, `"board.departures"` | a contribution `board.provide` |
+| `kav.provide("stop.photo", ...)` | a contribution `stop.photo` ([hooks.md](/docs/extensions/hooks#stop-photos-stopphoto)) |
+| `kav.prefs()` | `"api": 5` |
 | `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](/docs/extensions/screens)) |
 | `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
 
 ## The API
 
 Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
-one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4). Plain
+one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4, the Kav after it has 5). Plain
 types only: text, numbers, JSON as text, and Android's own `Context`, `View` and `Bitmap`.
 
 **When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
@@ -152,11 +155,12 @@ class Hello : KavExtension {
 
 | Method | What it gives |
 |---|---|
-| `Kav.API` | the API level this jar was built for (4) |
+| `Kav.API` | the API level this jar was built for (5) |
 | `apiVersion()` | the API level of the Kav that loaded you |
 | `context()` | the application's `Context` |
 | `id()` | your identity: your source and your name, `"github.<owner>.<repo>/<name>"`, or `"file.<digest>/<name>"` for a bundle added from a file |
 | `locale()` | Kav's language, `"en"` or `"he"` |
+| `prefs()` | API 5: the rider's display settings as JSON text, `{"stopNames": "en", "clock": 24, "locale": "en"}` ([hooks.md](/docs/extensions/hooks#planner-tabs-and-display-settings)) |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -344,7 +348,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `trip.start` | `{"trip"}` | a trip's Start: `ui/TripDetail.kt` | `ui/TripDetail.kt:203` |
 | `trip.end` | `{"trip"}` | End trip in navigation: `ui/TripDetail.kt` (the trip notification's own End always ends it) | `ui/TripDetail.kt:226` |
 | `share` | `{"trip"}` | a trip's Share: `ui/TripDetail.kt` | `ui/TripDetail.kt:205` |
-| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results | `ui/DirectionsOnline.kt:400` |
+| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results | `ui/DirectionsOnline.kt:405` |
 | `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` | `MainActivity.kt:403` |
 | `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` | `ui/Common.kt:574` |
 | `taxi` | `{"link": "gett://..."}` | a taxi ordered: `ui/Gett.kt` | `ui/Gett.kt:56` |
@@ -358,14 +362,14 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `pay.history.open` | `{"source": "home" \| "settings"}` | Opens ride history. Both entry points use the same default action. | `ui/PayHistory.kt:43` |
 | `plan.stop` | `{"end": "from" \| "to", "stop", "name", "place": {"name", "detail", "lat", "lon", "type", "mode"}}` | Sets the start or destination from a ministry or extension stop board and opens the planner. The default uses the coordinates in `place`. | `ui/ExtActions.kt:29` |
 | `live.show` | `{"show": "all" \| "vehicles" \| "stops"}` | Changes the Live map filter. | `ui/LiveScreen.kt:578` |
-| `search.open` | `{}` | Opens Home's destination search. | `ui/DirectionsOnline.kt:673` |
+| `search.open` | `{}` | Opens Home's destination search. | `ui/DirectionsOnline.kt:680` |
 | `results.place.pick` | `{"end": "from" \| "to" \| "stop", "index"}` | Opens the place picker. Omit the index to add an intermediate stop. Indices start at zero. | `ui/DirectionsOnline.kt:222` |
-| `results.endpoints.swap` | `{}` | Swaps the start and destination. | `ui/DirectionsOnline.kt:775` |
-| `results.stop.remove` | `{"index"}` | Removes one intermediate stop by zero-based index. | `ui/DirectionsOnline.kt:761` |
-| `results.stop.stay` | `{"index", "minutes"}` | Sets a stay from 0 to 60 minutes at a zero-based intermediate stop. | `ui/DirectionsOnline.kt:757` |
+| `results.endpoints.swap` | `{}` | Swaps the start and destination. | `ui/DirectionsOnline.kt:782` |
+| `results.stop.remove` | `{"index"}` | Removes one intermediate stop by zero-based index. | `ui/DirectionsOnline.kt:768` |
+| `results.stop.stay` | `{"index", "minutes"}` | Sets a stay from 0 to 60 minutes at a zero-based intermediate stop. | `ui/DirectionsOnline.kt:764` |
 | `results.time.select` | `{"at", "way": "depart" \| "arrive" \| "last"}` | Sets the requested time from the time sheet or the Earlier/Later row. Time is Unix seconds. Use 0 for now or last departure. | `ui/DirectionsOnline.kt:227` |
-| `results.order.select` | `{"order"}` | Sorts the current search. See order values below. | `ui/DirectionsOnline.kt:1117` |
-| `results.planner.select` | `{"source": "kav" \| "own"}` | Selects one of the available planner tabs. | `ui/DirectionsOnline.kt:833` |
+| `results.order.select` | `{"order"}` | Sorts the current search. See order values below. | `ui/DirectionsOnline.kt:1124` |
+| `results.planner.select` | `{"source": "kav" \| "own" \| "ext:<publisher>/<dataset>", "default"}` | Selects one of the available planner tabs. With `"default": true`, results open on that tab from then on ([hooks.md](/docs/extensions/hooks#planner-tabs-and-display-settings)). | `ui/DirectionsOnline.kt:840` |
 | `trip.track` | `{"trip", "leg", "tripId", "line"}` | Live location on a ride's card follows its bus. `leg` is the ride's place in the trip's `legs`, `tripId` the bus Kav found for it. | `ui/TripDetail.kt:201` |
 | `nav.step` | `{"trip", "step", "current", "steps"}` | Shows one step of a trip under way: the step dots, their arrows and Current step. Steps count from zero. | `ui/Navigate.kt:345` |
 | `nav.board.select` | `{"trip", "leg", "option"}` | Picks which bus to take on a wait card. Option 0 is the planned bus. | `ui/Navigate.kt:348` |
@@ -431,7 +435,7 @@ its cards.
 | `trip.timeline` | `{"trip"}` | all its steps | `ui/TripDetail.kt:300` |
 | `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button | `ui/TripDetail.kt:473` |
 | `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line | `ui/TripDetail.kt:444` |
-| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:1017` |
+| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:1024` |
 | `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) | `ui/Stations.kt:366` |
 | `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:448` |
 | `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1491` |
@@ -461,10 +465,10 @@ its cards.
 | `settings.page.privacy` | `{"page", "title"}` | The Privacy and sharing Settings page body. | `ui/Settings.kt:352` |
 | `settings.page.extensions` | `{"page", "title"}` | The Extensions Settings page body. | `ui/Settings.kt:352` |
 | `settings.page.kav` | `{"page", "title"}` | The Kav Settings page body. | `ui/Settings.kt:352` |
-| `results.endpoints` | `{"from", "to", "stops": [{"name", "minutes"}]}` | The endpoint picker, stopovers, swap, and Back. Destination is omitted when unset. | `ui/DirectionsOnline.kt:742` |
-| `results.options` | `{"at", "way", "order"}` | The time and sort controls above results. Values match the corresponding actions. | `ui/DirectionsOnline.kt:781` |
-| `results.time.shift` | `{"firstDeparture"}` | The Earlier/Later row and the displayed time of the first departure. | `ui/DirectionsOnline.kt:798` |
-| `results.planners` | `{"source", "sources"}` | The current and available planner tabs. | `ui/DirectionsOnline.kt:831` |
+| `results.endpoints` | `{"from", "to", "stops": [{"name", "minutes"}]}` | The endpoint picker, stopovers, swap, and Back. Destination is omitted when unset. | `ui/DirectionsOnline.kt:749` |
+| `results.options` | `{"at", "way", "order"}` | The time and sort controls above results. Values match the corresponding actions. | `ui/DirectionsOnline.kt:788` |
+| `results.time.shift` | `{"firstDeparture"}` | The Earlier/Later row and the displayed time of the first departure. | `ui/DirectionsOnline.kt:805` |
+| `results.planners` | `{"source", "sources"}` | The current and available planner tabs, by key: `kav`, `own`, or an extension's `ext:<publisher>/<dataset>`. | `ui/DirectionsOnline.kt:838` |
 | `nav.header` | `{"trip"}` | Navigation's top bar: Back to Home, the time left, and Show trip plan. | `ui/Navigate.kt:377` |
 | `nav.problem` | `{"trip", "reason", "key"}` | The warning when the plan stopped working, with New route from here. | `ui/Navigate.kt:401` |
 | `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:452` |
@@ -618,6 +622,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `pay-sample` | API 4: takes over Kav's Pay buttons with a pretend ticket, which it puts in Kav's own tickets and opens there |
 | `parts-sample` | API 4: a row after Home's pay card, and each ride of a trip drawn its own way |
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
+| `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 
