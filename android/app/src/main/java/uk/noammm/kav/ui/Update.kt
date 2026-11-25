@@ -140,7 +140,9 @@ private fun ReleaseNotes(release: Updates.Release, maxHeight: androidx.compose.u
     Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState())) {
         Separator(0.dp)
         Spacer(Modifier.height(K.gap3))
-        Text(notes, style = K.type.subhead)
+        // The notes are GitHub's, in the language they were written in: each line reads in its own direction, so English
+        // notes in a Hebrew Kav start at the left with their dashes first.
+        Text(notes, Modifier.fillMaxWidth(), style = K.type.subhead.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
     }
 }
 

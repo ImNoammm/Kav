@@ -184,7 +184,8 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
             uk.noammm.kav.requestLocationOnce(ctx) { model.locate(it.first, it.second) }
         }
     }
-    LaunchedEffect(net, endpoints, model.here, q, types, model.savedLines) {
+    // T.lang: the sections' names (Saved, Recent, Nearest to you) are words, so they're made again in a new language.
+    LaunchedEffect(net, endpoints, model.here, q, types, model.savedLines, T.lang) {
         val here = model.here
         lead = if (q.isNotBlank()) {
             if (here == null) emptyList()
@@ -1151,7 +1152,8 @@ private fun ScheduleLines(model: KavModel, net: Net, state: ScheduleListState, l
             uk.noammm.kav.requestLocationOnce(ctx) { model.locate(it.first, it.second) }
         }
     }
-    LaunchedEffect(lines, model.here, q, types, model.savedLines) {
+    // T.lang and the stop names' language are in the key (leadKey), so a change of either makes the sections again.
+    LaunchedEffect(lines, model.here, q, types, model.savedLines, T.lang, StopNames.english) {
         val key = state.leadKey(lines, model.here, q, types, model.savedLines)
         if (state.leadFor == key) return@LaunchedEffect
         val here = model.here
