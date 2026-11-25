@@ -95,7 +95,8 @@ Say it in the fewest words that are still clear. Never a paragraph on a screen.
 
 Whatever is longer than its limit is cut, not moved: if the rider needs the long version, it lives on Kav's site and
 the screen has a "Full details" link to it (as the ticket setup does). Text a license requires in full (map credits)
-is on a sheet of its own, behind one row.
+is on a sheet of its own, behind one row. Noam's own message to riders, the "Enjoying Kav?" popup, is his to word: it
+stays as he wrote it, whatever its length.
 
 How to cut: drop how it works inside, drop the history, drop numbers the rider can't act on, drop what the control
 already shows, drop "Kav" as the subject when it is obvious. Keep what changes the rider's choice.
