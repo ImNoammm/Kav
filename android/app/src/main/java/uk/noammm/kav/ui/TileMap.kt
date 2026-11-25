@@ -818,6 +818,69 @@ internal object FlingCurve {
     }
 }
 
+// A level of zoom and a degree of turn as px on screen, to say how far apart two cameras are and how fast one moves.
+private const val ZOOM_PX = 500.0
+private const val TURN_PX = 5.0
+
+// How far along its leg a move of the camera's own is at a time. A move runs on one clock under one ease, from its
+// start to its end. A new goal mid-move starts a new leg from where the camera is. In the move's first moments, when
+// next to nothing of it has shown, the rest of the same ease takes the camera there. Later the leg goes on at the speed
+// the camera has and comes to rest at its goal (a cubic from that speed to none), in the time the move had left or, where
+// that's too short for it, a time of its own. So a goal that changes neither stops the move nor jolts it: its speed is
+// the same just before and just after.
+internal class MoveTiming(private val ease: (Float) -> Float) {
+    // The clock: when it began (0 until its first frame), how long it runs (ms), and how far along it is (0 to 1).
+    private var began = 0L
+    private var ms = 1f
+    var t = 0f
+        private set
+    private var frame = 0L
+    // On the move's ease: the ease where this leg began, and where it is now.
+    private var legE = 0f
+    private var e = 0f
+    // At a carried speed (carried): the leg's speed as it begins, in legs per its whole time.
+    private var carried = false
+    private var slope = 0f
+
+    // Whether a new goal would still go under the move's own ease.
+    val early get() = !carried && t < EARLY
+
+    fun start(ms: Int) {
+        began = 0L; this.ms = ms.coerceAtLeast(1).toFloat(); t = 0f; legE = 0f; e = 0f; carried = false
+    }
+
+    // The share of its leg the camera has done at a frame's time (ns).
+    fun at(now: Long): Float {
+        if (began == 0L) began = now
+        frame = now
+        t = ((now - began) / 1e6f / ms).coerceIn(0f, 1f)
+        if (carried) return (slope * t * (1f - t) * (1f - t) + t * t * (3f - 2f * t)).coerceIn(0f, 1f)
+        e = ease(t)
+        return if (legE >= 1f) 1f else ((e - legE) / (1f - legE)).coerceIn(0f, 1f)
+    }
+
+    // A new goal. rate: the camera's speed now, in the new leg's lengths a second. far: a goal a long way from the last
+    // one, which takes a whole move's time (duration, ms); a near one takes what the move had left, or SHORT of a move.
+    fun aim(rate: Float, far: Boolean, duration: Int) {
+        if (early) { legE = e; return }
+        var time = if (far) duration.toFloat() else maxOf((1f - t) * ms, duration * SHORT)
+        // Fast for how near its goal is, it comes to rest sooner instead of braking at once: begun at over twice its
+        // length in its time the cubic slows hard from its first frame, and past three times it would run past its goal
+        // and come back, so it never begins faster than that.
+        if (rate > 0f) time = minOf(time, maxOf(BRIEF, 2000f / rate))
+        began = frame; ms = time.coerceAtLeast(1f); t = 0f; carried = true
+        slope = (rate * ms / 1000f).coerceIn(0f, 3f)
+    }
+
+    companion object {
+        // The part of a move's time in which a new goal still goes under the move's ease: under a fiftieth of its way.
+        const val EARLY = 0.1f
+        // The least a near goal's leg takes, as a part of a whole move's time, and the least any leg takes (ms).
+        const val SHORT = 0.5f
+        const val BRIEF = 120f
+    }
+}
+
 private class MapCamera {
     var value by mutableStateOf<Camera?>(null)
         private set
@@ -872,7 +935,7 @@ private class MapCamera {
     ) {
         if (points.isEmpty() || viewport.w <= 0 || viewport.h <= 0) return
         // Moved by hand, the map only reframes for something new to show, not for a resize. Without refit (Live, once
-        // its card has opened and the camera's move ended), a resize only moves it as far as keeps the first point (the
+        // the move its card opened with is under way), a resize only moves it as far as keeps the first point (the
         // vehicle opened) in view: a card growing as its rows load moved the camera a second time after the first.
         val resized = previousViewport != viewport
         val reframe = value == null || followed || previousFocus != focus ||
@@ -1029,19 +1092,29 @@ private class MapCamera {
         moveTo(current.copy(worldX = Geo.x(lon), worldY = Geo.y(lat), zoom = zoom.coerceIn(Geo.MIN_Z.toFloat(), Geo.MAX_Z + Geo.OVER)), scope)
     }
 
-    // The move going on (destination): its timeline (began, ms, how far along its ease is, lastE), and the leg it's
-    // on now, from legFrom at legE of that ease. A goal changed mid-move (the map re-framed as a card grows under it,
-    // a road come in) starts a new leg from where the camera is, on the same timeline, so the move keeps its pace
-    // instead of starting again from rest at each change.
+    // The move going on (destination): its timing, and the leg it's on now, from legFrom. A goal changed mid-move (a
+    // road come in, another vehicle picked) starts a new leg from where the camera is, at the speed it has (MoveTiming),
+    // so the move goes on as one instead of starting again from rest at each change.
     private var legFrom: Camera? = null
-    // Whether a move of its own (moveTo) is going on.
+    private val timing = MoveTiming(FastOutSlowInEasing::transform)
+    // How fast the camera is moving, px a second (span).
+    private var speed = 0.0
+    // Whether a move of its own (moveTo) is going on, and whether it has only just begun: a goal changed then (the
+    // screen around the map laid out a frame after what opened it) is still the same move's.
     val moving get() = animation?.isActive == true && destination != null
+    val aiming get() = moving && timing.early
     private val log = android.util.Log.isLoggable("KavMap", android.util.Log.DEBUG)
-    private var legE = 0f
-    private var lastE = 0f
-    private var lastT = 0f
-    private var began = 0L
-    private var ms = 0
+
+    // How far apart two cameras are, in px on screen at the first one's zoom.
+    private fun span(a: Camera, b: Camera): Double {
+        var spin = b.rotation - a.rotation
+        if (spin > 180f) spin -= 360f
+        if (spin < -180f) spin += 360f
+        val x = (b.worldX - a.worldX) * a.pxPerWorld
+        val y = (b.worldY - a.worldY) * a.pxPerWorld
+        val z = (b.zoom - a.zoom) * ZOOM_PX
+        return kotlin.math.sqrt(x * x + y * y + z * z + spin * TURN_PX * spin * TURN_PX)
+    }
 
     private fun moveTo(target: Camera, scope: CoroutineScope, duration: Int = this.duration) {
         stopFollowing()
@@ -1064,33 +1137,35 @@ private class MapCamera {
         }
         val going = destination
         if (animation?.isActive == true && going != null) {
-            legFrom = start
-            legE = lastE
-            destination = target
-            // Too little of it left for a goal that far: a move of its own, from here.
             val far = abs(target.zoom - going.zoom) > 0.3f ||
                 maxOf(abs(target.worldX - going.worldX), abs(target.worldY - going.worldY)) * target.pxPerWorld > 120.0
-            if (far && (1f - lastT) * ms < 200f) { began = 0L; ms = duration; legE = 0f; lastE = 0f; lastT = 0f }
             if (log) android.util.Log.d("KavMap", String.format(java.util.Locale.US, "camera: new goal at %.0f%% (zoom %.2f to %.2f)%s",
-                lastT * 100, going.zoom, target.zoom, if (began == 0L) ", its own move" else ""))
+                timing.t * 100, going.zoom, target.zoom, if (timing.early) "" else ", at its speed"))
+            val length = span(start, target)
+            legFrom = start
+            destination = target
+            timing.aim(if (length > 0.0) (speed / length).toFloat() else 0f, far, duration)
             return
         }
         if (log) android.util.Log.d("KavMap", String.format(java.util.Locale.US, "camera: move, zoom %.2f to %.2f, pan %.0f px, in %d ms", start.zoom, target.zoom,
             kotlin.math.hypot(target.worldX - start.worldX, target.worldY - start.worldY) * target.pxPerWorld, duration))
         animation?.cancel()
         destination = target
-        legFrom = start; legE = 0f; lastE = 0f; lastT = 0f; began = 0L; ms = duration
+        legFrom = start
+        timing.start(duration)
+        speed = 0.0
         animation = scope.launch {
+            var last = 0L
             while (true) {
                 val now = androidx.compose.runtime.withFrameNanos { it }
-                if (began == 0L) began = now
-                val t = ((now - began) / 1e6f / ms.coerceAtLeast(1)).coerceIn(0f, 1f)
-                val e = FastOutSlowInEasing.transform(t)
                 val from = legFrom ?: break
                 val to = destination ?: break
-                value = along(from, to, if (legE >= 1f) 1f else ((e - legE) / (1f - legE)).coerceIn(0f, 1f))
-                lastE = e; lastT = t
-                if (t >= 1f) break
+                val before = value
+                val next = along(from, to, timing.at(now))
+                if (before != null && last != 0L && now > last) speed = span(before, next) / ((now - last) / 1e9)
+                last = now
+                value = next
+                if (timing.t >= 1f) break
             }
             destination?.let { value = it }
             destination = null
@@ -2571,8 +2646,11 @@ fun TileMap(
             if (ref != camera.ref) camera.rebase(if (camera.ref > 0f) camera.ref else h, if (ref > 0f) ref else h, ref)
             // Kept before the frame for what took it moves it.
             if (away != null) camera.keep(h)
+            // Without refitOnResize a resize is only part of what the camera frames while its move has just begun (the
+            // card that opened it laid out a frame later). A card that grows after that, as a row of it loads, would aim
+            // the move again at each frame of its growing: a move whose speed keeps changing.
             if (cameraFollow == null && !withRider) camera.update(worldPoints, framing, focusKey, padFraction, fitMaxZoom, keepZoom, scope,
-                refit = refitOnResize || settle != null || camera.moving)
+                refit = refitOnResize || camera.aiming)
         }
         LaunchedEffect(withRider, recenterOn) {
             val me = recenterOn?.takeIf { withRider && it.first.isFinite() && it.second.isFinite() } ?: return@LaunchedEffect

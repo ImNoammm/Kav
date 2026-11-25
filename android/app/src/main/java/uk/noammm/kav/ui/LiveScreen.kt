@@ -464,7 +464,13 @@ private fun LiveScreenForSource(model: KavModel) {
     // Or, from Kav's server, how the hour it's due at the stop it was opened from (else now) compares with its line's own
     // hours (KavCrowd), by the route in its vehicle id.
     val kavRoute = focusVehicle?.let { KavLive.routeOf(it.arrival.vehicleId) ?: uk.noammm.kav.data.KavPlan.routeOf(it.arrival.lineId) }
-    if (uk.noammm.kav.data.KavCrowd.enabled && kavRoute != null) LaunchedEffect(kavRoute) { uk.noammm.kav.data.KavCrowd.refresh(listOf(kavRoute)) }
+    // Asked at the tap, and the card waits for the answer as it does for the bus's details (ready): come a moment after
+    // the card, the row grew it while the camera was on its way to the frame above it.
+    var crowdIn by remember(kavRoute) { mutableStateOf(!uk.noammm.kav.data.KavCrowd.enabled || kavRoute == null) }
+    if (uk.noammm.kav.data.KavCrowd.enabled && kavRoute != null) LaunchedEffect(kavRoute) {
+        uk.noammm.kav.data.KavCrowd.refresh(listOf(kavRoute))
+        crowdIn = true
+    }
     val crowd = focusVehicle?.let { v ->
         uk.noammm.kav.data.KavCrowd.at(kavRoute, if (v.arrival.stopId == fromStop?.id) v.eta else System.currentTimeMillis() / 1000)
     } ?: crowdAt?.let { (stop, opened) ->
@@ -482,7 +488,7 @@ private fun LiveScreenForSource(model: KavModel) {
     // later, the row grew the card after the camera had framed the bus above it, and hid it, so the camera moved again.
     var fleetIn by remember(tripKey) { mutableStateOf(false) }
     LaunchedEffect(tripKey) { if (tripKey.isNotEmpty()) uk.noammm.kav.data.KavFleet.ask(tripKey); fleetIn = true }
-    val ready = route.isNotEmpty() && lineStops.isNotEmpty() && (onRoad != null || route.size < 2) && fleetIn
+    val ready = route.isNotEmpty() && lineStops.isNotEmpty() && (onRoad != null || route.size < 2) && fleetIn && crowdIn
     // The vehicle the map's vehicles are split around (the one kept, the rest going with the fade), as the map has it.
     // It waits for the tapped one, or that one would fade out with the rest and come back at once, and the one picked
     // last would stay until it went at once, as if it jumped to the new one.
@@ -684,27 +690,30 @@ private fun LiveScreenForSource(model: KavModel) {
                     Box(
                         Modifier.fillMaxWidth()
                             .padding(start = K.gap2, end = K.gap2, bottom = K.gap2)
-                            .onSizeChanged { cardHeight = with(density) { it.height.toDp() } }
                             .glassSurface(K.rCard, glass = { cardGlass.value }),
                     ) {
                         // Another stop, or a line picked on the card: the card fades to it and springs to its size;
                         // what loads into a card after that grows into it the same way.
+                        val cardKey = { f: LiveFocus? ->
+                            when (f) {
+                                is LiveFocus.Stop -> "stop ${f.id}"
+                                is LiveFocus.Vehicle -> "vehicle ${f.tripId}"
+                                else -> "none"
+                            }
+                        }
                         AnimatedContent(
                             shown,
                             transitionSpec = {
                                 (fadeIn(tween(200, delayMillis = 60)) togetherWith fadeOut(tween(120)))
                                     .using(SizeTransform(clip = false) { _, _ -> spring(dampingRatio = 1f, stiffness = 500f) })
                             },
-                            contentKey = { f ->
-                                when (f) {
-                                    is LiveFocus.Stop -> "stop ${f.id}"
-                                    is LiveFocus.Vehicle -> "vehicle ${f.tripId}"
-                                    else -> "none"
-                                }
-                            },
+                            contentKey = cardKey,
                             label = "liveCard",
                         ) { f ->
-                            Box(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+                            // The height the card is on its way to, not the one it has at each frame of springing there:
+                            // the map frames what it shows above the card once, for where the card ends.
+                            Box(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))
+                                .onSizeChanged { if (cardKey(f) == cardKey(shown)) cardHeight = with(density) { it.height.toDp() } }) {
                                 when (f) {
                                     is LiveFocus.Stop -> {
                                         // The ministry's arrivals at the stop, in the shape the card takes.
