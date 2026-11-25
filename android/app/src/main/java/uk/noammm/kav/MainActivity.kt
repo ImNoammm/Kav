@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
@@ -1176,7 +1175,8 @@ private fun Shell(model: KavModel) {
     var exitAsk by remember { mutableStateOf(false) }
     BackHandler(enabled = !model.navigating) {
         when {
-            model.settingsOpen -> { model.settingsOpen = false; model.tab = Tab.Directions }
+            // As Settings' own back button: it closes onto the tab it was opened over.
+            model.settingsOpen -> model.settingsOpen = false
             model.tab != Tab.Directions -> {
                 model.resetOpenPages()
                 model.tab = Tab.Directions
@@ -1359,10 +1359,8 @@ internal fun ImportPrompt(model: KavModel) {
             // A failed import fades in over what the import does, in red, and the dialog eases to its new height.
             uk.noammm.kav.ui.ChangingText(
                 failed ?: T(
-                    "Your saved places, trip history and settings are replaced by what this file holds. " +
-                        "The map stays where it is.",
-                    "המקומות השמורים, היסטוריית הנסיעות וההגדרות שלכם יוחלפו במה שיש בקובץ הזה. " +
-                        "המפה נשארת במקומה.",
+                    "It replaces your saved places, trip history and settings.",
+                    "הוא מחליף את המקומות השמורים, היסטוריית הנסיעות וההגדרות שלכם.",
                 ),
             ) { said -> Text(said, fontSize = 14.sp, color = if (said == failed) K.critical else K.dim, lineHeight = 20.sp) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
@@ -1398,25 +1396,16 @@ internal fun ImportPrompt(model: KavModel) {
 
 @Composable
 internal fun LookPrompt(onDone: () -> Unit) {
-    Dialog(onDismissRequest = {}, properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+    // Back and a tap outside keep the look as it is, as Done does.
+    Dialog(onDismissRequest = onDone) {
         // A dialog is its own window, out of reach of the theme's fade: picking a look eases its colours instead.
         val surface = androidx.compose.animation.animateColorAsState(K.surface1, androidx.compose.animation.core.tween(300), label = "lookSurface").value
         val ink = androidx.compose.animation.animateColorAsState(K.text, androidx.compose.animation.core.tween(300), label = "lookInk").value
-        val dim = androidx.compose.animation.animateColorAsState(K.dim, androidx.compose.animation.core.tween(300), label = "lookDim").value
         val quiet = androidx.compose.animation.animateColorAsState(K.textSecondary, androidx.compose.animation.core.tween(300), label = "lookQuiet").value
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(surface).padding(K.gap5),
         ) {
             Text(T("Pick a look", "בחרו מראה"), style = K.type.title, color = ink)
-            Text(
-                T(
-                    "Kav 2.0 comes in OLED black, light and dark, with liquid glass or solid on top. " +
-                        "You can change this later in Settings.",
-                    "Kav 2.0 מגיעה בשחור OLED, בבהיר ובכהה, עם זכוכית נוזלית או משטחים אטומים. " +
-                        "אפשר לשנות את זה אחר כך בהגדרות.",
-                ),
-                fontSize = 14.sp, color = dim, lineHeight = 20.sp, modifier = Modifier.padding(top = K.gap2),
-            )
             LookChoices { Text(it, style = K.type.caption, color = quiet, modifier = Modifier.padding(top = K.gap4, bottom = K.gap2)) }
             KavButton(T("Done", "סיום"), onDone, Modifier.padding(top = K.gap5), wide = true)
         }

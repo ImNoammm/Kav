@@ -91,6 +91,9 @@ fun WhenSheet(
 
     BottomSheet(onDismiss, scrolls = true) { close ->
         val chosen = mode
+        // Back from setting a time goes to the list it was opened from, as the sheet's own Back does; from the list it
+        // closes the sheet.
+        androidx.activity.compose.BackHandler(chosen != null) { mode = null }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when (chosen) {
