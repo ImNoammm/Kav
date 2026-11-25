@@ -1,0 +1,30 @@
+Kav is an app for getting around Israel on public transport. No ads, no account, no analytics, nothing phoning home about where you go. Hebrew and English.
+
+<b>What it does</b>
+<ul>
+<li>Plans a trip, gives you a few ways there, and walks you through the one you pick. The step moves on by itself as you walk and ride, the map turns with you, and if you leave the app the current step follows you in a small floating window. If you miss a bus or go off the route, it offers a new route from where you are.</li>
+<li>Shows where your bus actually is, live from the Ministry of Transport's own feed, on the map and along your trip. The trip stays in the notification shade while you're on the way.</li>
+<li>Route cards show what a trip costs by the Ministry of Transport's fares, with a day pass where that's cheaper.</li>
+<li>Departure boards for every station, and a page for every line with its route, its stops and its buses on the road. A live screen shows every stop around you.</li>
+<li>Kav's own map and the week's timetable stay on your phone, so stops, lines and scheduled departures work without signal.</li>
+<li>Your walking pace, how much you'll walk, fewer changes and the time you want at a stop shape the routes you get. Up to three stops on the way.</li>
+<li>Detours, delays and moved stops on your rides, off until you turn them on. How busy your next bus usually is.</li>
+<li>Private search, on by default: the search service sees only the center of the town you're in, not your exact location. Choose Google or OpenStreetMap's Photon.</li>
+<li>Your own HTTP or SOCKS5 proxy for everything Kav asks for.</li>
+<li>Favorite places on the home screen, and backups of your places and settings to a file.</li>
+<li>OLED black, light and dark, or following the phone's dark mode.</li>
+<li>Extensions: Android code other people make for Kav, added from a GitHub repository or a bundle file, only after you agree. They can add cards, tabs, map styles, route rules and more.</li>
+</ul>
+
+<b>Your server or Kav's</b>
+Live buses and trip planning come from Kav's server, which takes them from the Ministry of Transport and plans with OpenTripPlanner. It only learns the lines, stops or rough area you're looking at and the start and end of a trip you plan, and keeps no logs. The server is free software too: you can run your own and choose it in Settings.
+
+<b>Good to know</b>
+<ul>
+<li>Place search and stop photos (Street View) use Google by default. Both can be switched off, and OpenStreetMap search is built in.</li>
+<li>Line alerts and how busy a bus is can also come from Google Maps, if you choose it.</li>
+<li>The satellite map loads from Esri, and the OpenFreeMap maps load from OpenFreeMap until you download them.</li>
+<li>Paying is optional: "Pay for a ride" opens the Rav-Pass app, which isn't free software. Kav tells Rav-Pass nothing about you or the ride.</li>
+</ul>
+
+Kav is free software under the GPL-3.0.

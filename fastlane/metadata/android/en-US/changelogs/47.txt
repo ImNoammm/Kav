@@ -1,0 +1,5 @@
+• Extensions can now take over Kav's buttons, like pay, opening a stop or a line, sharing a trip and the steps of navigation, and add to or replace parts of its screens.
+• An extension that sells tickets puts them in Kav's own tickets and ride history.
+• If a Kav update leaves part of an extension behind, only that part stops, and Settings says the extension needs an update.
+• Extension cards line up with Kav's own and have no "by" line.
+• For developers: extensions API 4.
