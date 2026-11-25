@@ -79,14 +79,21 @@ internal enum class PayApp(
     val heOf: String get() = "של $he"
 
     companion object {
-        // The rider's choice on Settings' Paying page; Rav-Pass until they pick another. Read from the phone when Kav's
-        // process starts (KavApp) and each time Kav comes back (PayMode.refresh), and written by the choice itself.
+        // The rider's choice on Settings' Paying page. Until they pick one, the app that's on the phone: Rav-Pass when it's
+        // there, egg when only egg is (preferred). Read from the phone when Kav's process starts (KavApp) and each time
+        // Kav comes back (PayMode.refresh), and written by the choice itself.
         var current by mutableStateOf(RAV_PASS)
             private set
 
         fun of(saved: String?): PayApp = entries.firstOrNull { it.name == saved } ?: RAV_PASS
 
-        fun refresh(ctx: Context) { current = of(Prefs.payApp(ctx)) }
+        // With no choice made: Rav-Pass when it's installed or neither is, egg when it's the only one of the two.
+        fun preferred(has: (PayApp) -> Boolean): PayApp = if (!has(RAV_PASS) && has(EGG)) EGG else RAV_PASS
+
+        fun refresh(ctx: Context) {
+            current = Prefs.payApp(ctx).takeIf { it.isNotEmpty() }?.let(::of)
+                ?: preferred { ctx.packageManager.getLaunchIntentForPackage(it.pkg) != null }
+        }
 
         fun choose(ctx: Context, app: PayApp) {
             Prefs.setPayApp(ctx, app.name)
