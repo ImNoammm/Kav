@@ -328,9 +328,11 @@ private fun Summary(trip: Transit.Itinerary, r: Transit.Resolved) {
 }
 
 // What a route is best at, as small ovals on its card and its page: a late train's in red, and a route likely missed.
+// last: one more oval of the caller's after them, as a card's wheelchair accessible.
 @Composable
-internal fun RouteTags(trip: Transit.Itinerary, modifier: Modifier = Modifier) {
-    val tags = trip.tags.mapNotNull { tag -> KavPlan.tagWord(tag)?.let { it to (KavPlan.isLate(tag) || tag == KavPlan.LIKELY_MISSED) } }
+internal fun RouteTags(trip: Transit.Itinerary, modifier: Modifier = Modifier, last: String? = null) {
+    val tags = trip.tags.mapNotNull { tag -> KavPlan.tagWord(tag)?.let { it to (KavPlan.isLate(tag) || tag == KavPlan.LIKELY_MISSED) } } +
+        listOfNotNull(last?.let { it to false })
     // Tags that come with a later answer open in place, and go the same way.
     var tagged by remember { mutableStateOf(tags) }
     if (tags.isNotEmpty()) tagged = tags

@@ -95,7 +95,8 @@ internal fun ClockGlyph(tint: Color = K.muted, size: androidx.compose.ui.unit.Dp
 
 @Composable
 fun LiveGlyph(tint: Color = K.realtime, size: androidx.compose.ui.unit.Dp = 11.dp) {
-    Canvas(Modifier.size(size)) {
+    // Its waves go out to the end side, toward the time it marks.
+    Canvas(Modifier.size(size)) { mirrorInRtl {
         val w = this.size.width; val h = this.size.height; val sw = w * .11f
         drawCircle(tint, w * .13f, Offset(w * .24f, h * .80f))
         for (r in listOf(.42f, .70f)) {
@@ -106,17 +107,18 @@ fun LiveGlyph(tint: Color = K.realtime, size: androidx.compose.ui.unit.Dp = 11.d
                 style = Stroke(sw, cap = StrokeCap.Round),
             )
         }
-    }
+    } }
 }
 
 @Composable
 fun LiveOffGlyph(tint: Color = K.dim, size: androidx.compose.ui.unit.Dp = 11.dp) {
     Box(contentAlignment = Alignment.Center) {
         LiveGlyph(tint, size)
-        Canvas(Modifier.size(size)) {
+        // Across the waves, which way they face.
+        Canvas(Modifier.size(size)) { mirrorInRtl {
             val w = this.size.width; val h = this.size.height
             drawLine(tint, Offset(w * .14f, h * .86f), Offset(w * .86f, h * .14f), w * .11f, StrokeCap.Round)
-        }
+        } }
     }
 }
 
@@ -595,17 +597,18 @@ fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, asked: Long = 0, f
             androidx.compose.animation.fadeOut(tween(120)),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
-                noted.forEachIndexed { i, (kind, label) ->
+                noted.forEachIndexed { i, (_, label) ->
                     // The fare's dot parts them, as on the line above.
                     if (i > 0) Text("•", style = K.type.subhead, color = K.dim)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
-                        if (kind == "access") AccessibleGlyph() else GlobeGlyph()
+                        GlobeGlyph()
                         Text(label, style = K.type.subhead)
                     }
                 }
             }
         }
-        RouteTags(it)
+        // Every ride on a vehicle marked wheelchair accessible (the timetable says nothing of stops and walks): the last tag.
+        RouteTags(it, last = if (Shown.accessibility && it.accessible) T("Wheelchair accessible", "נגיש לכיסא גלגלים") else null)
         footer?.invoke()
     }
 }
@@ -770,7 +773,10 @@ internal fun CycleGlyph(leg: Transit.Leg?, tint: Color = Ink.muted, size: androi
         -1 -> Icons.Rounded.DirectionsCar
         else -> null
     }
-    if (icon == null) BikeGlyph(tint, size) else Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size))
+    // A scooter or moped faces the way the trip reads, as the bike does; the car is seen from the front.
+    val turned = icon != Icons.Rounded.DirectionsCar && androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    if (icon == null) BikeGlyph(tint, size)
+    else Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size).graphicsLayer { if (turned) scaleX = -1f })
 }
 
 // The same leg in words, with who runs a shared vehicle and how long it takes.
@@ -787,14 +793,14 @@ internal fun cycleLabel(leg: Transit.Leg): String {
 
 @Composable
 internal fun BikeGlyph(tint: Color = K.muted, size: androidx.compose.ui.unit.Dp = 18.dp) {
-    Canvas(Modifier.size(size)) {
+    Canvas(Modifier.size(size)) { mirrorInRtl {
         val w = this.size.width; val h = this.size.height; val sw = w * .08f
         drawCircle(tint, w * .22f, Offset(w * .24f, h * .70f), style = Stroke(sw))
         drawCircle(tint, w * .22f, Offset(w * .76f, h * .70f), style = Stroke(sw))
         drawLine(tint, Offset(w * .24f, h * .70f), Offset(w * .46f, h * .38f), sw, StrokeCap.Round)
         drawLine(tint, Offset(w * .46f, h * .38f), Offset(w * .76f, h * .70f), sw, StrokeCap.Round)
         drawLine(tint, Offset(w * .46f, h * .38f), Offset(w * .66f, h * .38f), sw, StrokeCap.Round)
-    }
+    } }
 }
 
 @Composable
@@ -887,9 +893,7 @@ private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long,
 private const val MARK = "mark"
 
 private fun cardNotes(it: Transit.Itinerary, r: Transit.Resolved): List<Pair<String, String>> {
-    val out = ArrayList<Pair<String, String>>(2)
-    // Every ride on a vehicle marked wheelchair accessible: the timetable says nothing of stops and walks.
-    if (Shown.accessibility && it.accessible) out.add("access" to T("Wheelchair accessible", "נגיש לכיסא גלגלים"))
+    val out = ArrayList<Pair<String, String>>(1)
     val g = if (Shown.co2) uk.noammm.kav.data.Emissions.grams(it, r) else -1
     if (g >= 0) out.add("co2" to co2(g))
     return out

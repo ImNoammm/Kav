@@ -230,9 +230,11 @@ fun KavChip(
     icon: ImageVector? = null,
     trailing: ImageVector? = null,
     check: Boolean = false,
+    // A chip that can't be used yet: in place, greyed and not tappable, as a disabled button is.
+    enabled: Boolean = true,
 ) {
     val fill by animateColorAsState(if (selected) K.accent else K.fill, tween(150), label = "chipFill")
-    val ink by animateColorAsState(if (selected) K.onAccent else K.textSecondary, tween(150), label = "chipInk")
+    val ink by animateColorAsState(if (selected) K.onAccent else if (enabled) K.textSecondary else K.textTertiary, tween(150), label = "chipInk")
     val ticked by animateFloatAsState(if (selected) 1f else 0f, tween(150), label = "chipTick")
     // With a tick, the label stays centred in room that fits the tick at its start, so choosing moves nothing.
     if (check) {
@@ -243,7 +245,7 @@ fun KavChip(
                 .clip(K.capsule)
                 .background(fill)
                 .semantics { this.selected = selected }
-                .clickable(role = Role.Button, onClick = onClick),
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             ChangingText(label, Modifier.padding(horizontal = 29.dp)) { Text(it, style = K.type.subhead, color = ink, maxLines = 1) }
@@ -261,7 +263,7 @@ fun KavChip(
             .clip(K.capsule)
             .background(fill)
             .semantics { this.selected = selected }
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = K.gap4),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(K.gap2),

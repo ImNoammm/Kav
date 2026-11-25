@@ -68,6 +68,104 @@ internal fun offWalk(w: OffWalk, fix: Fix?, off: Boolean, now: Long): OffWalk = 
     else -> w.copy(fixes = w.fixes + 1, last = fix.at)
 }
 
+// A small detour on a walk: the rider took another street. Off the walk's own path by DETOUR_M more than the fix says it
+// may be off (so the sidewalk across the street is still on it), for as many sharp fixes as offWalk() counts, the walk
+// follows them: walked again from where they are to where it went, the rest of the trip as it was while its next ride
+// can still be made from there. A new walk at most every DETOUR_EVERY_S.
+internal const val DETOUR_M = 50.0
+internal const val DETOUR_EVERY_S = 30L
+
+internal fun offWalkPath(step: Step, fix: Fix): Boolean =
+    step is Step.Walk && distanceToPath(fix.lat, fix.lon, step.leg.shape).let { it != Double.MAX_VALUE && it > DETOUR_M + fix.accuracy }
+
+// The part of a walk walked again: its first run of legs in the street, without the steps inside a station before or
+// after it, which stay as they were.
+private fun streetLegs(step: Step.Walk, trip: Transit.Itinerary): IntRange? {
+    val legs = step.legs.filter { it in trip.legs.indices }
+    val first = legs.firstOrNull { !trip.legs[it].pathway } ?: return null
+    val end = legs.firstOrNull { it > first && trip.legs[it].pathway } ?: (legs.last() + 1)
+    return first until end
+}
+
+// Where the walk walked again goes: the end of that part.
+internal fun detourTarget(step: Step.Walk, trip: Transit.Itinerary): Pair<Double, Double>? =
+    streetLegs(step, trip)?.let { run -> run.reversed().firstNotNullOfOrNull { trip.legs[it].shape.lastOrNull() } }
+
+// The planner's walk from here to there, by the trip's own planner; null when it gives none. Network: call it off the
+// main thread.
+internal fun walkFromHere(trip: Transit.Itinerary, here: Pair<Double, Double>, to: Pair<Double, Double>, routeTypes: List<Int>): List<Transit.Leg>? {
+    val planner = KavPlan.replanAt(trip) ?: return null
+    val planned = uk.noammm.kav.data.plannerFor(planner).plan(
+        uk.noammm.kav.data.PlanRequest(here, to, 0L, Transit.TIME_DEPARTURE, routeTypes, false, settings = KavPlan.settings))
+    return planned.plan.itineraries.firstOrNull { it.legs.isNotEmpty() && it.legs.all { l -> l.kind == Transit.LegKind.WALK } }?.legs
+}
+
+// The trip with its walk's street part walked from here, leaving now: the planner's walk as one leg in its place, and
+// empty legs at its end for the rest of the legs it had, so every leg after it keeps its place (the lines chosen, the
+// alerts given). The legs after it in the walk, and the wait after the walk, move with its new end; the trip's own end
+// too when the walk ends it.
+internal fun followedWalk(trip: Transit.Itinerary, step: Step.Walk, walk: List<Transit.Leg>, now: Long): Transit.Itinerary? {
+    val run = streetLegs(step, trip) ?: return null
+    if (walk.isEmpty() || walk.any { it.kind != Transit.LegKind.WALK }) return null
+    val to = detourTarget(step, trip) ?: return null
+    val arrive = now + walk.sumOf { (it.arr - it.dep).coerceAtLeast(0) }
+    val first = trip.legs[run.first]
+    val last = trip.legs[run.last]
+    val walked = Transit.Leg(
+        Transit.LegKind.WALK, dep = now, arr = arrive, toStop = last.toStop, meters = walk.sumOf { it.meters },
+        shape = walk.flatMap { it.shape }, turns = walk.flatMap { it.turns }, visit = first.visit,
+        insideMeters = walk.sumOf { it.insideMeters },
+    )
+    val shift = arrive - last.arr
+    val end = step.legs.last
+    val legs = trip.legs.mapIndexed { i, l ->
+        when {
+            i == run.first -> walked
+            i in run -> Transit.Leg(Transit.LegKind.WALK, dep = arrive, arr = arrive, toStop = last.toStop)
+            i in run.last + 1..end -> l.copy(dep = l.dep + shift, arr = l.arr + shift)
+            else -> l
+        }
+    }.toMutableList()
+    val there = legs[end].arr
+    for (i in end + 1 until legs.size) {
+        if (legs[i].kind != Transit.LegKind.WAIT) break
+        legs[i] = legs[i].copy(dep = minOf(there, legs[i].arr))
+    }
+    return Transit.Itinerary(
+        trip.guid, trip.group, legs, trip.dep, if (end == trip.legs.lastIndex) there else trip.arr, trip.fare, trip.currency,
+        trip.co2g, trip.accessible, trip.tags, trip.section, trip.sectionId, trip.singleFares, trip.provider, trip.policy,
+    )
+}
+
+// A detour followed: the trip on with the walk from here, or, when the walk's next ride can't be made from here, the
+// rider asked whether to plan a new route.
+internal sealed interface Detour {
+    class Follow(val trip: Transit.Itinerary) : Detour
+    class Ask(val failure: Failure) : Detour
+}
+
+// The walk the rider is on (step `at`), walked from here by the planner's walk: null when it can't take its place. The
+// ride after it is made when one of its lines leaves no more than CHANGE_LATE_S before the rider gets to it, as for a
+// change.
+internal fun detour(
+    trip: Transit.Itinerary, steps: List<Step>, at: Int, walk: List<Transit.Leg>, here: Pair<Double, Double>,
+    r: Transit.Resolved, chosen: Map<Int, Int>, now: Long,
+): Detour? {
+    val step = steps.getOrNull(at) as? Step.Walk ?: return null
+    val next = followedWalk(trip, step, walk, now) ?: return null
+    val after = buildSteps(next, "", "")
+    if (after.size != steps.size) return null
+    val arrive = (after[at] as? Step.Walk)?.leg?.arr ?: return null
+    val ride = step.toRide ?: return Detour.Follow(next)
+    val options = Transit.boardingOptions(ride, step.toWait)
+    if (options.any { (o, w) -> departureOf(o, w, r, now).let { it.status != 3 && it.timeUtc + CHANGE_LATE_S >= arrive } }) {
+        return Detour.Follow(next)
+    }
+    val (missed, wait) = boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0)
+    return Detour.Ask(Failure(Broken.OFF_ROUTE, "aside-$at", ReplanFrom(here, 0, legsKept(step, trip), legsDone(step, trip)),
+        missed, arrive, departureOf(missed, wait, r, now).timeUtc, nextDeparture(options, r, now, arrive - CHANGE_LATE_S)))
+}
+
 private fun choice(step: Step.Wait, chosen: Map<Int, Int>) = boardingChoice(step.ride, step.wait, chosen[step.legIndex] ?: 0)
 
 private fun departureOf(ride: Transit.Leg, wait: Transit.Leg?, r: Transit.Resolved, now: Long) =
@@ -228,7 +326,7 @@ internal fun failureText(f: Failure, r: Transit.Resolved, now: Long): String? {
     val next = f.next.takeIf { it > 0 }?.let { minsLeft(it - now) }
         ?.let { if (it == 0L) T("The next one is now", "היציאה הבאה ממש עכשיו")
             else T("The next one is in $it min", "היציאה הבאה בעוד $it דק׳") }
-    val change = f.missed?.takeIf { f.kind == Broken.LATE_CHANGE }?.let { ride ->
+    val change = f.missed?.takeIf { f.kind == Broken.LATE_CHANGE || f.kind == Broken.OFF_ROUTE }?.let { ride ->
         val stop = r.stopName(ride.fromStop)?.takeIf { it.isNotBlank() }
         val line = rideName(ride, r)
         if (stop != null) T("You get to $stop at ${time(f.arrive)}, after $line leaves at ${time(f.leaves)}",
@@ -313,11 +411,12 @@ internal fun stepAfterSwitch(next: ActiveJourney, from: ReplanFrom, current: Int
 }.coerceIn(0, buildSteps(next.trip, next.fromLabel, next.toLabel).lastIndex)
 
 // The trip's alerts already given, once it has gone on with a new route under its own name: those of the legs it changed
-// may come again, and those of the failures behind it are done with.
-internal fun firedAfterSwitch(fired: Set<String>, was: List<Transit.Leg>, now: List<Transit.Leg>): Set<String> {
-    val same = was.zip(now).takeWhile { (a, b) -> a == b }.size
-    return fired.filterNot { k -> k.startsWith("replan-") || LEG_ALERT.matchEntire(k)?.groupValues?.get(1)?.toIntOrNull()?.let { it >= same } == true }.toSet()
-}
+// may come again, and those of the failures behind it are done with. A leg the same at its place keeps its alerts, as
+// a ride after a walk walked again does.
+internal fun firedAfterSwitch(fired: Set<String>, was: List<Transit.Leg>, now: List<Transit.Leg>): Set<String> =
+    fired.filterNot { k ->
+        k.startsWith("replan-") || LEG_ALERT.matchEntire(k)?.groupValues?.get(1)?.toIntOrNull()?.let { was.getOrNull(it) != now.getOrNull(it) } == true
+    }.toSet()
 
 // A ride's alerts by its leg (tripAlert): arriving, delayed, get off.
 private val LEG_ALERT = Regex("(?:wait|traffic|ride)-(\\d+)")

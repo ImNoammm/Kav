@@ -611,11 +611,8 @@ fun DirectionsOnline(model: KavModel) {
             Sort.LOWEST_CO2 -> kept.sortedWith(compareBy({ uk.noammm.kav.data.Emissions.grams(it, resolved).let { g -> if (g < 0) Int.MAX_VALUE else g } }, { it.durationMin }))
         }
     }
-    // The first route's time, and the last one shown: once there was one, Earlier and Later stay while new routes load,
-    // with the time those are for between them (loadingTime()).
+    // The first route's time, between Earlier and Later once routes show; before that, the time they are for (loadingTime()).
     val firstTime = shown.firstOrNull()?.let { clockFormat().format(java.util.Date(it.dep * 1000)) }
-    var shiftTime by remember { mutableStateOf("") }
-    SideEffect { firstTime?.let { shiftTime = it } }
 
     androidx.activity.compose.BackHandler(enabled = showResults && open == null && picking == null && linkTrip == null) {
         leaveResults()
@@ -804,9 +801,10 @@ fun DirectionsOnline(model: KavModel) {
                     }
                 }
             }
-            // Earlier and Later, with the first route's time between them. It stays while new routes load, so the
-            // time rolls to theirs instead of the row going.
-            fun androidx.compose.foundation.lazy.LazyListScope.shiftRow(time: String) = item(key = "shift") {
+            // Earlier and Later, with the first route's time between them. The row comes with the screen and the options
+            // above it, and stays while routes load, so the time rolls to theirs instead of the row coming or going.
+            // With no trip to plan yet, its chips are there but not tappable.
+            fun androidx.compose.foundation.lazy.LazyListScope.shiftRow(time: String, active: Boolean) = item(key = "shift") {
                 KavPart("results.time.shift", time, { JSONObject().put("firstDeparture", time) }) {
                     Row(
                         Modifier.animateItem(fadeInSpec = androidx.compose.animation.core.tween(240),
@@ -822,7 +820,7 @@ fun DirectionsOnline(model: KavModel) {
                             selectTime(next, if (next == 0L) Transit.TIME_DEPARTURE else timeType)
                         }
                         KavChip(T("Earlier", "מוקדם יותר"), selected = false, onClick = { nudge(-15 * 60_000L) },
-                            icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft)
+                            icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft, enabled = active)
                         Spacer(Modifier.weight(1f))
                         // The time rolls up for Later and down for Earlier.
                         RollingText(
@@ -832,7 +830,7 @@ fun DirectionsOnline(model: KavModel) {
                         )
                         Spacer(Modifier.weight(1f))
                         KavChip(T("Later", "מאוחר יותר"), selected = false, onClick = { nudge(15 * 60_000L) },
-                            trailing = Icons.AutoMirrored.Rounded.KeyboardArrowRight)
+                            trailing = Icons.AutoMirrored.Rounded.KeyboardArrowRight, enabled = active)
                     }
                 }
             }
@@ -846,6 +844,10 @@ fun DirectionsOnline(model: KavModel) {
                         }, listMotion().padding(horizontal = K.gap4, vertical = K.gap2))
                     }
                 }
+            }
+            val listed = error == null && ruleFailure == null && toLL != null && fromLL != null && !planning && plannedFor == planKey
+            if (timeType != Transit.TIME_LAST) {
+                shiftRow(firstTime?.takeIf { listed } ?: loadingTime(departAt), active = fromLL != null && toLL != null && error != TOO_CLOSE)
             }
             when {
                 error == TOO_CLOSE -> item(key = "too-close") {
@@ -906,7 +908,6 @@ fun DirectionsOnline(model: KavModel) {
                     }
                 }
                 planning || plannedFor != planKey -> {
-                    if (timeType != Transit.TIME_LAST && shiftTime.isNotEmpty()) shiftRow(loadingTime(departAt))
                     tabsRow()
                     item(key = "finding") { LoadingBlock(T("Finding routes", "מחפשים מסלולים"), Modifier.animateItem(
                         fadeInSpec = androidx.compose.animation.core.tween(200, delayMillis = 60),
@@ -933,7 +934,6 @@ fun DirectionsOnline(model: KavModel) {
                     }
                 }
                 else -> {
-                    if (timeType != Transit.TIME_LAST) shiftRow(firstTime ?: shiftTime)
                     tabsRow()
                     ruleNote?.let { note ->
                         item(key = "rules") { NoteCard(note, listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) }

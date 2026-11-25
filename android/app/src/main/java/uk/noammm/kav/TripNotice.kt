@@ -277,17 +277,18 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
     )
 }
 
-private val icons = HashMap<Triple<Glyph, Int, Int>, Bitmap>()
+private val icons = HashMap<List<Any>, Bitmap>()
 
 internal fun trackerIcon(glyph: Glyph, tint: Int): Bitmap = icon(glyph, tint, 96, round = true)
 
 internal fun plateIcon(glyph: Glyph, tint: Int): Bitmap = icon(glyph, tint, 144, round = false)
 
-private fun icon(glyph: Glyph, tint: Int, px: Int, round: Boolean): Bitmap = icons.getOrPut(Triple(glyph, tint, px)) {
+// In Kav's language's direction, so the walker faces the way the trip's bar fills.
+private fun icon(glyph: Glyph, tint: Int, px: Int, round: Boolean): Bitmap = icons.getOrPut(listOf(glyph, tint, px, T.rtl)) {
     val image = ImageBitmap(px, px)
     val ink = if (ColorUtils.calculateLuminance(tint) > 0.55) Color(0xFF141414) else Color.White
     CanvasDrawScope().draw(
-        Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(image), Size(px.toFloat(), px.toFloat()),
+        Density(1f), if (T.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(image), Size(px.toFloat(), px.toFloat()),
     ) {
         val centre = Offset(size.width / 2, size.height / 2)
         if (round) {

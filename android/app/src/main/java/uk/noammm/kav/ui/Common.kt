@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -321,7 +322,8 @@ fun WalkGlyph(tint: Color = K.dim, size: androidx.compose.ui.unit.Dp = 13.dp) {
     Canvas(Modifier.size(size)) { drawWalker(tint) }
 }
 
-fun DrawScope.drawWalker(tint: Color) {
+// The walker faces the way a trip reads: to the end side, so left in a right-to-left layout.
+fun DrawScope.drawWalker(tint: Color) = mirrorInRtl {
     val w = size.width; val h = size.height
     val sw = w * 0.11f
     fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
@@ -332,6 +334,11 @@ fun DrawScope.drawWalker(tint: Color) {
     line(.48f, .56f, .66f, .84f)
     line(.52f, .36f, .72f, .46f)
 }
+
+// A drawing that shows a direction, drawn facing the end side: as it is in a left-to-right layout, mirrored in a
+// right-to-left one.
+inline fun DrawScope.mirrorInRtl(crossinline block: DrawScope.() -> Unit) =
+    scale(if (layoutDirection == LayoutDirection.Rtl) -1f else 1f, 1f) { block() }
 
 // label: a train's number, which the timetable doesn't keep, where a live source has given it. type: the mode of a
 // line the timetable hasn't, as the live source has it, and agency its operator, by the ministry's id, or operator, by

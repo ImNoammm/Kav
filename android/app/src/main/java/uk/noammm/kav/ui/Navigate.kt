@@ -103,6 +103,8 @@ internal sealed class Step {
         val toWait: Transit.Leg? = null, val toLeg: Int = -1,
         // The place the trip ends at, for the walk that ends it.
         val toName: String? = null,
+        // The trip's legs it is made of.
+        val legs: IntRange = IntRange.EMPTY,
     ) : Step()
     class Wait(
         val ride: Transit.Leg, val wait: Transit.Leg?, val legIndex: Int,
@@ -154,7 +156,7 @@ internal fun buildSteps(trip: Transit.Itinerary, fromLabel: String, toLabel: Str
                 val to = merged.toStop.takeIf { it >= 0 } ?: k?.let { all[it].fromStop } ?: -1
                 out.add(Step.Walk(merged, to, k?.let { all[it] }, merged.shape.ifEmpty { whole },
                     k?.let { all.getOrNull(it - 1)?.takeIf { w -> w.kind == Transit.LegKind.WAIT } }, k ?: -1,
-                    toLabel.takeIf { j == all.size }))
+                    toLabel.takeIf { j == all.size }, i until j))
             }
             Transit.LegKind.RIDE -> {
                 val wait = all.getOrNull(i - 1)?.takeIf { it.kind == Transit.LegKind.WAIT }
@@ -321,31 +323,63 @@ fun NavigateScreen(
     var held by remember(trip) { mutableStateOf<Pair<Int, Failure>?>(null) }
     SideEffect { held = retainedFailure(held, currentStep, failing) }
     var kept by remember(trip) { mutableStateOf(emptySet<String>()) }
-    val failure = (failing ?: held?.takeIf { it.first == currentStep }?.second)?.takeIf { it.key !in kept }
+    // A walk whose ride can't be made from where the rider went (detour()): asked about as being off the route is.
+    var asked by remember(trip, currentStep) { mutableStateOf<Failure?>(null) }
+    val failure = (failing ?: held?.takeIf { it.first == currentStep }?.second ?: asked)?.takeIf { it.key !in kept }
     var replanning by remember(trip) { mutableStateOf(false) }
     var replanFailed by remember(trip) { mutableStateOf(false) }
-    // Walked off the route for sure: a new route by itself after a countdown, once for each time off it. Cancel keeps
-    // the route until the rider is back on it and off it again.
+    // On a walk, the sharp fixes in a row off the route (offWalk), and off the walk's own path (aside). Far off the
+    // route, the card asks; keeping the route there, or where the walk's ride can't be made, keeps it until the rider is
+    // back on the route and off it again.
     val walking = steps.getOrNull(currentStep) is Step.Walk
     var offWalk by remember(trip, currentStep) { mutableStateOf(OffWalk()) }
-    var autoRan by remember(trip) { mutableLongStateOf(0L) }
+    var aside by remember(trip, currentStep) { mutableStateOf(OffWalk()) }
     if (walking) SideEffect {
         val w = offWalk(offWalk, fix, failing?.kind == Broken.OFF_ROUTE, now)
         if (w != offWalk && w.fixes == 0 && "off-$currentStep" in kept) kept = kept - "off-$currentStep"
         offWalk = w
+        val a = offWalk(aside, fix, fix != null && offWalkPath(steps[currentStep], fix), now)
+        if (a != aside && a.fixes == 0) { kept = kept - "aside-$currentStep"; asked = null }
+        aside = a
+    }
+    // A small detour on the walk (offWalkPath): the walk follows the rider by itself, with nothing to tap, its ride and
+    // the rest of the trip as they were (detour()). Not while a card is up, nor while a vehicle's card is open, whose
+    // trip would close it; one new walk at most every DETOUR_EVERY_S, a failed one included.
+    var lastDetour by remember { mutableLongStateOf(0L) }
+    var detouring by remember { mutableStateOf(false) }
+    val detourDue = walking && journey != null && aside.sure && failing == null && failure == null && "aside-$currentStep" !in kept &&
+        !replanning && !detouring && tappedBus == null && now - lastDetour >= DETOUR_EVERY_S
+    LaunchedEffect(detourDue) {
+        if (!detourDue) return@LaunchedEffect
+        val current = journey ?: return@LaunchedEffect
+        val at = fix ?: return@LaunchedEffect
+        val step = currentStep
+        val to = (steps[step] as? Step.Walk)?.let { detourTarget(it, trip) } ?: return@LaunchedEffect
+        detouring = true; lastDetour = now
+        scope.launch {
+            val here = at.lat to at.lon
+            val walk = withContext(Dispatchers.IO) { runCatching { walkFromHere(trip, here, to, routeTypesFor(model.filters)) }.getOrNull() }
+            detouring = false
+            // The trip moved on, or was planned again or ended, while it asked: the walk was for a step no longer there.
+            if (model.activeJourney !== current || model.journeyStep != step || walk == null) return@launch
+            when (val d = detour(trip, steps, step, walk, here, r, chosen, System.currentTimeMillis() / 1000)) {
+                is Detour.Follow -> model.activeJourney = current.copy(trip = d.trip, before = current.before + trip)
+                is Detour.Ask -> asked = d.failure
+                null -> {}
+            }
+        }
     }
     // One tap: the planner's first route from where the failure says, and the trip goes on with it.
     fun replan(f: Failure) {
         val current = model.activeJourney?.takeIf { it.trip === trip } ?: return
         val step = currentStep
-        if (f.kind == Broken.OFF_ROUTE) autoRan = offWalk.since
         replanning = true; replanFailed = false
         scope.launch {
             val next = withContext(Dispatchers.IO) { runCatching { replanned(current, f.from, routeTypesFor(model.filters), step) }.getOrNull() }
             replanning = false
             // The trip moved on, or was ended, while it planned: the new route was planned for a trip no longer there.
             if (model.activeJourney?.trip !== trip) return@launch
-            // Kept while it planned (Cancel just as the countdown ran out): the rider stays on this route.
+            // Kept while it planned: the rider stays on this route.
             if (f.key in kept) return@launch
             if (next == null) { replanFailed = true; return@launch }
             model.journeyStep = next.second
@@ -382,15 +416,6 @@ fun NavigateScreen(
     }
     fun replanTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(f) }) replan(f) }
     fun keepTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(f) }) keep(f) }
-    val counting = walking && failure?.kind == Broken.OFF_ROUTE && offWalk.sure && autoRan != offWalk.since && !replanning
-    var countdown by remember(trip) { mutableIntStateOf(0) }
-    val shownFailure by rememberUpdatedState(failure)
-    LaunchedEffect(if (counting) offWalk.since else 0L) {
-        if (!counting) { countdown = 0; return@LaunchedEffect }
-        for (s in AUTO_REPLAN_S downTo 1) { countdown = s; kotlinx.coroutines.delay(1000) }
-        countdown = 0
-        shownFailure?.takeIf { it.kind == Broken.OFF_ROUTE }?.let(::replanTapped)
-    }
 
     val liquid = rememberLiquidBackdrop()
     val bottomInset = LocalBottomBarInset.current
@@ -441,7 +466,7 @@ fun NavigateScreen(
                 }
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
                 if (failure != null) KavPart("nav.problem", failure.key, { failureArgs(failure) }) {
-                    ReplanCard(failure, r, now, replanning, replanFailed, countdown.takeIf { counting && it > 0 },
+                    ReplanCard(failure, r, now, replanning, replanFailed,
                         onReplan = { replanTapped(failure) }, onKeep = { keepTapped(failure) })
                 }
             }
@@ -521,14 +546,10 @@ fun NavigateScreen(
     }
 }
 
-// A new route by itself this long after Kav is sure the rider walked off the route.
-private const val AUTO_REPLAN_S = 5
-
-// The plan stopped working: why, and a new route from here in one tap; the close button keeps the route. countdown: the
-// seconds left before the new route comes by itself, with Cancel beside it, which keeps the route.
+// The plan stopped working: why, and a new route from here in one tap; the close button keeps the route.
 @Composable
 private fun ReplanCard(
-    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean, countdown: Int?,
+    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean,
     onReplan: () -> Unit, onKeep: () -> Unit,
 ) {
     Column(Modifier.padding(horizontal = K.gap3).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
@@ -548,18 +569,8 @@ private fun ReplanCard(
                     .clickable(enabled = !planning, role = Role.Button, onClick = onReplan).padding(horizontal = K.gap3),
                 horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(when {
-                    planning -> T("Finding a new route…", "מחפשים מסלול חדש…")
-                    countdown != null -> T("Finding a new route in $countdown", "מחפשים מסלול חדש בעוד $countdown")
-                    else -> T("New route from here", "מסלול חדש מכאן")
-                }, style = K.type.bodyStrong.tabular, color = K.onAccent, maxLines = 1)
-            }
-            if (countdown != null) Row(
-                Modifier.heightIn(min = 48.dp).clip(K.capsule).background(K.fill)
-                    .clickable(role = Role.Button, onClick = onKeep).padding(horizontal = K.gap4),
-                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(T("Cancel", "ביטול"), style = K.type.bodyStrong, color = K.text)
+                Text(if (planning) T("Finding a new route…", "מחפשים מסלול חדש…") else T("New route from here", "מסלול חדש מכאן"),
+                    style = K.type.bodyStrong.tabular, color = K.onAccent, maxLines = 1)
             }
         }
         if (failed) Text(T("Couldn't find a new route. Try again.", "לא נמצא מסלול חדש. נסו שוב."),
