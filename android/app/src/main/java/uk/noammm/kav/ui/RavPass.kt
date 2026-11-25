@@ -583,7 +583,7 @@ private fun PayAppRow() {
         Text(T("Payment app", "אפליקציית התשלום"), style = K.type.title, color = K.text)
         Spacer(Modifier.height(K.gap2))
         Text(T("Pay buttons open the app you choose. Both work the same in Kav.",
-            "כפתורי התשלום פותחים את האפליקציה שתבחרו. שתיהן עובדות אותו דבר ב-Kav."),
+            "כפתורי התשלום פותחים את האפליקציה שתבחרו. שתיהן עובדות באותה צורה ב-Kav."),
             style = K.type.body, color = K.textSecondary)
         Spacer(Modifier.height(K.gap4))
         for (app in PayApp.entries) {

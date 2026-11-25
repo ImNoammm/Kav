@@ -439,10 +439,10 @@ internal fun OnTheWayChoices(
     val ctx = LocalContext.current
     InfoHeader(T("Alerts", "התראות"), if (setup) T(
         "Spoken over what's playing, in Kav's language. On silent, only into headphones.",
-        "נאמרות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
+        "מושמעות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
     ) else T(
         "Spoken over what's playing, in Kav's language; on silent, only into headphones. Small window: the current step when you leave Kav.",
-        "נאמרות מעל מה שמתנגן, בשפה של Kav; במצב שקט, רק באוזניות. חלון קטן: הצעד הנוכחי כשיוצאים מ-Kav.",
+        "מושמעות מעל מה שמתנגן, בשפה של Kav; במצב שקט, רק באוזניות. חלון קטן: הצעד הנוכחי כשיוצאים מ-Kav.",
     ))
     var turns by remember { mutableStateOf(Prefs.spokenTurns(ctx)) }
     ListGroup {
@@ -512,7 +512,7 @@ internal fun UpdatePromptsRow() {
     ToggleRow(
         T("New version alerts", "התראה על גרסה חדשה"), Shown.updatePrompts,
         { Icon(Icons.Rounded.NewReleases, null, tint = toggleInk(Shown.updatePrompts), modifier = Modifier.size(22.dp)) },
-        info = T("A popup, and a dot on Settings, when a new version is out.", "חלון, ונקודה על ההגדרות, כשיוצאת גרסה חדשה."),
+        info = T("A popup, and a dot on the Settings button, when a new version is out.", "חלון קופץ ונקודה על כפתור ההגדרות כשיוצאת גרסה חדשה."),
     ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
 }
 
@@ -846,23 +846,23 @@ private fun RouteSettings() {
 // What each choice does, under its own "i", in a rider's words; the rules themselves are the server's (live.py
 // rider_cost(), kept()).
 internal fun paceInfo() = T(
-    "Slow is 1 meter a second, usual 1.33 (4.8 km/h), fast 1.6.",
-    "איטי הוא מטר בשנייה, רגיל 1.33 (4.8 קמ״ש), מהיר 1.6.",
+    "Slow: 1 meter a second. Usual: 1.33 (4.8 km/h). Fast: 1.6.",
+    "איטי: מטר בשנייה. רגיל: 1.33 (4.8 קמ״ש). מהיר: 1.6.",
 )
 
 internal fun walkingInfo() = T(
-    "Less prefers routes with less walking, even if they take a little longer. I don't mind walks more to save time or a change.",
-    "פחות מעדיף מסלולים עם פחות הליכה, גם אם הם קצת ארוכים יותר. לא אכפת לי הולך יותר כדי לחסוך זמן או החלפה.",
+    "Less: routes with less walking, even if a little longer. I don't mind: more walking to save time or a change.",
+    "פחות: מסלולים עם פחות הליכה, גם אם הם קצת ארוכים יותר. לא אכפת לי: יותר הליכה כדי לחסוך זמן או החלפה.",
 )
 
 internal fun changesInfo() = T(
-    "Fewer prefers routes with fewer changes, even if they arrive a few minutes later.",
-    "פחות מעדיף מסלולים עם פחות החלפות, גם אם הם מגיעים כמה דקות מאוחר יותר.",
+    "Fewer: routes with fewer changes, even if they arrive a few minutes later.",
+    "פחות: מסלולים עם פחות החלפות, גם אם הם מגיעים כמה דקות מאוחר יותר.",
 )
 
 internal fun spareInfo() = T(
-    "Tight plans no spare time: you leave later and miss more buses. Relaxed adds a minute and a half before a bus and three at a change.",
-    "צפוף מתכנן בלי זמן מיותר: יוצאים מאוחר יותר ומפספסים יותר אוטובוסים. נינוח מוסיף דקה וחצי לפני אוטובוס ושלוש דקות בהחלפה.",
+    "Tight: no spare time, so you leave later and miss more buses. Relaxed: a minute and a half before a bus and three at a change.",
+    "צפוף: בלי זמן מיותר, כך שיוצאים מאוחר יותר ומפספסים יותר אוטובוסים. נינוח: דקה וחצי לפני אוטובוס ושלוש דקות בהחלפה.",
 )
 
 @Composable
@@ -1005,7 +1005,7 @@ private fun AlertsSource() {
             when (s) {
                 Source.GOOGLE -> T(
                     "Asked from your phone for each ride of a trip you open. Google sees the stops you board and leave at, and your IP address.",
-                    "נשאלת מהטלפון על כל קו במסלול שפתחתם. Google רואה את התחנות שבהן אתם עולים ויורדים, ואת כתובת ה-IP שלכם.",
+                    "Google נשאלת מהטלפון על כל קו במסלול שפתחתם. היא רואה את התחנות שבהן אתם עולים ויורדים, ואת כתובת ה-IP שלכם.",
                 )
                 Source.KAV -> T(
                     "Kav's server sends the whole country's list, so it sees your IP address but not your trip.",
@@ -1045,7 +1045,7 @@ internal fun StopPhotoChoice() {
         row {
             ToggleRow(T("Photos", "תמונות"), StopPhotos.enabled, { PhotoGlyph(toggleInk(StopPhotos.enabled)) }, info = T(
                 "A stop's is Street View facing it; a place's is from Google Maps. Google sees the stop or place, and your IP address.",
-                "של תחנה: Street View שפונה אליה; של מקום: מ-Google Maps. Google רואה את התחנה או המקום, ואת כתובת ה-IP שלכם.",
+                "תמונה של תחנה היא Street View שפונה אליה, ושל מקום מגיעה מ-Google Maps. Google רואה את התחנה או המקום, ואת כתובת ה-IP שלכם.",
             )) { on ->
                 StopPhotos.enabled = on; Prefs.setStopPhotos(ctx, on)
             }

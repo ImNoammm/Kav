@@ -492,7 +492,7 @@ fun PreciseLocationNudge() {
             Text(
                 T(
                     "Turn on Use precise location, or trips may start from the wrong place.",
-                    "הפעילו את השתמשו במיקום מדויק, אחרת מסלולים עלולים להתחיל מהמקום הלא נכון.",
+                    "הפעילו את האפשרות מיקום מדויק, אחרת מסלולים עלולים להתחיל ממקום לא נכון.",
                 ),
                 style = K.type.subhead, modifier = Modifier.padding(top = 2.dp),
             )

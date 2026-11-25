@@ -104,7 +104,7 @@ internal fun RavPassUpdatedLine(home: Boolean) {
     }
     if (!unchecked || home && !RavPassVersion.missed(TicketStore.kept, tapped, System.currentTimeMillis())) return
     val text = T("${PayApp.current.label()} has updated: tickets may not show until Kav updates too.",
-        "${PayApp.current.he} התעדכנה: ייתכן שכרטיסים לא יוצגו עד ש-Kav תתעדכן גם.")
+        "${PayApp.current.he} התעדכנה: ייתכן שכרטיסים לא יוצגו עד שגם Kav תתעדכן.")
     if (home) {
         Separator()
         Text(text, style = K.type.subhead, modifier = Modifier.padding(horizontal = K.gap4, vertical = K.gap3))
