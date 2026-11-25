@@ -22,9 +22,10 @@ extensions, each with its own switch. A tap on an extension opens its page.
 |---|---|---|
 | Extensions | תוספים | the entry in Kav's Settings, and the screen's title |
 | Add a source | הוספת מקור | the plus at the top, and the sheet it opens: "A GitHub repository whose releases carry a Kav bundle." |
-| Sources | מקורות | a row on the Extensions screen: every source, with Check now and Add a bundle file |
+| Sources | מקורות | a row on the Extensions screen: every source; its header has Check now (a refresh icon) and the plus |
 | Check now | בדיקה עכשיו | asks GitHub for every source's latest release now |
-| Add a bundle file | הוספת קובץ חבילה | adds a `.kavb` from the phone as a source of its own |
+| Add a bundle file | הוספת קובץ חבילה | under the plus: adds a `.kavb` from the phone as a source of its own |
+| From the community list | מרשימת הקהילה | under the plus: up to five sources from kavapp.link/community not added yet |
 | Options | אפשרויות | on the Extensions screen: the security block list, safe mode, About extensions |
 | Security block list | רשימת חסימה אבטחתית | the switch there, on by default |
 | Safe mode | מצב בטוח | the switch there: Kav starts with every extension off |
@@ -49,7 +50,11 @@ extensions, each with its own switch. A tap on an extension opens its page.
 | Show its tags on routes | הצגת התגיות שלו על מסלולים | `results.annotate` |
 | Required | חובה | under a walking model, a transfer rule or a filter that is on: "Without it, a search shows no routes" |
 | Use it as my Home screen | שימוש בו כמסך הבית שלי | `home.body`, with "Kav's Home shows if it fails" |
-| Use its look | שימוש במראה שלו | `theme`, with "Settings keep Kav's own look" |
+| Use its look | שימוש במראה שלו | an extension's `theme` contribution, with "Settings keep Kav's own look" |
+| Use this theme | שימוש בערכת הנושא | a theme (`"kind": "theme"`): its switch at the top of its page. Elsewhere each theme has Apply (החלה), and a tick once applied |
+| Theme, Themes | ערכת נושא, ערכות נושא | what Kav calls a theme package everywhere |
+| Kav's own look | המראה של Kav | the "Kav" row of the themes list, which takes every theme off |
+| Runs its own code, with full access | מריצה קוד משלה, עם גישה מלאה | under a theme's name, when it has `native` |
 
 A page marked `"tab": true` gets a switch named after the page: "Show &lt;page title> as a tab" ("הצגת &lt;page title>
 כלשונית"). Every page that opens on its own gets a row "Open &lt;page title>" ("פתיחת &lt;page title>"). A stop board

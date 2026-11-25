@@ -21,7 +21,7 @@ it from Kav's own components (`kav.ui()`), or hand Kav a block tree and let it d
 | Have screens of your own | `page.provide` and `pages` | `kav.screen(...)` |
 | Offer a Home screen of your own | `home.body` and a page called `home` | `kav.home(...)` |
 | Let the rider set things | `settings` | `kav.settings()`, `kav.onSettings(...)` |
-| Change Kav's colors | `theme` | nothing |
+| Change how Kav looks | a theme (`"kind": "theme"`), or a `theme` contribution | nothing |
 | Put a widget on the phone's home screen (API 5) | `widget.provide` and `widgets` | `kav.widget(...)` |
 
 ## Cards on Kav's screens
@@ -211,29 +211,60 @@ is missing or of the wrong kind, `sections` or `blocks` isn't a list, an action 
 
 ## Themes
 
-A theme is colors in the manifest. Kav reads them; your code does nothing for it. The extension still needs
-`"native"` like any other, even if its `start` does nothing.
+A theme is a package that says `"kind": "theme"` in its manifest. Kav calls it a theme everywhere, lists it apart
+from extensions (Settings › Look and language, once a theme is installed, and Settings › Extensions › Themes), and
+applies one at a time: applying one takes any other off, and "Kav" goes back to Kav's own look. Sources host themes
+as they host extensions, in the same bundle or a bundle of their own, and the community list takes them the same way.
 
 ```json
-"contributions": [{ "id": "look", "capability": "theme" }],
-"theme": { "looks": { "dark": { "bg": "#0B0F14", "realtime": "#3DDC84" }, "light": { "...": "..." } } }
+{
+  "format": 1, "kind": "theme", "minKav": 47, "api": 5,
+  "name": "night-sea", "displayName": "Night sea", "version": "1.0.0", "release": 1,
+  "description": "Deep blue pages and a sea-green accent.",
+  "contributions": [],
+  "theme": {
+    "looks": { "dark": { "bg": "#0B1A2A", "accent": "#7FD1C7" }, "light": { "accent": "#2E7D72" } },
+    "lineBadges": "strip",
+    "corners": { "card": 16, "sheet": 24, "tile": 10, "badge": 6 }
+  }
+}
 ```
 
-- `looks` lists any of `dark`, `oled` and `light`. A look you leave out stays Kav's.
-- Each look sets **any of the 18 roles**, as many as you like: `bg`, `surface`, `surfaceRaised`, `fill`,
-  `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`,
-  `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime`. A role you leave out stays Kav's.
-- A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, and fields Kav
-  doesn't take yet (shapes, type, a map style) are left out. The rider's own accent color stays.
-- Only a `theme` contribution whose `"theme"` isn't an object is refused.
-- The rider chooses it ("Use its look").
+A theme of colors only needs no code: leave out `"native"`, and `kavx bundle` packs its folder as it is. A theme may
+also bring anything an extension can: `native` code, `settings`, `pages`, slots, screen parts, actions and hooks. It is
+still shown as a theme. Its page in Settings says what it can do, as an extension's does, and one with code says up
+front that it runs its own code, with full access. Its `settings` show on its page while it is applied; what it does
+without a setting simply happens while it is applied, and stops when another theme or Kav's own look is.
+
+| `theme` field | What Kav takes | Leave it out and |
+|---|---|---|
+| `looks` | any of `dark`, `oled` and `light`, each setting any of the 18 color roles and `accent` | that look, or that role, stays Kav's |
+| the roles | `bg`, `surface`, `surfaceRaised`, `fill`, `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`, `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime` | Kav's own color |
+| `accent` (in a look) | buttons, chosen chips, switches and links | the rider's own color |
+| `lineBadges` | bus line badges: `"kav"` (Kav's plate in the operator's color) or `"strip"` (a gray plate over a strip of it) | the rider's own choice |
+| `corners` | whole dp: `card` 0 to 32 (Kav's 22), `sheet` 0 to 40 (28), `tile` 0 to 24 (12), `badge` 0 to 16 (8) | Kav's own corner |
+
+A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, a badge style it
+doesn't know and a corner out of its range are left out. Only a `"theme"` that isn't an object is refused.
+
+Not themeable: type, icons, spacing, Kav's own words, and the map type. The map stays the rider's choice, since
+every map but Kav's own loads from someone else while the rider looks; a theme with code can still draw Kav's stop
+marks its own way with `kav.map()` ([native.md](/docs/extensions/native)).
 
 **Readability is yours to check.** Kav refuses nothing for it. `kavx check` warns when `text` or `textSecondary` is
 below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
 theme sets both colors. Look at it in Kav, in each look you set, before you publish.
 
-Kav keeps its own colors on its protected screens: Settings (with extension management, sources and safe mode), its
-notices, the report form and navigation.
+Kav keeps its own look on its protected screens: Settings (with extension management, sources, safe mode and the
+themes list itself), its notices, the report form and navigation. So a theme shows once the rider leaves Settings.
+
+An extension (no `kind`) may still bring a look with a `theme` contribution and the same `"theme"` field, as before.
+The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the
+applied theme off.
+
+Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors only, and
+[native/quiet-home](../samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
+hides Home's suggestions card.
 
 ## Home screen widgets
 

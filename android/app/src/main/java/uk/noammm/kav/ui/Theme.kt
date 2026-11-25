@@ -74,18 +74,25 @@ object K {
     val badgePlate get() = surface3
     val co2Pill get() = surface2
 
-    val rCard = 22.dp
+    // The corners: Kav's own, or a theme's while one sets them (applyTheme).
+    private var corners by mutableStateOf<uk.noammm.kav.ext.Looks.Corners?>(null)
+    val rCard get() = corners?.get("card")?.dp ?: 22.dp
     // A sheet's top corners, and a full-screen dialog's.
-    val rSheet = 28.dp
+    val rSheet get() = corners?.get("sheet")?.dp ?: 28.dp
     // Photo and glyph tiles in rows, and small blocks inside a card.
-    val rTile = 12.dp
+    val rTile get() = corners?.get("tile")?.dp ?: 12.dp
     // Line plates.
-    val rBadge = 8.dp
+    val rBadge get() = corners?.get("badge")?.dp ?: 8.dp
     // Every control: buttons, chips, segmented controls, fields, icon buttons.
     val capsule = RoundedCornerShape(percent = 50)
 
-    // Interaction and selection only: filled primary buttons, chosen chips, switches, links.
-    var accent by mutableStateOf(DefaultAccent)
+    // Interaction and selection only: filled primary buttons, chosen chips, switches, links. Setting it sets the rider's
+    // own (Settings' color); a theme's, while one sets it, is what's drawn (applyTheme).
+    private var ownAccent by mutableStateOf(DefaultAccent)
+    private var themeAccent by mutableStateOf<Color?>(null)
+    var accent: Color
+        get() = themeAccent ?: ownAccent
+        set(v) { ownAccent = v }
     // Accents are always pale, so text on them stays dark in every look.
     val onAccent get() = if (light) text else bg
     // The accent as text and links. On white a pale accent is deepened until it reads at 4.5:1.
@@ -103,17 +110,26 @@ object K {
     val gap4 = 16.dp; val gap5 = 20.dp; val gap6 = 24.dp; val gap8 = 32.dp
 
     val type = KType
-    // Bus line badges in Kav's look or the strip, as chosen in Settings.
-    var lineBadgeAppearance by mutableStateOf(LineBadgeAppearance.KAV)
+    // Bus line badges in Kav's look or the strip, as chosen in Settings; a theme's choice, while one makes it, is what's
+    // drawn (applyTheme).
+    private var ownBadges by mutableStateOf(LineBadgeAppearance.KAV)
+    private var themeBadges by mutableStateOf<LineBadgeAppearance?>(null)
+    var lineBadgeAppearance: LineBadgeAppearance
+        get() = themeBadges ?: ownBadges
+        set(v) { ownBadges = v }
 
     // A change of look for KavTheme to fade to (ThemeFade): Settings' look, glass and colour presets are made through it.
     var restyling by mutableStateOf<Restyle?>(null)
     fun restyle(change: () -> Unit) { restyling = Restyle(change) }
 
     // Every colour has to be set for every look, or a switch leaves strays from the last one (Palette has them all).
-    // A theme the rider chose gives the colours, except on Kav's protected surfaces (ExtLook).
+    // A theme the rider chose gives the colours, the accent, the line badges and the corners it sets, except on Kav's
+    // protected surfaces (ExtLook).
     fun applyTheme(chosen: Look) {
         look = chosen
+        themeAccent = ExtLook.accentFor(chosen)
+        themeBadges = ExtLook.badges()
+        corners = ExtLook.corners()
         val p = ExtLook.paletteFor(chosen)
         bg = p.bg; surface = p.surface; surfaceRaised = p.surfaceRaised
         fill = p.fill; fillStrong = p.fillStrong; separator = p.separator

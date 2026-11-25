@@ -38,7 +38,7 @@ object ExtUses {
             if (PageSpecs.PAGE in caps) line(PageSpecs.PAGE, What.SCREENS)
             if (screens?.tabs?.isNotEmpty() == true) line("tab", What.TAB)
             if (PageSpecs.HOME in caps) line(PageSpecs.HOME, What.HOME)
-            if (Looks.CAPABILITY in caps) line(Looks.CAPABILITY, What.LOOK)
+            if (Looks.declares(m)) line(Looks.CAPABILITY, What.LOOK)
             // What it says it adds that Kav can't see in its code (Manifest.adds): its maps, notifications, location, settings.
             for (a in m.adds) line(a, What.ADDS, listOf(a))
             // Its cards on Kav's own screens (ext/Slots.kt), on from when it's switched on.

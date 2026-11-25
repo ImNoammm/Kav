@@ -655,7 +655,7 @@ Try it in Kav itself, on a phone or an emulator with Kav 5 or newer ([testing.md
 
 1. `kavx bundle <folder>`.
 2. Copy the `.kavb` to the device (`adb push hello-kotlin.kavb /sdcard/Download/`).
-3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. The sheet lists your extension and what
+3. In Kav: Settings › Extensions › Sources › + › Add a bundle file, and pick it. The sheet lists your extension and what
    it can do, first "Runs its own Android code: full access". Add.
 4. Switch your extension on in Settings › Extensions. It starts at once. Your Home card shows on Home, with your
    extension's name as its title; your screens open from your extension's page. logcat says
@@ -1621,7 +1621,7 @@ it from Kav's own components (`kav.ui()`), or hand Kav a block tree and let it d
 | Have screens of your own | `page.provide` and `pages` | `kav.screen(...)` |
 | Offer a Home screen of your own | `home.body` and a page called `home` | `kav.home(...)` |
 | Let the rider set things | `settings` | `kav.settings()`, `kav.onSettings(...)` |
-| Change Kav's colors | `theme` | nothing |
+| Change how Kav looks | a theme (`"kind": "theme"`), or a `theme` contribution | nothing |
 | Put a widget on the phone's home screen (API 5) | `widget.provide` and `widgets` | `kav.widget(...)` |
 
 ### Cards on Kav's screens
@@ -1811,29 +1811,60 @@ is missing or of the wrong kind, `sections` or `blocks` isn't a list, an action 
 
 ### Themes
 
-A theme is colors in the manifest. Kav reads them; your code does nothing for it. The extension still needs
-`"native"` like any other, even if its `start` does nothing.
+A theme is a package that says `"kind": "theme"` in its manifest. Kav calls it a theme everywhere, lists it apart
+from extensions (Settings › Look and language, once a theme is installed, and Settings › Extensions › Themes), and
+applies one at a time: applying one takes any other off, and "Kav" goes back to Kav's own look. Sources host themes
+as they host extensions, in the same bundle or a bundle of their own, and the community list takes them the same way.
 
 ```json
-"contributions": [{ "id": "look", "capability": "theme" }],
-"theme": { "looks": { "dark": { "bg": "#0B0F14", "realtime": "#3DDC84" }, "light": { "...": "..." } } }
+{
+  "format": 1, "kind": "theme", "minKav": 47, "api": 5,
+  "name": "night-sea", "displayName": "Night sea", "version": "1.0.0", "release": 1,
+  "description": "Deep blue pages and a sea-green accent.",
+  "contributions": [],
+  "theme": {
+    "looks": { "dark": { "bg": "#0B1A2A", "accent": "#7FD1C7" }, "light": { "accent": "#2E7D72" } },
+    "lineBadges": "strip",
+    "corners": { "card": 16, "sheet": 24, "tile": 10, "badge": 6 }
+  }
+}
 ```
 
-- `looks` lists any of `dark`, `oled` and `light`. A look you leave out stays Kav's.
-- Each look sets **any of the 18 roles**, as many as you like: `bg`, `surface`, `surfaceRaised`, `fill`,
-  `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`,
-  `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime`. A role you leave out stays Kav's.
-- A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, and fields Kav
-  doesn't take yet (shapes, type, a map style) are left out. The rider's own accent color stays.
-- Only a `theme` contribution whose `"theme"` isn't an object is refused.
-- The rider chooses it ("Use its look").
+A theme of colors only needs no code: leave out `"native"`, and `kavx bundle` packs its folder as it is. A theme may
+also bring anything an extension can: `native` code, `settings`, `pages`, slots, screen parts, actions and hooks. It is
+still shown as a theme. Its page in Settings says what it can do, as an extension's does, and one with code says up
+front that it runs its own code, with full access. Its `settings` show on its page while it is applied; what it does
+without a setting simply happens while it is applied, and stops when another theme or Kav's own look is.
+
+| `theme` field | What Kav takes | Leave it out and |
+|---|---|---|
+| `looks` | any of `dark`, `oled` and `light`, each setting any of the 18 color roles and `accent` | that look, or that role, stays Kav's |
+| the roles | `bg`, `surface`, `surfaceRaised`, `fill`, `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`, `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime` | Kav's own color |
+| `accent` (in a look) | buttons, chosen chips, switches and links | the rider's own color |
+| `lineBadges` | bus line badges: `"kav"` (Kav's plate in the operator's color) or `"strip"` (a gray plate over a strip of it) | the rider's own choice |
+| `corners` | whole dp: `card` 0 to 32 (Kav's 22), `sheet` 0 to 40 (28), `tile` 0 to 24 (12), `badge` 0 to 16 (8) | Kav's own corner |
+
+A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, a badge style it
+doesn't know and a corner out of its range are left out. Only a `"theme"` that isn't an object is refused.
+
+Not themeable: type, icons, spacing, Kav's own words, and the map type. The map stays the rider's choice, since
+every map but Kav's own loads from someone else while the rider looks; a theme with code can still draw Kav's stop
+marks its own way with `kav.map()` ([native.md](https://kavapp.link/docs/extensions/native)).
 
 **Readability is yours to check.** Kav refuses nothing for it. `kavx check` warns when `text` or `textSecondary` is
 below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
 theme sets both colors. Look at it in Kav, in each look you set, before you publish.
 
-Kav keeps its own colors on its protected screens: Settings (with extension management, sources and safe mode), its
-notices, the report form and navigation.
+Kav keeps its own look on its protected screens: Settings (with extension management, sources, safe mode and the
+themes list itself), its notices, the report form and navigation. So a theme shows once the rider leaves Settings.
+
+An extension (no `kind`) may still bring a look with a `theme` contribution and the same `"theme"` field, as before.
+The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the
+applied theme off.
+
+Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors only, and
+[native/quiet-home](../samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
+hides Home's suggestions card.
 
 ### Home screen widgets
 
@@ -2012,19 +2043,20 @@ At most 64 KB.
 | `format` | `1`. |
 | `name` | `a` to `z`, digits, `.`, `_`, `-`; starts with a letter or digit; at most 64 characters. Its folder in the bundle has this name. With the source it is the extension's identity, so it never changes. |
 | `displayName` | What riders see. Any language and emoji. Kav cleans it ("Names" below) and cuts it at 64 characters; never refused. Defaults to `name`. |
+| `kind` | `"theme"` for a theme ([screens.md](https://kavapp.link/docs/extensions/screens#themes)): Kav calls it a theme, lists it with themes and applies one at a time. Anything else, or none, is an extension. API 5. |
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
 | `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks, with Kav 5.1 (`minKav` 47). Default 1. |
 | `description` | At most 2000 characters. |
-| `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed. See [native.md](https://kavapp.link/docs/extensions/native). |
+| `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed, except for a theme, which may bring none. See [native.md](https://kavapp.link/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |
 | `adds` | What it adds that Kav can't see in its code: any of `"map"` (draws on Kav's maps), `"notifications"`, `"location"` (uses the phone's location) and `"settings"` (a settings view of its own). Kav says these, with what the rest of the manifest shows (a Home card, a tab, route rules), on its row in Settings › Extensions and under "It can". Another word is ignored. |
 | `contributions` | What it offers. Each: `id` (same rule as `name`, unique in the manifest), `capability` (a plain word; one from the table below does something, any other installs and does nothing), and optionally its own `permissions`. An old `domain` field is ignored. |
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](https://kavapp.link/docs/extensions/screens). |
 | `widgets` | Its home screen widgets, for a `widget.provide` contribution (API 5). See [screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets). |
-| `theme` | Colors, for a `theme` contribution. See [screens.md](https://kavapp.link/docs/extensions/screens). |
+| `theme` | Its look: colors, line badges and corners, for a theme or a `theme` contribution. See [screens.md](https://kavapp.link/docs/extensions/screens#themes). |
 | `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
 | `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |
@@ -2039,7 +2071,7 @@ At most 64 KB.
 | `plan.provide` | a trip planner |
 | `board.provide` | stops, timetables and stop boards |
 | `page.provide`, `home.body` | its own pages, and the page `home` as a Home body |
-| `theme` | colors from the manifest |
+| `theme` | an extension's look from the manifest (a theme, `"kind": "theme"`, needs no contribution for it) |
 | `slot.home`, `slot.results`, `slot.trip`, `slot.stop` | a card on Home, a line under each search result, a card on a trip's page, a card on stop boards |
 | `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](https://kavapp.link/docs/extensions/native#actions) lists them) |
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](https://kavapp.link/docs/extensions/native#screen-parts)) |
@@ -2115,7 +2147,7 @@ checks keeps the one it had and shows the reason.
 
 ### A bundle file
 
-A rider can add a `.kavb` from the phone (Settings › Extensions › Sources › Add a bundle file). It becomes a source of
+A rider can add a `.kavb` from the phone (Settings › Extensions › Sources › + › Add a bundle file). It becomes a source of
 its own, named by its `bundle.json` or the file's name. A file source never updates: a new build is a different
 file, so it is a different source with different identities. Remove the old one before you add the new one.
 
@@ -2191,7 +2223,7 @@ These are all the lines there are, in the order Kav lists them. The exact words,
 | **It has its own screens** | it has a `page.provide` contribution | `page.provide` |
 | **It has a page the rider can pin as a tab** | one of its `pages` has `"tab": true` | `tab` |
 | **It can replace the Home screen** | it has a `home.body` contribution | `home.body` |
-| **It changes how Kav looks** | it has a `theme` contribution | `theme` |
+| **It changes how Kav looks** | it is a theme (`"kind": "theme"`) or has a `theme` contribution | `theme` |
 | **It draws on Kav's maps**, **sends notifications**, **uses the rider's location**, **has settings of its own** | `adds` lists `map`, `notifications`, `location` or `settings`. One line each | the word |
 | **It can add a card to the Home screen** | it has a `slot.home` contribution | `slot.home` |
 | **It can add a line to trip results** | it has a `slot.results` contribution | `slot.results` |
@@ -2284,9 +2316,10 @@ extensions, each with its own switch. A tap on an extension opens its page.
 |---|---|---|
 | Extensions | תוספים | the entry in Kav's Settings, and the screen's title |
 | Add a source | הוספת מקור | the plus at the top, and the sheet it opens: "A GitHub repository whose releases carry a Kav bundle." |
-| Sources | מקורות | a row on the Extensions screen: every source, with Check now and Add a bundle file |
+| Sources | מקורות | a row on the Extensions screen: every source; its header has Check now (a refresh icon) and the plus |
 | Check now | בדיקה עכשיו | asks GitHub for every source's latest release now |
-| Add a bundle file | הוספת קובץ חבילה | adds a `.kavb` from the phone as a source of its own |
+| Add a bundle file | הוספת קובץ חבילה | under the plus: adds a `.kavb` from the phone as a source of its own |
+| From the community list | מרשימת הקהילה | under the plus: up to five sources from kavapp.link/community not added yet |
 | Options | אפשרויות | on the Extensions screen: the security block list, safe mode, About extensions |
 | Security block list | רשימת חסימה אבטחתית | the switch there, on by default |
 | Safe mode | מצב בטוח | the switch there: Kav starts with every extension off |
@@ -2311,7 +2344,11 @@ extensions, each with its own switch. A tap on an extension opens its page.
 | Show its tags on routes | הצגת התגיות שלו על מסלולים | `results.annotate` |
 | Required | חובה | under a walking model, a transfer rule or a filter that is on: "Without it, a search shows no routes" |
 | Use it as my Home screen | שימוש בו כמסך הבית שלי | `home.body`, with "Kav's Home shows if it fails" |
-| Use its look | שימוש במראה שלו | `theme`, with "Settings keep Kav's own look" |
+| Use its look | שימוש במראה שלו | an extension's `theme` contribution, with "Settings keep Kav's own look" |
+| Use this theme | שימוש בערכת הנושא | a theme (`"kind": "theme"`): its switch at the top of its page. Elsewhere each theme has Apply (החלה), and a tick once applied |
+| Theme, Themes | ערכת נושא, ערכות נושא | what Kav calls a theme package everywhere |
+| Kav's own look | המראה של Kav | the "Kav" row of the themes list, which takes every theme off |
+| Runs its own code, with full access | מריצה קוד משלה, עם גישה מלאה | under a theme's name, when it has `native` |
 
 A page marked `"tab": true` gets a switch named after the page: "Show <page title> as a tab" ("הצגת <page title>
 כלשונית"). Every page that opens on its own gets a row "Open <page title>" ("פתיחת <page title>"). A stop board
@@ -2444,7 +2481,7 @@ On a phone or an emulator with Kav 5 or newer:
 
 1. `kavx bundle <folder>` writes a `.kavb`.
 2. Copy it to the device: `adb push my-extension.kavb /sdcard/Download/`.
-3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. Add.
+3. In Kav: Settings › Extensions › Sources › + › Add a bundle file, and pick it. Add.
 4. Switch the extension on. It runs at once.
 5. Watch `adb logcat -s KavNative KavNativeGuard KavExtHooks KavExt`, and the "Log" row on its page
    ([native.md](https://kavapp.link/docs/extensions/native), "Seeing logs").
@@ -2593,7 +2630,7 @@ latest release's bundle.
 
 ```
 kavx check extensions/my-extension     builds one extension and checks it the way Kav does
-kavx bundle . --out my.kavb            builds the bundle; add it in Kav with Settings, Extensions, Sources, Add a bundle file
+kavx bundle . --out my.kavb            builds the bundle; add it in Kav with Settings, Extensions, Sources, +, Add a bundle file
 ```
 
 #### Releasing

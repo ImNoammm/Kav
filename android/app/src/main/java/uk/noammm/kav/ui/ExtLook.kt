@@ -89,6 +89,12 @@ object ExtLook {
     // A protected surface is on the screen: extension pages under it pause.
     val protectedNow get() = holds > 0
 
+    // The theme's accent for a look, its line badges and its corners, or null for the rider's own (Kav's own corners),
+    // as for the colours.
+    fun accentFor(look: Look): Color? = theme?.colours(look.name.lowercase(), protectedShown = holds > 0)?.get("accent")?.let(::Color)
+    fun badges(): LineBadgeAppearance? = theme?.takeIf { holds == 0 }?.badges?.let { if (it == "strip") LineBadgeAppearance.STRIP else LineBadgeAppearance.KAV }
+    fun corners(): Looks.Corners? = theme?.takeIf { holds == 0 }?.corners
+
     // The theme's colours for a look (Looks.Theme.colours decides), or Kav's own.
     fun paletteFor(look: Look): Palette {
         val key = look.name.lowercase()

@@ -10,16 +10,17 @@ import java.io.File
 // draws in its own look. None of them ever turns into another extension's.
 //
 // A choice keeps what Kav needs to show it at once as it starts, before any package is read: the extension's name, the
-// tab's title, and the theme's colours as they resolved when it was chosen (Looks), with the package digest they came
+// tab's title, and the theme's look as it resolved when it was chosen (Looks), with the package digest it came
 // from. The background check after start (ui/ExtLook.kt) confirms each against the registry, or takes it back.
 object Screens {
     private const val FORMAT = 1
 
     class Home(val identity: String, val name: String)
     class Tab(val identity: String, val page: String, val title: Pair<String, String>, val name: String)
-    class Theme(val identity: String, val sha256: String, val name: String, val looks: Map<String, Looks.Colours>) {
+    class Theme(val identity: String, val sha256: String, val name: String, val looks: Map<String, Looks.Colours>,
+        val badges: String? = null, val corners: Looks.Corners? = null) {
         // The one immutable value Kav draws with.
-        fun resolved() = Looks.Theme(identity, name, looks)
+        fun resolved() = Looks.Theme(identity, name, looks, badges, corners)
     }
 
     @Volatile var home: Home? = null
@@ -42,7 +43,11 @@ object Screens {
                 val t = it.getJSONObject("title")
                 Tab(it.getString("identity"), it.getString("page"), t.getString("en") to t.optString("he"), it.getString("name"))
             }
-            theme = o.optJSONObject("theme")?.let { Theme(it.getString("identity"), it.getString("sha256"), it.getString("name"), Looks.read(it.getJSONObject("theme"))) }
+            theme = o.optJSONObject("theme")?.let {
+                val t = it.getJSONObject("theme")
+                val r = Looks.resolve(t, it.getString("identity"), it.getString("name"))
+                Theme(it.getString("identity"), it.getString("sha256"), it.getString("name"), Looks.read(t), r?.badges, r?.corners)
+            }
         }
     }
 
@@ -70,7 +75,7 @@ object Screens {
             .put("title", JSONObject().put("en", it.title.first).put("he", it.title.second))) }
         theme?.let {
             o.put("theme", JSONObject().put("identity", it.identity).put("sha256", it.sha256).put("name", it.name)
-                .put("theme", JSONObject().put("looks", it.resolved().json())))
+                .put("theme", it.resolved().json()))
         }
         Files.replace(f, o.toString().toByteArray())
     }
@@ -82,5 +87,5 @@ object Screens {
         ?.let { Tab(i.identity, it.id, it.title, i.displayName) }
 
     fun themeOf(i: Registry.Installed): Theme? = runCatching { Looks.of(i.manifest, i.identity) }.getOrNull()
-        ?.let { Theme(i.identity, i.sha256, i.displayName, it.looks) }
+        ?.let { Theme(i.identity, i.sha256, i.displayName, it.looks, it.badges, it.corners) }
 }

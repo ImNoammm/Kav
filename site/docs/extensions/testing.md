@@ -58,7 +58,7 @@ On a phone or an emulator with Kav 5 or newer:
 
 1. `kavx bundle <folder>` writes a `.kavb`.
 2. Copy it to the device: `adb push my-extension.kavb /sdcard/Download/`.
-3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. Add.
+3. In Kav: Settings › Extensions › Sources › + › Add a bundle file, and pick it. Add.
 4. Switch the extension on. It runs at once.
 5. Watch `adb logcat -s KavNative KavNativeGuard KavExtHooks KavExt`, and the "Log" row on its page
    ([native.md](/docs/extensions/native), "Seeing logs").

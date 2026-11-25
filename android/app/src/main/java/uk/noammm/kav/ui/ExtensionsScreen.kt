@@ -18,6 +18,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -63,6 +65,8 @@ import uk.noammm.kav.ext.Registry
 import uk.noammm.kav.ext.SafeMode
 import uk.noammm.kav.ext.Selections
 import uk.noammm.kav.ext.Slots
+import uk.noammm.kav.ext.Themes
+import uk.noammm.kav.ext.Screens
 import uk.noammm.kav.ext.Bundle
 import uk.noammm.kav.ext.TrustError
 
@@ -84,6 +88,8 @@ internal object ExtUi {
     var wanted by mutableStateOf<String?>(null)
     // The source cards open on the main page, by key, while Kav runs (null: the first one).
     var opened by mutableStateOf<String?>(null)
+    // The Settings page a step was opened from (Look and language's themes): Back from that step returns there.
+    var returnTo by mutableStateOf<String?>(null)
     fun changed() { tick++ }
 }
 
@@ -112,6 +118,8 @@ object PendingExtension {
 // Settings asked to open on a part (the block-list notice opens Extensions).
 internal object SettingsNav {
     var wanted by mutableStateOf<String?>(null)
+    // The page asked for is a step back (Back from a step opened from it): it slides in as Back does.
+    var backward = false
 }
 
 private suspend fun <T> io(block: () -> T): Result<T> = withContext(Dispatchers.IO) { runCatching(block) }
@@ -232,7 +240,11 @@ private fun ExtensionsMain() {
     var path by rememberSaveable { mutableStateOf("") }
     val steps = path.split('\n').filter { it.isNotEmpty() }
     fun open(step: String) { path = (steps + step).joinToString("\n") }
-    fun back() { path = steps.dropLast(1).joinToString("\n") }
+    fun back() {
+        val from = ExtUi.returnTo
+        if (steps.size == 1 && from != null) { ExtUi.returnTo = null; SettingsNav.backward = true; SettingsNav.wanted = from }
+        else path = steps.dropLast(1).joinToString("\n")
+    }
     androidx.activity.compose.BackHandler(steps.isNotEmpty()) { back() }
     // A step asked from outside (the crash popup's Open): taken once.
     ExtUi.wanted?.let { w -> LaunchedEffect(w) { path = w; ExtUi.wanted = null } }
@@ -250,6 +262,7 @@ private fun ExtensionsMain() {
     val title = when {
         top == null -> null
         top == "sources" -> T("Sources", "מקורות")
+        top == "themes" -> T("Themes", "ערכות נושא")
         top.startsWith("s:") -> hub.source(top.removePrefix("s:"))?.name
         else -> hub.registry.get(top.removePrefix("e:"))?.displayName
     }
@@ -266,7 +279,7 @@ private fun ExtensionsMain() {
     val count = hub.registry.installed.size
     LaunchedEffect(count) { io { uk.noammm.kav.ext.SafeStart.sync(ctx.applicationContext, count > 0) } }
     // Leaving Extensions closes the source cards the rider opened: the next visit starts as the first did.
-    DisposableEffect(Unit) { onDispose { ExtUi.title = null; ExtUi.headerAdd = null; ExtUi.headerCheck = null; ExtUi.opened = null } }
+    DisposableEffect(Unit) { onDispose { ExtUi.title = null; ExtUi.headerAdd = null; ExtUi.headerCheck = null; ExtUi.opened = null; ExtUi.returnTo = null } }
     androidx.compose.animation.AnimatedContent(
         path,
         transitionSpec = { if (depth(targetState) >= depth(initialState)) forward() else backward() },
@@ -276,6 +289,7 @@ private fun ExtensionsMain() {
         when {
             step == null -> MainExtensions(hub, ::open) { adding = true }
             step == "sources" -> SourcesScreen(hub, ::open)
+            step == "themes" -> Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3).padding(top = K.gap3)) { ThemeList(hub) { open("e:$it") } }
             step.startsWith("s:") -> hub.source(step.removePrefix("s:"))
                 ?.let { SourcePage(hub, it, ::open, ::back) } ?: LaunchedEffect(step) { back() }
             else -> hub.registry.get(step.removePrefix("e:"))
@@ -366,6 +380,78 @@ private fun switchOn(ctx: Context, hub: Hub, id: String, v: Boolean) {
     ExtUi.changed()
 }
 
+// The look Kav draws in: a theme applied (identity), every other theme switched off (Themes), or with null Kav's own,
+// every theme off and no extension's look chosen either. One look at a time, as Screens keeps it.
+internal fun applyLook(ctx: Context, hub: Hub, identity: String?) {
+    for (o in Themes.toSwitchOff(hub.registry.installed, identity)) hub.setEnabled(o, false)
+    Screens.chooseTheme(ExtApp.dir(ctx), identity?.let(hub.registry::get)?.let(Screens::themeOf))
+    if (identity != null) switchOn(ctx, hub, identity, true)
+    else {
+        ExtShown.publish()
+        val app = ctx.applicationContext
+        Thread({ runCatching { ExtShown.refresh(app) } }, "kav-ext-screens").start()
+        ExtUi.changed()
+    }
+}
+
+// The applied theme's name, or Kav's own look.
+private fun appliedName(hub: Hub): String = Themes.applied(hub.registry.installed)?.takeIf { hub.active(it) }?.displayName ?: T("Kav's own look", "המראה של Kav")
+
+// A theme in a list: its mark, name and a line, Apply at its end (a tick once applied); the row opens its page.
+@Composable
+private fun ThemeRow(hub: Hub, i: Registry.Installed, line: String, onOpen: () -> Unit) {
+    val ctx = LocalContext.current
+    val applied = hub.active(i) && Themes.applied(hub.registry.installed)?.identity == i.identity
+    ThemeChoiceRow(i.displayName, line, { ExtTile(hub.registry.iconFile(i.identity), null, listOf(uk.noammm.kav.ext.Looks.CAPABILITY), 40.dp) },
+        applied, hub.blocked(i) == null && i.problem.isEmpty(), { applyLook(ctx, hub, i.identity) }, onOpen)
+}
+
+@Composable
+private fun ThemeChoiceRow(name: String, line: String?, tile: @Composable () -> Unit, applied: Boolean, can: Boolean, onApply: () -> Unit, onOpen: (() -> Unit)?) {
+    ListRow(name, subtitle = line, subtitleMaxLines = 2, leading = tile, onClick = onOpen ?: { if (!applied) onApply() }, chevron = false, trailing = {
+        androidx.compose.animation.AnimatedContent(applied,
+            transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+            label = "applied") { on ->
+            if (on) Box(Modifier.heightIn(min = 36.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Check, T("Applied", "בשימוש"), tint = K.accentInk, modifier = Modifier.padding(horizontal = K.gap3).size(22.dp))
+            }
+            else if (can) SmallButton(T("Apply", "החלה"), false, onApply)
+        }
+    })
+}
+
+// Every installed theme, Kav's own look first: one applied at a time, Apply on each, a theme's page a tap away (onOpen).
+@Composable
+internal fun ThemeList(hub: Hub, onOpen: (String) -> Unit) {
+    ExtUi.tick
+    val ctx = LocalContext.current
+    val themes = hub.registry.installed.filter { it.manifest.isTheme }
+    val kavOwn = Themes.applied(hub.registry.installed)?.takeIf { hub.active(it) } == null && Screens.theme == null
+    ListGroup(inset = K.gap4 + 40.dp + K.gap3) {
+        row {
+            ThemeChoiceRow("Kav", T("Kav's own look", "המראה של Kav"), { SourceAvatar(null, "Kav", 40.dp, kav = true) },
+                kavOwn, true, { applyLook(ctx, hub, null) }, null)
+        }
+        for (i in themes) row { key(i.identity) { ThemeRow(hub, i, troubleOf(hub, i) ?: fromWords(hub, i)) { onOpen(i.identity) } } }
+    }
+}
+
+// Look and language's themes, once one is installed: the same list, and a theme's page opens in Extensions with Back
+// returning here. Nothing at all with none installed.
+@Composable
+internal fun ThemeChoice() {
+    val ctx = LocalContext.current
+    ExtUi.tick
+    if (!ExtApp.dir(ctx).isDirectory) return
+    val hub = remember { ExtApp.hub(ctx) }
+    if (hub.registry.installed.none { it.manifest.isTheme }) return
+    InfoHeader(T("Theme", "ערכת נושא"), T(
+        "A theme changes how Kav looks, and can add settings and more of its own. Settings keeps Kav's own look, so no theme can hide or fake it.",
+        "ערכת נושא משנה את המראה של Kav, ויכולה להוסיף הגדרות ועוד משלה. ההגדרות נשארות במראה של Kav, כך שאף ערכת נושא לא יכולה להסתיר אותן או לזייף אותן.",
+    ))
+    ThemeList(hub) { id -> ExtUi.returnTo = "look"; ExtUi.wanted = "e:$id"; SettingsNav.wanted = "extensions" }
+}
+
 // Settings › Extensions, Morphe's way: one card for each source, which opens to its extensions, each with its own switch;
 // then the sources and the options.
 @Composable
@@ -408,6 +494,11 @@ private fun MainExtensions(hub: Hub, open: (String) -> Unit, addSource: () -> Un
                     subtitle = trouble, subtitleMaxLines = 2,
                     subtitleColor = if (trouble != null) K.problem else null,
                     leading = { Icon(Icons.Rounded.Storage, null, tint = K.dim) }, onClick = { open("sources") })
+            }
+            // The themes, apart from the extensions, once there is one: which is applied, and the list a tap away.
+            if (hub.registry.installed.any { it.manifest.isTheme }) row {
+                ListRow(T("Themes", "ערכות נושא"), subtitle = appliedName(hub),
+                    leading = { Icon(Icons.Rounded.Palette, null, tint = K.dim) }, onClick = { open("themes") })
             }
         }
         // The switches, each a few words, in one group; what they do is behind the group's (i), as in the rest of Settings.
@@ -460,17 +551,21 @@ private fun SourceCard(hub: Hub, s: Hub.Source, open: Boolean, onToggle: () -> U
 
 // A source's extensions, each with its switch; tapped, one opens its page.
 @Composable
-private fun ExtSwitches(hub: Hub, s: Hub.Source, onExtension: (String) -> Unit) {
+private fun ExtSwitches(hub: Hub, s: Hub.Source, onExtension: (String) -> Unit, themes: Boolean = true, extensions: Boolean = true) {
     val ctx = LocalContext.current
-    val exts = hub.extensions(s)
-    // Nothing to list says nothing: the card's status line says why.
-    exts.forEach { i ->
+    val all = hub.extensions(s)
+    // Nothing to list says nothing: the card's status line says why. Its themes come after its extensions, each with
+    // Apply in place of a switch.
+    if (extensions) all.filter { !it.manifest.isTheme }.forEach { i ->
         key(i.identity) {
             val trouble = troubleOf(hub, i)
             ExtSwitchRow(i.displayName, trouble ?: rowWords(i.manifest), trouble != null,
                 { ExtTile(hub.registry.iconFile(i.identity), null, i.manifest.contributions.map { it.capability } + i.manifest.adds, 40.dp) },
                 hub.active(i), false, { onExtension(i.identity) }, hasSettings(i)) { switchOn(ctx, hub, i.identity, it) }
         }
+    }
+    if (themes) for (i in all.filter { it.manifest.isTheme }) key(i.identity) {
+        ThemeRow(hub, i, troubleOf(hub, i) ?: T("Theme", "ערכת נושא")) { onExtension(i.identity) }
     }
 }
 
@@ -518,7 +613,7 @@ private fun hasSettings(i: Registry.Installed): Boolean {
     }
     val decl = runCatching { PageSpecs.of(i.manifest) }.getOrNull()
     val screens = decl != null && (decl.tabs.isNotEmpty() || decl.home || decl.pages.any { it.id != PageSpecs.HOME_PAGE && it.entry && !it.tab }) ||
-        uk.noammm.kav.ext.Screens.themeOf(i) != null
+        (uk.noammm.kav.ext.Screens.themeOf(i) != null && !i.manifest.isTheme)
     return adds || screens || decl?.settings?.isNotEmpty() == true ||
         (ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.settingsScreen(i.identity) != null)
 }
@@ -683,9 +778,16 @@ private fun SourcePage(hub: Hub, s: Hub.Source, open: (String) -> Unit, back: ()
                 s.updatedAt.takeIf { it > 0 }?.let { DetailFact(T("Last updated", "עודכן לאחרונה"), date(it)) }
             }
         }
-        // What the rider came for, straight under the header.
-        SectionHeader(T("Extensions", "תוספים"))
-        Column(Modifier.fillMaxWidth().panel(K.rCard)) { ExtSwitches(hub, s) { open("e:$it") } }
+        // What the rider came for, straight under the header: its extensions, then its themes.
+        val all = hub.extensions(s)
+        if (all.any { !it.manifest.isTheme } || all.isEmpty()) {
+            SectionHeader(T("Extensions", "תוספים"))
+            Column(Modifier.fillMaxWidth().panel(K.rCard)) { ExtSwitches(hub, s, { open("e:$it") }, themes = false) }
+        }
+        if (all.any { it.manifest.isTheme }) {
+            SectionHeader(T("Themes", "ערכות נושא"))
+            Column(Modifier.fillMaxWidth().panel(K.rCard)) { ExtSwitches(hub, s, { open("e:$it") }, extensions = false) }
+        }
         ListGroup(Modifier.padding(top = K.gap3)) {
             s.page?.let { page ->
                 row { ListRow(T("Open in browser", "פתיחה בדפדפן"), leading = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, tint = K.dim) }, onClick = { openLink(ctx, page) }, chevron = false) }
@@ -748,6 +850,8 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
             if (m.description.isNotEmpty()) Description(iso(m.description.take(2000)), Modifier.padding(top = K.gap4))
             // What's wrong with it, a line each.
             hub.blocked(i)?.let { FlagLine(T("Blocked: ", "חסום: ") + reasonWords(it.reason), Modifier.padding(top = K.gap2), tint = K.critical) }
+            // A theme is mostly a look: one that also brings code says so up front, as it can do anything an extension can.
+            if (m.isTheme && uk.noammm.kav.ext.Native.declares(m)) FlagLine(T("Runs its own code, with full access", "מריצה קוד משלה, עם גישה מלאה"), Modifier.padding(top = K.gap2))
             if (i.problem.isNotEmpty() && i.problem != NativeGuard.CRASHED) FlagLine(engineWords(i.problem).replaceFirstChar { it.uppercase() }, Modifier.padding(top = K.gap2))
         }) {
             // The technical part, folded away: what its manifest says it can do, its files.
@@ -759,7 +863,10 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
         }
         // Its switch, right under the header, so an extension that's off says so and turns on here. Not for one that
         // can't run whatever the switch says (blocked, or something wrong with it, which the header names).
-        if (hub.blocked(i) == null && i.problem.isEmpty()) PowerCard(i.enabled) { switchOn(ctx, hub, i.identity, it) }
+        if (hub.blocked(i) == null && i.problem.isEmpty()) {
+            if (m.isTheme) PowerCard(i.enabled, T("Use this theme", "שימוש בערכת הנושא")) { applyLook(ctx, hub, if (it) i.identity else null) }
+            else PowerCard(i.enabled) { switchOn(ctx, hub, i.identity, it) }
+        }
         // Kav turned it off itself, after its code made Kav close twice (NativeGuard): said here, with the way back.
         if (i.problem == NativeGuard.CRASHED) Box(Modifier.padding(top = K.gap3)) {
             Notice(Icons.Rounded.PauseCircle, T("Turned off by Kav", "‏Kav כיבתה את התוסף"),
@@ -784,11 +891,14 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
 
 // An extension's own switch on its page, a card of its own: the power mark, whether it's on, and the switch, which the
 // whole card flips. Off, a line under it says to turn it on, so a page with nothing else on it doesn't look broken.
+// A theme's is "Use this theme", with its palette mark: on applies it (and takes any other theme off), off goes back to
+// Kav's own look.
 @Composable
-private fun PowerCard(on: Boolean, onChange: (Boolean) -> Unit) {
+private fun PowerCard(on: Boolean, theme: String? = null, onChange: (Boolean) -> Unit) {
     ListGroup(Modifier.padding(top = K.gap3).animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
         row {
-            ToggleRow(if (on) T("On", "פועל") else T("Off", "כבוי"), on,
+            if (theme != null) ToggleRow(theme, on, { Icon(Icons.Rounded.Palette, null, tint = toggleInk(on), modifier = Modifier.size(20.dp)) }, onChange = onChange)
+            else ToggleRow(if (on) T("On", "פועל") else T("Off", "כבוי"), on,
                 { Icon(Icons.Rounded.PowerSettingsNew, null, tint = toggleInk(on), modifier = Modifier.size(20.dp)) },
                 subtitle = if (on) null else T("Turn it on to use it", "צריך להפעיל אותו כדי להשתמש בו"), onChange = onChange)
         }

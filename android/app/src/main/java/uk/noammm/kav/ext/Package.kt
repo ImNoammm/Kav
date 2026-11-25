@@ -36,9 +36,13 @@ class Manifest(val json: JSONObject) {
         t.keys().asSequence().mapNotNull { k -> t.optJSONObject(k)?.let { k to (it.optString("en") to it.optString("he")) } }.toMap()
     }.orEmpty()
     class Declared(val id: String, val capability: String, val permissions: List<String>)
+    // A theme ("kind": "theme", ext/Looks.kt): Kav calls it a theme, lists it with themes, and applies one at a time.
+    // Any other kind, or none, is an extension.
+    val isTheme: Boolean get() = json.optString("kind") == Themes.KIND
 
-    // Android code only: a JavaScript package, or one with no code at all, was made for an older Kav.
-    val older: Boolean get() = json.has("runtime") || !Native.declares(this)
+    // Android code only: a JavaScript package, or one with no code at all, was made for an older Kav. A theme may bring
+    // no code: its colors are data.
+    val older: Boolean get() = json.has("runtime") || (!Native.declares(this) && !isTheme)
 
     fun check() {
         if (json.whole("format", 0) != 1L) throw TrustError("unknown package format")

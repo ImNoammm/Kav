@@ -636,7 +636,7 @@ Try it in Kav itself, on a phone or an emulator with Kav 5 or newer ([testing.md
 
 1. `kavx bundle <folder>`.
 2. Copy the `.kavb` to the device (`adb push hello-kotlin.kavb /sdcard/Download/`).
-3. In Kav: Settings › Extensions › Sources › Add a bundle file, and pick it. The sheet lists your extension and what
+3. In Kav: Settings › Extensions › Sources › + › Add a bundle file, and pick it. The sheet lists your extension and what
    it can do, first "Runs its own Android code: full access". Add.
 4. Switch your extension on in Settings › Extensions. It starts at once. Your Home card shows on Home, with your
    extension's name as its title; your screens open from your extension's page. logcat says

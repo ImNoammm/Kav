@@ -570,8 +570,15 @@ internal fun extScreenRows(hub: Hub, i: Registry.Installed): ListGroupScope.() -
         if (decl.home) row {
             SwitchRow(T("Use as my Home screen", "שימוש כמסך הבית שלי"), home?.identity == i.identity) { v -> choose { Screens.chooseHome(dir, if (v) Screens.homeOf(i) else null) } }
         }
-        if (theme != null) row {
-            SwitchRow(T("Use this look", "שימוש במראה הזה"), look?.identity == i.identity) { v -> choose { Screens.chooseTheme(dir, if (v) theme else null) } }
+        // A theme package's look is its own switch, at the top of its page; an extension's is this row. Choosing it takes
+        // an applied theme off, as only one look is ever chosen.
+        if (theme != null && !i.manifest.isTheme) row {
+            SwitchRow(T("Use this look", "שימוש במראה הזה"), look?.identity == i.identity) { v ->
+                choose {
+                    if (v) uk.noammm.kav.ext.Themes.toSwitchOff(hub.registry.installed, null).forEach { hub.setEnabled(it, false) }
+                    Screens.chooseTheme(dir, if (v) theme else null)
+                }
+            }
         }
         // A page that isn't its tab or Home opens from here.
         for (p in decl.pages.filter { it.id != PageSpecs.HOME_PAGE && it.entry && !it.tab }) row {

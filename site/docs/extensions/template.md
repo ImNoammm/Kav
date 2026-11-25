@@ -35,7 +35,7 @@ latest release's bundle.
 
 ```
 kavx check extensions/my-extension     builds one extension and checks it the way Kav does
-kavx bundle . --out my.kavb            builds the bundle; add it in Kav with Settings, Extensions, Sources, Add a bundle file
+kavx bundle . --out my.kavb            builds the bundle; add it in Kav with Settings, Extensions, Sources, +, Add a bundle file
 ```
 
 ### Releasing

@@ -195,8 +195,10 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             if (Shown.twelveHour) T("12-hour clock", "שעון 12 שעות") else T("24-hour clock", "שעון 24 שעות"),
         ).joinToString(" · "),
     ) {
-        // In setup's order: the preview, the look and its glass, the colour, the line badges, then the languages.
+        // In setup's order: the preview, the look and its glass, the colour, the line badges, then the languages. A theme,
+        // once one is installed, comes first: it can set the rest.
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
+            ThemeChoice()
             AccentPreview()
             LookChoices { Sub(it) }
             Sub(T("Color", "צבע"))
@@ -251,7 +253,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     Box(Modifier.fillMaxSize()) {
     androidx.compose.animation.AnimatedContent(
         page, Modifier.fillMaxSize().background(K.bg),
-        transitionSpec = { if (targetState != null) forward() else backward() }, label = "settingsPage",
+        transitionSpec = {
+            if (SettingsNav.backward) { SettingsNav.backward = false; backward() } else if (targetState != null) forward() else backward()
+        }, label = "settingsPage",
     ) { shown ->
         VeilMaps()
         val open = parts.firstOrNull { it.id == shown }

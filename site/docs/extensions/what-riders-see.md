@@ -41,7 +41,7 @@ These are all the lines there are, in the order Kav lists them. The exact words,
 | **It has its own screens** | it has a `page.provide` contribution | `page.provide` |
 | **It has a page the rider can pin as a tab** | one of its `pages` has `"tab": true` | `tab` |
 | **It can replace the Home screen** | it has a `home.body` contribution | `home.body` |
-| **It changes how Kav looks** | it has a `theme` contribution | `theme` |
+| **It changes how Kav looks** | it is a theme (`"kind": "theme"`) or has a `theme` contribution | `theme` |
 | **It draws on Kav's maps**, **sends notifications**, **uses the rider's location**, **has settings of its own** | `adds` lists `map`, `notifications`, `location` or `settings`. One line each | the word |
 | **It can add a card to the Home screen** | it has a `slot.home` contribution | `slot.home` |
 | **It can add a line to trip results** | it has a `slot.results` contribution | `slot.results` |
