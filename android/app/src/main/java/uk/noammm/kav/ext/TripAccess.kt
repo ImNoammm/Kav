@@ -53,9 +53,11 @@ object TripAccess {
 
     // -- What an extension is told ----------------------------------------------------------------------------------------
 
-    // The Recent trips list, newest first, as Kav.trips gives it.
+    // The Recent trips list, newest first, as Kav.trips gives it. A trip from where the rider was is saved with a
+    // placeholder start (DirectionsOnline): its from is null, as Kav.trips says.
     fun history(trips: List<RecentTrip>): JSONArray = JSONArray(trips.map { t ->
-        JSONObject().put("from", t.from?.let(::place) ?: JSONObject.NULL).put("to", place(t.to))
+        val from = t.from?.takeUnless { it.name in uk.noammm.kav.ui.SAVED_STARTS }
+        JSONObject().put("from", from?.let(::place) ?: JSONObject.NULL).put("to", place(t.to))
             .put("stopovers", JSONArray(t.stopovers.map(::place))).put("at", t.at / 1000)
             .put("planner", t.planner.takeIf { it.isNotEmpty() }?.let { "ext:$it" }.orEmpty())
     })

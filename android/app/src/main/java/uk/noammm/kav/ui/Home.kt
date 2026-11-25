@@ -202,7 +202,7 @@ internal fun HomeScreen(
 }
 
 // The name a trip planned from the rider's own position is saved with (DirectionsOnline), in either language.
-private val SAVED_STARTS = setOf("Saved start", "נקודת ההתחלה השמורה")
+internal val SAVED_STARTS = setOf("Saved start", "נקודת ההתחלה השמורה")
 
 // A recent trip's row: its separator starts under the text, past the clock.
 private val RECENT_INSET = K.gap4 + 24.dp + K.gap3
