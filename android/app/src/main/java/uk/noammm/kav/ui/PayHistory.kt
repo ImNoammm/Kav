@@ -102,7 +102,7 @@ private fun PayHistoryScreen(onClose: () -> Unit) {
                             Stat(T("Last month", "חודש שעבר"), rides(lastMonth.size), lastTotal)
                         }
                         if (thisTotal != null || lastTotal != null) Note(T("Prices are what ${PayApp.current.label()} quoted when you paid. Monthly caps can lower the charge.",
-                            "המחירים הם מה ש${PayApp.current.he} הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
+                            "המחירים הם מה ${PayApp.current.heWith("ש")} הציגה כשמשלמים. תקרות חודשיות יכולות להוריד את החיוב."))
                     }
                 }
             }

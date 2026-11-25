@@ -1969,12 +1969,11 @@ object Prefs {
     fun ravPassDecided(ctx: Context): Boolean = store(ctx).contains("ravPass")
     fun ravPass(ctx: Context): Boolean = store(ctx).getBoolean("ravPass", false)
     fun setRavPass(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("ravPass", on).apply()
-
+    fun ravPassOffer(ctx: Context): Boolean = store(ctx).getBoolean("ravPassOffer", false)
+    fun setRavPassOffer(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("ravPassOffer", on).apply()
     // Which app paying goes through (ui.PayApp): its enum name, empty until chosen (then Rav-Pass).
     fun payApp(ctx: Context): String = store(ctx).getString("payApp", "") ?: ""
     fun setPayApp(ctx: Context, app: String) = store(ctx).edit().putString("payApp", app).apply()
-    fun ravPassOffer(ctx: Context): Boolean = store(ctx).getBoolean("ravPassOffer", false)
-    fun setRavPassOffer(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("ravPassOffer", on).apply()
 
     // The button over Rav-Pass back to Kav (PayOverlay): on with "Pay with Rav-Pass", and where the button was left.
     fun payOverlay(ctx: Context): Boolean = store(ctx).getBoolean("payOverlay", false)

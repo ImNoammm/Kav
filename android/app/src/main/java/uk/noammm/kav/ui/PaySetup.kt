@@ -117,7 +117,7 @@ internal fun PaySetupHost() {
         }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(K.gap2))
-            RavPassLogo()
+            RavPassLogo(installed)
             Spacer(Modifier.height(K.gap4))
             // Which app this setup is for, here too: switching swaps the logo, the store page and what the phone is
             // checked for (rememberRavPass re-reads), and with nothing missing the flow finishes by itself.
@@ -170,16 +170,23 @@ internal fun PaySetupHost() {
 }
 
 // The chosen payment app's mark as a launcher shows it: Rav-Pass's own launcher icon (its foreground on its white
-// background, cropped to the middle 72 of its 108 dp; scaled at any other size). egg has no icon of Kav's to show yet,
-// so a QR mark in Kav's accent stands in for it.
+// background, cropped to the middle 72 of its 108 dp; scaled at any other size), and egg's icon as it is on the phone.
+// A QR mark in Kav's accent stands in for egg while it isn't installed.
 @Composable
-internal fun RavPassLogo(size: androidx.compose.ui.unit.Dp = 72.dp) {
+internal fun RavPassLogo(installed: Boolean, size: androidx.compose.ui.unit.Dp = 72.dp) {
+    val ctx = LocalContext.current
+    val app = PayApp.current
+    val icon = remember(app, installed) {
+        if (app == PayApp.EGG && installed) runCatching { ctx.packageManager.getApplicationIcon(app.pkg).toBitmap(192, 192).asImageBitmap() }.getOrNull()
+        else null
+    }
     val shape = RoundedCornerShape(size / 4)
     Box(Modifier.size(size).clip(shape).background(Color.White).border(0.5.dp, K.separator, shape), contentAlignment = Alignment.Center) {
-        if (PayApp.current == PayApp.RAV_PASS)
-            Image(painterResource(R.drawable.ravpass_logo), contentDescription = PayApp.current.label(), modifier = Modifier.requiredSize(size * 1.5f))
-        else
-            Icon(Icons.Rounded.QrCodeScanner, contentDescription = PayApp.current.label(), tint = K.accentInk, modifier = Modifier.size(size * 0.6f))
+        when {
+            app == PayApp.RAV_PASS -> Image(painterResource(R.drawable.ravpass_logo), contentDescription = app.label(), modifier = Modifier.requiredSize(size * 1.5f))
+            icon != null -> Image(icon, contentDescription = app.label(), modifier = Modifier.fillMaxSize())
+            else -> Icon(Icons.Rounded.QrCodeScanner, contentDescription = app.label(), tint = K.accentInk, modifier = Modifier.size(size * 0.6f))
+        }
     }
 }
 

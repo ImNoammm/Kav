@@ -7,6 +7,9 @@ class KavApp : Application() {
     override fun onCreate() {
         super.onCreate()
         uk.noammm.kav.data.RiderProxy.install(this)
+        // The rider's payment app, once for every part of Kav in this process (the ticket reader, the quick settings tile
+        // and the ticket's notification run without Kav's screens); choosing another updates it (PayApp.choose).
+        uk.noammm.kav.ui.PayApp.refresh(this)
         // Debug builds only: a test block list's address and key first, as ExtApp.start makes the hub at once (since the
         // Home body, ExtShown) and the hub keeps the key it was made with (src/debug, Fixtures.kt).
         if (BuildConfig.DEBUG) runCatching {

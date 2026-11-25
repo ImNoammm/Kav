@@ -63,9 +63,7 @@ class TicketReader : AccessibilityService() {
     private var pendingSince = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // The chosen payment app, read again here: the service can outlive Kav's own screens. An event from the other
-        // payment app (not chosen) is ignored, as every other app's is.
-        uk.noammm.kav.ui.PayApp.refresh(this)
+        // An event from the payment app that isn't chosen (PayApp) is ignored, as every other app's is.
         if (event?.packageName != TicketScreens.PACKAGE || !Prefs.tickets(this) || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val now = System.currentTimeMillis()
         if (pendingSince == 0L) pendingSince = now

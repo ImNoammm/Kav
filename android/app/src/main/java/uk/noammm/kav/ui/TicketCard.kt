@@ -323,7 +323,6 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
                             }
                             // A bus's, big enough for any reader and small enough to leave the ticket's facts on the screen.
                             else Code(p.code, p.format, Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(K.rCard)))
-
                         }
                     }
                     // Under the code, what Rav-Pass prints under it: whose it is in a group, and the ticket's number.
@@ -376,7 +375,7 @@ private fun TicketValidity(t: Ticket, now: Long) {
                 androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)),
         ) {
             NoteCard(T("Kav's estimate: free transfers for 90 minutes from the first validation. ${PayApp.current.label()} keeps its own time.",
-                "הערכה של Kav: מעברים בחינם במשך 90 דקות מהתיקוף הראשון. ל${PayApp.current.he} יש שעה משלה."),
+                "הערכה של Kav: מעברים בחינם במשך 90 דקות מהתיקוף הראשון. ${PayApp.current.heWith("ל")} יש שעה משלה."),
                 Modifier.padding(end = K.gap2, top = K.gap1, bottom = K.gap2))
         }
         listOfNotNull(bandLine(t), paidLine(t)).takeIf { it.isNotEmpty() }?.let {

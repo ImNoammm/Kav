@@ -53,10 +53,6 @@ internal enum class PayApp(
     val host: String,
     val en: String,
     val he: String,
-    // The Hebrew name with the preposition folded in, where Hebrew does that in one word ("in" is ברב-פס but ב-egg).
-    val heIn: String,
-    val heFrom: String,
-    val heOf: String,
     // SHA-256 of the app's signing certificate (its host's assetlinks.json): only that app is read.
     val signer: String,
     // The versions (its versionName) whose ticket screens Kav's reader was checked against: another one says Kav may
@@ -66,18 +62,25 @@ internal enum class PayApp(
     // Where the get-it button sends a phone with no Play or Aurora store.
     val getPage: String,
 ) {
-    RAV_PASS("co.hopon.client", "app.ravpass.co.il", "Rav-Pass", "רב-פס", "ברב-פס", "מרב-פס", "של רב-פס",
+    RAV_PASS("co.hopon.client", "app.ravpass.co.il", "Rav-Pass", "רב-פס",
         "a8d44a2e28a995d71aa308ee08e400c8f083fe30632aba077fd786789c65396d", setOf("10.2.16", "10.2.30"),
         "https://www.apkmirror.com/apk/hopon-mobility-ltd/rav-pass-by-hopon-%D7%94%D7%95%D7%A4%D7%90%D7%95%D7%9F-%D7%A8%D7%91-%D7%A4%D7%A1/"),
-    EGG("com.egged.egg", "egg.hopon.co", "EGG", "egg", "ב-egg", "מ-egg", "של egg",
+    EGG("com.egged.egg", "egg.hopon.co", "egg", "egg",
         "7b3e2b1ef624d1dcde74fa7b27f0b68b752a5cab00d36c0b25b533247ee0b155", setOf("10.2.30"),
         "https://play.google.com/store/apps/details?id=com.egged.egg"), ;
 
     fun label(): String = T(en, he)
 
+    // The Hebrew name with a one-letter prefix joined to it: straight onto a Hebrew name (ברב-פס), with a hyphen before a
+    // Latin one, as Kav's Hebrew writes ב-Kav (ב-egg).
+    fun heWith(prefix: String): String = if (he.first() in 'א'..'ת') prefix + he else "$prefix-$he"
+    val heIn: String get() = heWith("ב")
+    val heFrom: String get() = heWith("מ")
+    val heOf: String get() = "של $he"
+
     companion object {
-        // The rider's choice on Settings' Paying page; Rav-Pass until they pick another. Read from the phone at start
-        // and each time Kav comes back (PayMode.refresh), and written by the choice itself (PayAppChoice).
+        // The rider's choice on Settings' Paying page; Rav-Pass until they pick another. Read from the phone when Kav's
+        // process starts (KavApp) and each time Kav comes back (PayMode.refresh), and written by the choice itself.
         var current by mutableStateOf(RAV_PASS)
             private set
 
@@ -304,7 +307,6 @@ internal fun PayCard(modifier: Modifier, showPay: Boolean) {
                 },
             )
         }
-
         // The tickets read from Rav-Pass, in the same card, as Kav's own tickets used to be, and the rides' summary.
         HomeTicketRows()
         if (Shown.payments || !showPay || TicketStore.history.any { it.key.startsWith("ext:") }) RideSummary()
@@ -326,7 +328,6 @@ internal fun RidePay(section: RavPass.Section, carmelit: Boolean, board: String?
         Row(
             Modifier.fillMaxWidth()
                 .clickable(role = Role.Button, onClickLabel = T("Open the ${PayApp.current.label()} app", "מעבר לאפליקציית ${PayApp.current.he}")) { RavPass.open(ctx, section, PayFor(line, off, ride)) }
-
                 // The title's font keeps room above its capitals, so half a dp less on top centres the text you see.
                 .padding(start = K.gap3, end = K.gap3, top = 11.5.dp, bottom = 12.5.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -502,7 +503,6 @@ internal fun PayingSettings() {
     // Which app paying goes through, first: the switch below and the setup popup both follow this choice, so it shows
     // before paying is set up at all (otherwise a rider who wants egg would have to set Rav-Pass up just to switch).
     else { PayAppChoice(); PayModeSwitch() }
-
     if (!Shown.payments) return
     SectionHeader(PayApp.current.label())
     PlaceGroup(listOf(
@@ -592,15 +592,12 @@ internal fun PayAppChoice() {
     }
 }
 
-// The chosen app's own places, each a row that opens it there, with the mark for opening outside Kav.
-
 // A Rav-Pass place opened by a tap, by name ("pay.place.open").
 private fun openPlace(ctx: Context, o: RavPass.Open) {
     if (!uk.noammm.kav.ext.Actions.take(ctx, "pay.place.open") { org.json.JSONObject().put("place", RavPass.placeName(o)) }) RavPass.place(ctx, o)
 }
 
 // Rav-Pass's own places, each a row that opens it there, with the mark for opening outside Kav.
-
 private data class Place(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val open: RavPass.Open)
 
 @Composable

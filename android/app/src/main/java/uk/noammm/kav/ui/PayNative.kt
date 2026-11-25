@@ -96,7 +96,8 @@ internal fun RavPassUpdatedLine(home: Boolean) {
     var unchecked by remember { mutableStateOf(false) }
     var tapped by remember { mutableLongStateOf(0L) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) {
+    // Again when the rider switches payment app: the other app's version.
+    LaunchedEffect(lifecycle, PayApp.current) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             unchecked = !RavPassVersion.checked(RavPassVersion.name(ctx)); tapped = Prefs.payTappedAt(ctx)
         }
