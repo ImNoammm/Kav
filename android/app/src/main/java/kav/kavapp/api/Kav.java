@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides. */
     int API = 5;
 
     int apiVersion();
@@ -47,6 +47,31 @@ public interface Kav {
 
     /** API 5. Asks Kav to ask a widget of this extension for its content again now (its data changed). From any thread. */
     default void refreshWidget(String id) {}
+
+    /** API 5. Stops from Kav's timetable on the phone. query, as JSON text: {"near": [lat, lon], "name", "mode", "code",
+     *  "limit"}, each optional; the stops that match all given, nearest first with near, else by name, at most limit (20
+     *  by default, 200 at most). mode is the GTFS route type of a stop's lines (a train station 2). Answers a JSON array
+     *  of {"stop", "code", "name", "city", "lat", "lon", "mode", "platform"}, with "metres" when near is given; null
+     *  until the timetable has loaded. From any thread. */
+    default String stops(String query) { return null; }
+
+    /** API 5. The live vehicles Kav has, as its Live tab and a line's page show them. query: {"line": "<number>"}, every
+     *  vehicle on the routes with that number, or {"near": [lat, lon], "km"}, those around a place. Answers a JSON array
+     *  of {"key", "plate", "route", "line", "to", "agency", "mode", "lat", "lon", "bearing", "speed", "at"}; null when
+     *  Kav's live source can't be reached. It asks the network: never on the main thread, where it throws. */
+    default String vehicles(String query) { return null; }
+
+    /** API 5. A stop's next departures, as its board in Kav shows them now. query: {"stop": "il.mot/gtfs/stop/<code>",
+     *  "limit"} (20 by default, 100 at most). Answers a JSON array of {"line", "to", "mode", "platform", "at", "live",
+     *  "cancelled"}, times in seconds since 1970, live null for one with no live time; null when Kav doesn't know the
+     *  stop or its timetable hasn't loaded. It asks the network: never on the main thread, where it throws. */
+    default String departures(String query) { return null; }
+
+    /** API 5. Rides already over, into Kav's ride history (Settings › Paying › Ride history, Home's "This month"): a JSON
+     *  array of {"key", "kind", "line", "from", "to", "at", "riders", "price"}, kind "BUS", "TRAIN" or "LIGHT_RAIL", at
+     *  in milliseconds, price in agorot. The same key again updates that ride. Kav keeps the key as
+     *  "ext:<id()>:<key>", as with addTicket. A ride that isn't right throws. From any thread. */
+    default void addRides(String rides) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or

@@ -229,7 +229,10 @@ private fun SuggestionsCard(model: KavModel, latest: ActiveJourney?, onLatest: (
                                 if (shownNet != null && station != null) {
                                     // Another station, as after a move, fades in over the last.
                                     AnimatedContent(station, contentKey = { it.stop }, transitionSpec = { swap() }, label = "station") {
-                                        NearestStation(shownNet, it, now.found?.lines, page == pager.settledPage) { stop -> model.openStation(stop) }
+                                        // The nearest station is a part (home.nearest), told the stop and how far it is.
+                                        KavPart("home.nearest", it.stop, { stopArgs(shownNet, it.stop).put("metres", Math.round(it.metres)) }) {
+                                            NearestStation(shownNet, it, now.found?.lines, page == pager.settledPage) { stop -> model.openStation(stop) }
+                                        }
                                     }
                                 }
                             }

@@ -30,6 +30,9 @@ object Parts {
         "pay.history.header", "pay.history.summary", "pay.history.empty", "pay.history.month", "pay.history.ride",
         "nav.header", "nav.problem", "nav.card", "share.targets", "ticket.codes", "pay.setup",
         "nav.wait.details", "nav.ride.details", "nav.banner", "ride.pay",
+        "stops.row", "stop.departure", "stop.alerts", "lines.row", "line.live", "line.map", "line.stop",
+        "live.list", "live.vehicle", "live.stop", "home.nearest", "results.empty", "results.hidden", "alert.sheet",
+        "report.step", "search.result",
     ) + SETTINGS_PAGES.map { "settings.page.$it" }
 
     const val CAPABILITY = "part."

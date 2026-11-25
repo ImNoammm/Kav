@@ -851,13 +851,15 @@ fun DirectionsOnline(model: KavModel) {
             }
             when {
                 error == TOO_CLOSE -> item(key = "too-close") {
+                    KavPartRow("results.empty", "too_close", { emptyArgs("too_close") }, listMotion().padding(K.gap4)) { m ->
                     NoteCard(
                         T(
                             "You're too close to your destination to plan a route.",
                             "אתם קרובים מדי ליעד כדי לתכנן מסלול.",
                         ),
-                        listMotion().padding(K.gap4),
+                        m,
                     )
+                    }
                 }
                 ruleFailure != null && error == null -> {
                     tabsRow()
@@ -877,10 +879,12 @@ fun DirectionsOnline(model: KavModel) {
                 error != null -> {
                     tabsRow()
                     item(key = "error") {
-                        Column(listMotion().padding(K.gap4)) {
+                        KavPartRow("results.empty", "error" to error, { emptyArgs("error") }, listMotion().padding(K.gap4)) { m ->
+                        Column(m) {
                             Note(error.orEmpty())
                             Text(T("Try again", "נסו שוב"), color = K.accentInk,
                                 modifier = Modifier.clickable { planAgain++ }.padding(vertical = K.gap3))
+                        }
                         }
                     }
                 }
@@ -920,17 +924,21 @@ fun DirectionsOnline(model: KavModel) {
                     // Every route found was left out by the rider's own rules: that, not "none found".
                     if (hid != null) {
                         item(key = "hidden-routes") {
-                            HiddenRoutesNotice(hid.count, hid.by, hiddenReasons(hiddenRoutes), showing = showHidden,
-                                modifier = listMotion().padding(K.gap4)) { showHidden = true }
+                            KavPartRow("results.hidden", hid.count to showHidden, { hiddenArgs(hiddenRoutes) }, listMotion().padding(K.gap4)) { m ->
+                                HiddenRoutesNotice(hid.count, hid.by, hiddenReasons(hiddenRoutes), showing = showHidden, modifier = m) { showHidden = true }
+                            }
                         }
                         ruleNote?.let { note -> item(key = "rules") { NoteCard(note, listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) } }
                     } else item(key = "empty") {
+                        val reason = if (raw.isEmpty() && nothingOnShabbat) "shabbat" else if (raw.isEmpty()) "none" else "filtered"
+                        KavPartRow("results.empty", reason, { emptyArgs(reason) }, listMotion().padding(K.gap4)) { m ->
                         NoteCard(
                             if (raw.isEmpty() && nothingOnShabbat) SHABBAT_NOTHING
                             else if (raw.isEmpty()) T("No routes found for this trip.", "לא נמצאו מסלולים לנסיעה הזו.")
                             else T("Every route found is switched off in your filters.", "כל המסלולים שנמצאו הוסתרו על ידי המסננים שלכם."),
-                            listMotion().padding(K.gap4),
+                            m,
                         )
+                        }
                     }
                 }
                 else -> {
@@ -1049,8 +1057,11 @@ fun DirectionsOnline(model: KavModel) {
                     // Routes the rider's extensions left out: said under the routes, with the tap that shows them once.
                     uk.noammm.kav.ext.Pipeline.hiddenNotice(hiddenRoutes)?.let { n ->
                         item(key = "hidden-routes") {
+                            KavPartRow("results.hidden", n.count to showHidden, { hiddenArgs(hiddenRoutes) },
+                                listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) { m ->
                             HiddenRoutesNotice(n.count, n.by, hiddenReasons(hiddenRoutes), showing = showHidden,
-                                modifier = listMotion().padding(horizontal = K.gap4, vertical = K.gap2)) { showHidden = true }
+                                modifier = m) { showHidden = true }
+                            }
                         }
                     }
                 }
@@ -1189,6 +1200,14 @@ internal fun loadingTime(departAt: Long, nowMs: Long = System.currentTimeMillis(
     clockFormat().format(java.util.Date(if (departAt > 0L) departAt else nowMs))
 
 // What the rider's route rules did to a search, in a line; null when they changed nothing worth saying.
+// What the results' notes are told (results.empty): why there are no routes to show, "none", "filtered" (the rider's
+// filters hide them all), "shabbat", "error" or "too_close".
+private fun emptyArgs(reason: String) = org.json.JSONObject().put("reason", reason)
+
+// And the row of hidden routes (results.hidden): how many the rules left out, and why, each reason once.
+private fun hiddenArgs(hidden: List<uk.noammm.kav.ext.Pipeline.Hidden>) = org.json.JSONObject().put("count", hidden.size)
+    .put("reasons", org.json.JSONArray(hiddenReasons(hidden)))
+
 // Why the hidden routes were left out, as their extensions said it, each reason once.
 private fun hiddenReasons(hidden: List<uk.noammm.kav.ext.Pipeline.Hidden>): List<String> = hidden.mapNotNull { it.reason }.distinct()
 

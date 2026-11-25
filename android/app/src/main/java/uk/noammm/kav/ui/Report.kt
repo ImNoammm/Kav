@@ -709,6 +709,8 @@ internal fun ReportScreen(report: ReportFor, onClose: () -> Unit) {
                 d.step, transitionSpec = { if (targetState > initialState) forward() else backward() },
                 modifier = Modifier.weight(1f), label = "reportStep",
             ) { step ->
+                // Each step's page is a part (report.step), told the step and the bus or train reported.
+                KavPart("report.step", step, { reportArgs(d.report).put("step", step.name.lowercase()) }) {
                 when (step) {
                     ReportStep.ABOUT -> AboutStep(d)
                     ReportStep.WHAT -> WhatStep(d)
@@ -716,6 +718,7 @@ internal fun ReportScreen(report: ReportFor, onClose: () -> Unit) {
                     ReportStep.MORE -> MoreStep(d, named)
                     ReportStep.YOU -> YouStep(d)
                     ReportStep.CHECK -> CheckStep(d, named) { filling = it }
+                }
                 }
             }
         }
@@ -914,17 +917,29 @@ private fun CheckStep(d: Draft, named: (ReportStop) -> ReportStop, onFill: (Fill
     val issue = d.issue ?: return
     val about = d.about ?: return
     val ride = d.ride(named)
+    val ctx = LocalContext.current
+    // The ministry's form opened and filled in with what the rider gave.
+    fun fill() {
+        val me = d.me()
+        val answers = if (issue.conduct) Answers(d.recorded, d.witnesses, d.testifyAt, d.willing) else Answers()
+        val text = reportText(issue, d.words, d.report, ride, d.inspector)
+        val paid = d.payment()
+        onFill(Filling(d.photos.map { it.file }) { urls -> reportJson(issue, d.report, ride, text, me, answers, d.consent, urls, paid) })
+    }
+    // Kav's own, for an extension's Kav.kavAction while this step is open.
+    SideEffect { uk.noammm.kav.ext.Actions.own("report.send") { _, _ -> fill() } }
     StepPage(
         T("Check it", "בדקו לפני המילוי"),
         T("Kav opens the ministry's form and fills it in. There you confirm your phone by a texted code and tap שליחה.",
             "Kav פותחת את הטופס של משרד התחבורה וממלאת אותו. שם מאמתים את הטלפון בקוד שנשלח ב-SMS ומקישים על שליחה."),
         action = T("Fill in the ministry's form", "מילוי הטופס של משרד התחבורה"),
+        // An extension holding report.send is told what is reported, never who reports it (the rider's name, phone and ID
+        // and the photos stay in Kav's form).
         onAction = {
-            val me = d.me()
-            val answers = if (issue.conduct) Answers(d.recorded, d.witnesses, d.testifyAt, d.willing) else Answers()
-            val text = reportText(issue, d.words, d.report, ride, d.inspector)
-            val paid = d.payment()
-            onFill(Filling(d.photos.map { it.file }) { urls -> reportJson(issue, d.report, ride, text, me, answers, d.consent, urls, paid) })
+            if (!uk.noammm.kav.ext.Actions.take(ctx, "report.send") {
+                    reportArgs(d.report).put("about", about.name.lowercase()).put("issue", issue.name.lowercase())
+                        .put("line", ride.line).put("words", d.words)
+                }) fill()
         },
     ) {
         Summary(T("What happened", "מה קרה"), listOf("${aboutLabel(about)} · ${issue.label}")) { d.go(ReportStep.WHAT) }

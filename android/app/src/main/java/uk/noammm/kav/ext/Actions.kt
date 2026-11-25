@@ -23,6 +23,8 @@ object Actions {
         "results.stop.stay", "results.time.select", "results.order.select", "results.planner.select",
         "trip.track", "nav.step", "nav.board.select", "nav.replan", "nav.replan.keep", "nav.plan", "nav.exit", "share.send",
         "pay.mode", "pay.offer.hide", "pay.place.open", "pay.history.clear", "ticket.ravpass.open",
+        "live.vehicle.open", "live.stop.open", "stop.alerts.open", "line.alerts.save", "line.getoff", "report.send",
+        "place.pick", "link.open",
     )
 
     const val CAPABILITY = "action."

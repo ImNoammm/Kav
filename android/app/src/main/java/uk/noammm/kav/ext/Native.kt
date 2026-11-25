@@ -303,6 +303,35 @@ object Native {
             if (loaded[i.identity] === l) Widgets.refresh(i.identity, id)
         }
 
+        // API 5: what Kav has of the timetable and live times (KavData), and the extension's rides in its ride history.
+        override fun stops(query: String?): String? {
+            val net = uk.noammm.kav.Loaded.net ?: return null
+            return KavData.stops(net, JSONObject(query?.ifBlank { null } ?: "{}")).toString()
+        }
+
+        override fun vehicles(query: String?): String? {
+            offMain("vehicles")
+            val q = JSONObject(query?.ifBlank { null } ?: "{}")
+            return try { KavData.vehicles(q).toString() } catch (e: java.io.IOException) { null }
+        }
+
+        override fun departures(query: String?): String? {
+            offMain("departures")
+            val net = uk.noammm.kav.Loaded.net ?: return null
+            return KavData.departures(app, net, JSONObject(query?.ifBlank { null } ?: "{}"))?.toString()
+        }
+
+        override fun addRides(rides: String) {
+            needs("addRides", null)
+            val a = org.json.JSONArray(rides)
+            val list = (0 until a.length()).map { KavData.ride(i.identity, a.getJSONObject(it)) }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { uk.noammm.kav.TicketStore.putRides(app, list) } }
+        }
+
+        private fun offMain(what: String) {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) throw IllegalStateException("$what asks the network: call it off the main thread")
+        }
+
         private fun declares(what: String, capability: String) {
             if (i.manifest.contributions.none { it.capability == capability })
                 throw IllegalStateException("$what needs a contribution with capability \"$capability\" in the manifest")

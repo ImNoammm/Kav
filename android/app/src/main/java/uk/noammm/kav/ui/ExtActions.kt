@@ -112,6 +112,10 @@ internal fun kavActions(model: KavModel) {
     fun keys(a: JSONObject, k: String) = a.optJSONArray(k)?.let { j -> (0 until j.length()).map { j.optString(it) }.filter { it.isNotEmpty() } }
     Actions.own("stop.save") { ctx, a -> keys(a, "stops")?.let { model.saveStopsOwn(ctx, it) } }
     Actions.own("line.save") { ctx, a -> keys(a, "lines")?.let { model.saveLinesOwn(ctx, it) } }
+    Actions.own("line.alerts.save") { ctx, a ->
+        a.optJSONArray("alerts")?.let { j -> model.saveAlertsOwn(ctx, (0 until j.length()).mapNotNull { j.optJSONObject(it)?.let(uk.noammm.kav.data.LineAlert::of) }) }
+    }
+    Actions.own("link.open") { _, _ -> uk.noammm.kav.LinkAsked.plan?.let(model::openLinkOwn) }
     Actions.own("tab.open") { _, a -> uk.noammm.kav.Tab.entries.firstOrNull { it.name.equals(a.optString("tab"), true) }?.let { model.openTab(it) } }
     Actions.own("pay") { ctx, a ->
         val s = RavPass.Section.entries.firstOrNull { RavPass.key(it) == a.optString("section", "bus") } ?: RavPass.Section.BUS

@@ -223,13 +223,13 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
             }
             lead.forEach { (label, rows) ->
                 item(key = "lead-$label") { Box(Modifier.animateItem()) { SectionLabel(label) } }
-                itemsIndexed(rows, key = { _, it -> "lead-$label-${it.route}" }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } }
+                itemsIndexed(rows, key = { _, it -> "lead-$label-${it.route}" }) { i, row -> Box(Modifier.animateItem()) { KavPart("lines.row", row.route, { lineRowArgs(net, row) }) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } } }
             }
             if (listReady) sections.forEach { (operator, rows) ->
                 if (operator.isNotBlank()) item(key = "op-$operator") {
                     Box(Modifier.animateItem()) { SectionLabel(operatorLabel(operator)) }
                 }
-                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } }
+                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { KavPart("lines.row", row.route, { lineRowArgs(net, row) }) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } } }
             }
         }
         ScrollEdge(listState.canScrollBackward)
@@ -314,6 +314,13 @@ internal fun lineEndpoints(net: Net): Map<Int, Pair<Int, Int>> {
 }
 
 private data class LineRow(val route: Int, val a: Int, val b: Int, val both: Boolean)
+
+// What a line's row in the Lines tab is told (lines.row): its number, operator, mode and ends, as its row names them.
+private fun lineRowArgs(net: Net, row: LineRow): org.json.JSONObject = org.json.JSONObject().put("number", net.rShort[row.route])
+    .put("operator", net.agencyOf(row.route)).put("mode", net.rType[row.route]).put("from", shownEnd(net, row.a)).put("to", shownEnd(net, row.b))
+
+private fun scheduleLineArgs(l: Schedules.Line): org.json.JSONObject = org.json.JSONObject().put("number", l.number)
+    .put("operator", l.operator).put("mode", l.type).put("from", l.from).put("to", l.to)
 
 private fun terminusName(net: Net, stop: Int): String = net.name[stop].substringBefore('/').trim()
 
@@ -1181,13 +1188,13 @@ private fun ScheduleLines(model: KavModel, net: Net, state: ScheduleListState, l
                 lead.forEach { (label, rows) ->
                     item(key = "lead-$label") { Box(Modifier.animateItem()) { SectionLabel(label) } }
                     itemsIndexed(rows, key = { _, it -> "lead-$label-${it.id}" }) { i, l ->
-                        Box(Modifier.animateItem()) { ScheduleLineRow(l, i == 0, i == rows.lastIndex) { model.openSchedule(l, -1) } }
+                        Box(Modifier.animateItem()) { KavPart("lines.row", l.id, { scheduleLineArgs(l) }) { ScheduleLineRow(l, i == 0, i == rows.lastIndex) { model.openSchedule(l, -1) } } }
                     }
                 }
                 if (listReady) sections.forEach { (operator, rows) ->
                     if (operator.isNotBlank()) item(key = "op-$operator") { Box(Modifier.animateItem()) { SectionLabel(operatorLabel(operator)) } }
                     itemsIndexed(rows, key = { _, it -> "line-${it.id}" }) { i, l ->
-                        Box(Modifier.animateItem()) { ScheduleLineRow(l, i == 0, i == rows.lastIndex) { model.openSchedule(l, -1) } }
+                        Box(Modifier.animateItem()) { KavPart("lines.row", l.id, { scheduleLineArgs(l) }) { ScheduleLineRow(l, i == 0, i == rows.lastIndex) { model.openSchedule(l, -1) } } }
                     }
                 }
             }
@@ -1373,6 +1380,8 @@ private fun ScheduleLineDetail(model: KavModel, net: Net, line: Schedules.Line, 
 // A stop of the line as its page lists it: its code and names, the week's stop it is (-1 where the week hasn't it), and
 // where it is.
 private class PageStop(val code: Int, val name: String, val city: String, val week: Int, val lat: Double, val lon: Double)
+
+private fun pageStopRef(s: PageStop): String? = s.code.takeIf { it > 0 }?.let { "il.mot/gtfs/stop/$it" }
 
 // The way's ends over the stops, and which way they are (order, for the slide when another is picked).
 private data class PageEnds(val key: String, val order: Int, val to: String?, val from: String?)
@@ -1601,7 +1610,10 @@ private fun LinePage(
                 net.agencyOf(it) == (if (route >= 0) net.agencyOf(route) else line?.operator)
         }
     }
-    fun getOff(stops: List<PageStop>, i: Int) {
+    // What the line page's parts are told (line.header, line.live, line.map, line.stop): its number and operator.
+    val lineAbout = { org.json.JSONObject().put("number", if (route >= 0) net.rShort[route] else line?.number)
+        .put("operator", if (route >= 0) net.agencyOf(route) else line?.operator) }
+    fun getOffOwn(stops: List<PageStop>, i: Int) {
         val at = model.here?.takeIf { model.hereFresh }
         val road = shape
         scope.launch {
@@ -1621,6 +1633,18 @@ private fun LinePage(
         }
     }
 
+    // "Get off here": an extension holding line.getoff is told the line, the stop and its place on the way first.
+    fun getOff(stops: List<PageStop>, i: Int) {
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "line.getoff") { lineAbout().put("stop", pageStopRef(stops[i]) ?: org.json.JSONObject.NULL)
+                .put("name", stops[i].name).put("index", i) }) getOffOwn(stops, i)
+    }
+    // Kav's own "Get off here" at a stop of the way shown, for an extension's Kav.kavAction while this page is open.
+    SideEffect {
+        uk.noammm.kav.ext.Actions.own("line.getoff") { _, a ->
+            val shown = rows.orEmpty()
+            a.optInt("index", -1).takeIf { it in 1 until shown.size && shown[it].week >= 0 }?.let { getOffOwn(shown, it) }
+        }
+    }
     Column(Modifier.fillMaxSize().background(K.bg)) {
         // A train has no number: its two ends, as its row in the list names it.
         fun twoEnds(a: String, b: String) = T("\u2068$a\u2069 → \u2068$b\u2069", "\u2068$a\u2069 ← \u2068$b\u2069")
@@ -1631,8 +1655,7 @@ private fun LinePage(
         }
         ScreenHeader(ends ?: (T("Line ", "קו ") + number), back = onBack)
         // What the line's header part is told (ExtParts.kt): its number and operator.
-        KavPart("line.header", route to line, { org.json.JSONObject().put("number", if (route >= 0) net.rShort[route] else line?.number)
-            .put("operator", if (route >= 0) net.agencyOf(route) else line?.operator) }) {
+        KavPart("line.header", route to line, lineAbout) {
         Row(
             Modifier.padding(horizontal = K.gap4).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1733,7 +1756,7 @@ private fun LinePage(
                     if (shown.isNotEmpty()) {
                         // The line's next departures and how busy it is lead, under its name; whether it's live goes under
                         // the map that shows it.
-                        LineLiveNote(live, next, busy, late = late)
+                        KavPart("line.live", route to line, lineAbout) { LineLiveNote(live, next, busy, late = late) }
                         // A bus, train or light rail of the line reported, on the form's questions for its kind
                         // (ReportFor.train): its stops in order, the rider picking where they got on, and a train's number
                         // on the form where the rider knows it.
@@ -1762,7 +1785,7 @@ private fun LinePage(
                                 ))
                             }.padding(vertical = K.gap2))
                         val chosen = keys.indexOf(open)
-                        if (calls.size >= 2) LineRouteMap(
+                        if (calls.size >= 2) KavPart("line.map", route to line, lineAbout) { LineRouteMap(
                             calls, shape, rt, live.vehicles,
                             Modifier.padding(horizontal = K.gap4).padding(top = K.gap3).fillMaxWidth().height(210.dp).panel(K.rCard),
                             placed.indexOf(chosen),
@@ -1770,7 +1793,7 @@ private fun LinePage(
                             operator, frame = listKey,
                             me = model.here?.takeIf { model.hereFresh }, heading = model.heading,
                             onBus = { tappedBus = if (it == null || it.vehicleId == tappedBus) null else it.vehicleId },
-                        )
+                        ) }
                         LineLiveNote(live, null, status = true)
                         // A bus tapped on the map: how long ago its location came and how fast it went, as Live's card says.
                         val bus = tappedBus?.let { id -> live.vehicles.firstOrNull { it.vehicleId == id } }
@@ -1893,6 +1916,10 @@ private fun PageStops(
     model: KavModel, net: Net, line: Schedules.Line?, way: Schedules.Way?, routes: Set<Int>, rows: List<PageStop>,
     keys: List<String>, state: LazyListState, open: String?, onGetOff: (List<PageStop>, Int) -> Unit, onOpen: (String?) -> Unit,
 ) {
+    // What each stop's part (line.stop) is told of the line, as the page's other parts are.
+    val first = routes.minOrNull()
+    val pageAbout = { org.json.JSONObject().put("number", line?.number ?: first?.let { net.rShort[it] } ?: org.json.JSONObject.NULL)
+        .put("operator", line?.operator ?: first?.let { net.agencyOf(it) } ?: org.json.JSONObject.NULL) }
     // Every stop's times there, worked out ahead, so its card opens with them.
     LaunchedEffect(line, way) { if (line != null && way != null) withContext(Dispatchers.IO) { StopTimes.ahead(line, way) } }
     // Rows glide to their places only as the stops themselves change (the provider's list taking the week's place, with
@@ -1911,13 +1938,15 @@ private fun PageStops(
                 if (chosen) K.plateStrong else K.plateStrong.copy(alpha = 0f), androidx.compose.animation.core.tween(220), label = "chosen",
             )
             val room by androidx.compose.animation.core.animateDpAsState(if (chosen) K.gap1 else 0.dp, androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f), label = "chosenRoom")
-            Column(
-                Modifier.animateItem(
+            // Each stop is a part of its own (line.stop), told the line, the stop and its place on the way.
+            KavPartRow("line.stop", keys[i], { pageAbout().put("stop", pageStopRef(s) ?: org.json.JSONObject.NULL).put("name", s.name)
+                .put("index", i).put("count", rows.size) }, Modifier.animateItem(
                     fadeInSpec = tween(220, delayMillis = 60),
                     placementSpec = if (glide.value) spring(dampingRatio = 1f, stiffness = 500f, visibilityThreshold = androidx.compose.ui.unit.IntOffset.VisibilityThreshold) else null,
                     fadeOutSpec = tween(150),
-                ).padding(vertical = room).clip(RoundedCornerShape(K.rTile)).background(shade),
-            ) {
+                ),
+            ) { m ->
+            Column(m.padding(vertical = room).clip(RoundedCornerShape(K.rTile)).background(shade)) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1971,6 +2000,7 @@ private fun PageStops(
                         }
                     }
                 }
+            }
             }
         }
     }

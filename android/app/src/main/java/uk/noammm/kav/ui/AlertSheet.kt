@@ -102,6 +102,8 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     }
     BottomSheet(onDismiss, scrolls = true) { close ->
         SheetHeader(T("Line alerts", "התראות קווים"), { close(onDismiss) }, subtitle = net.stopName(stop))
+        // Everything under the heading is a part (stop.alerts), told which stop.
+        KavPart("stop.alerts", stop, { stopArgs(net, stop) }) {
         val set = model.lineAlerts.filter { it.stop == key }
         if (set.isNotEmpty()) {
             Spacer(Modifier.height(K.gap3))
@@ -189,6 +191,7 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                 ),
                 Modifier.padding(top = K.gap3),
             )
+        }
         }
     }
 }

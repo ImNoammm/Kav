@@ -155,6 +155,23 @@ internal fun SearchGlyph(tint: Color, size: androidx.compose.ui.unit.Dp = 18.dp)
     }
 }
 
+// A place as the place search's spots tell it (place.pick, search.result): its name, detail, where it is, its type and
+// mode, as plan.stop's place.
+internal fun placeJson(p: Transit.Place): org.json.JSONObject = org.json.JSONObject().put("name", p.name).put("detail", p.detail)
+    .put("lat", p.lat).put("lon", p.lon).put("type", p.type).put("mode", p.mode)
+
+// A place an extension gave back, or null when it isn't one.
+internal fun placeOf(o: org.json.JSONObject): Transit.Place? {
+    val lat = o.optDouble("lat"); val lon = o.optDouble("lon")
+    if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+    return Transit.Place(o.optString("name"), o.optString("detail"), lat, lon, o.optInt("type", 5), o.optInt("mode", -1))
+}
+
+// A row of the place search's results (search.result): the place, its section ("recent", "places" or "stops") and its
+// place in it.
+private fun resultArgs(p: Transit.Place, section: String, index: Int) = org.json.JSONObject().put("place", placeJson(p))
+    .put("section", section).put("index", index)
+
 @Composable
 fun PlacePicker(
     title: String,
@@ -189,6 +206,12 @@ fun PlacePicker(
     DisposableEffect(Unit) { onDispose { shown = false; stopLocating?.invoke() } }
     fun cancelLocation() { stopLocating?.invoke(); stopLocating = null; locating = false }
     fun save(list: List<Favourite>) = onSaveFavourites(list)
+    fun chosen(p: Transit.Place) {
+        uk.noammm.kav.Prefs.remember(ctx, p)
+        onPick(p)
+    }
+    // Kav's own use of a place chosen, for an extension's Kav.kavAction while the search is open: the place it gives.
+    SideEffect { uk.noammm.kav.ext.Actions.own("place.pick") { _, a -> a.optJSONObject("place")?.let(::placeOf)?.let(::chosen) } }
     val pick: (Transit.Place) -> Unit = { p ->
         cancelLocation()
         val f = setting
@@ -197,9 +220,8 @@ fun PlacePicker(
             setting = null
             onQuery("")
             if (initialSetting != null) onDismiss()
-        } else {
-            uk.noammm.kav.Prefs.remember(ctx, p)
-            onPick(p)
+        } else if (!uk.noammm.kav.ext.Actions.take(ctx, "place.pick") { org.json.JSONObject().put("place", placeJson(p)).put("title", title) }) {
+            chosen(p)
         }
     }
     // A picked Google place takes the point PlacePoint gives it, a town's hub or Google's own, and the trip, Recents and
@@ -418,14 +440,14 @@ fun PlacePicker(
                     onAction = { uk.noammm.kav.Prefs.clearRecents(ctx); recents = emptyList() })
             }
             val recentKeys = uniqueKeys(recents.map { "recent:${it.name}|${it.lat}|${it.lon}" })
-            itemsIndexed(recents, key = { i, _ -> recentKeys[i] }) { i, p -> Box(listMotion(quick = true)) { PlaceRow(p, here, i == 0, i == recents.lastIndex) { pick(p) } } }
+            itemsIndexed(recents, key = { i, _ -> recentKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "recent", i) }) { PlaceRow(p, here, i == 0, i == recents.lastIndex) { pick(p) } } } }
         } else if (found) {
             if (places.isNotEmpty()) item(key = "placesTitle") { Box(listMotion(quick = true)) { SectionTitle(T("Places", "מקומות")) } }
             val placeKeys = uniqueKeys(places.map { "place:${it.name}|${it.lat}|${it.lon}" })
-            itemsIndexed(places, key = { i, _ -> placeKeys[i] }) { i, p -> Box(listMotion(quick = true)) { PlaceRow(p, here, i == 0, i == places.lastIndex) { pickPlace(p) } } }
+            itemsIndexed(places, key = { i, _ -> placeKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "places", i) }) { PlaceRow(p, here, i == 0, i == places.lastIndex) { pickPlace(p) } } } }
             if (stations.isNotEmpty()) item(key = "stopsTitle") { Box(listMotion(quick = true)) { SectionTitle(T("Stops", "תחנות")) } }
             val stopKeys = uniqueKeys(stations.map { "stop:${it.name}|${it.lat}|${it.lon}" })
-            itemsIndexed(stations, key = { i, _ -> stopKeys[i] }) { i, p -> Box(listMotion(quick = true)) { PlaceRow(p, here, i == 0, i == stations.lastIndex) { pick(p) } } }
+            itemsIndexed(stations, key = { i, _ -> stopKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "stops", i) }) { PlaceRow(p, here, i == 0, i == stations.lastIndex) { pick(p) } } } }
         }
     }
     }

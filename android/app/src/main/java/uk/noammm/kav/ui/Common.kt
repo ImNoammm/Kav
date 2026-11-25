@@ -607,6 +607,8 @@ fun ServiceAlertSheet(alert: RideAlerts.Alert, onDismiss: () -> Unit) {
         val openLine: (String) -> Unit = { number -> close { onDismiss(); uk.noammm.kav.AlertLink.alert = alert; uk.noammm.kav.AlertLink.line = number } }
         val heading = alert.label.ifBlank { T("Service alert", "הודעת שירות") }
         SheetHeader(heading, { close(onDismiss) })
+        // The notices under the heading are a part (alert.sheet), told the alert as alert.open is.
+        KavPart("alert.sheet", alert, { org.json.JSONObject().put("label", alert.label).put("ids", org.json.JSONArray(alert.ids)) }) {
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
             val list = notices
             when {
@@ -652,6 +654,7 @@ fun ServiceAlertSheet(alert: RideAlerts.Alert, onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
         }
     }
 }

@@ -135,6 +135,20 @@ object PendingLink {
     var plan by mutableStateOf<TripLink.Plan?>(null)
 }
 
+// The last link an extension holding link.open was told (for Kav's own, Kav.kavAction), and what it's told: the trip
+// the link asks for, its places (null when the link leaves one to the rider) and when, in seconds (0 for now), and
+// whether it's a whole trip someone shared.
+object LinkAsked {
+    @Volatile var plan: TripLink.Plan? = null
+
+    fun args(p: TripLink.Plan): org.json.JSONObject {
+        fun place(name: String?, lat: Double?, lon: Double?): Any =
+            if (lat == null || lon == null) org.json.JSONObject.NULL else org.json.JSONObject().put("name", name ?: "").put("lat", lat).put("lon", lon)
+        return org.json.JSONObject().put("from", place(p.fromName, p.fromLat, p.fromLon)).put("to", place(p.toName, p.toLat, p.toLon))
+            .put("toName", p.toName ?: org.json.JSONObject.NULL).put("at", p.departMs / 1000).put("shared", p.shared != null)
+    }
+}
+
 // A line alert's stop, opened on the Stations tab when the alert is tapped.
 object PendingStop {
     var key by mutableStateOf<String?>(null)
@@ -428,6 +442,11 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var pendingFrom by mutableStateOf<Transit.Place?>(null)
     var pendingTo by mutableStateOf<Transit.Place?>(null)
     var pendingLink by mutableStateOf<TripLink.Plan?>(null)
+    fun openLinkOwn(plan: TripLink.Plan) {
+        pendingLink = plan
+        settingsOpen = false
+        tab = Tab.Directions
+    }
     var settingFavourite by mutableStateOf<uk.noammm.kav.ui.Favourite?>(null)
 
     // The rider's saved places, stops and lines, each kept here: an extension holding "place.save", "stop.save" or
@@ -459,7 +478,13 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     }
     fun saveLinesOwn(ctx: Context, keys: List<String>) { savedLines = keys; Prefs.setSavedLines(ctx, keys) }
     var lineAlerts by mutableStateOf(ctx?.let { Prefs.lineAlerts(it) } ?: emptyList())
+    // The rider adding or deleting a line alert: an extension holding line.alerts.save is told the whole list as it would
+    // be kept, and keeps it itself.
     fun saveAlerts(ctx: Context, alerts: List<LineAlert>) {
+        if (uk.noammm.kav.ext.Actions.take(null, "line.alerts.save") { org.json.JSONObject().put("alerts", org.json.JSONArray(alerts.map { it.json() })) }) return
+        saveAlertsOwn(ctx, alerts)
+    }
+    fun saveAlertsOwn(ctx: Context, alerts: List<LineAlert>) {
         lineAlerts = alerts
         Prefs.setLineAlerts(ctx, alerts)
         LineAlerts.reschedule(ctx)
@@ -991,7 +1016,9 @@ private fun Shell(model: KavModel) {
             // Tapped before any screen has loaded the timetable.
             val net = model.net ?: runCatching { withContext(Dispatchers.Default) { loadNet(ctx) } }.getOrNull() ?: return@collect
             val stop = net.stopOfKey(key).takeIf { it >= 0 } ?: return@collect
-            model.settingsOpen = false; model.stationStop = stop; model.tab = Tab.Stations
+            model.settingsOpen = false
+            // As any stop opened: an extension holding stop.open goes first.
+            if (!uk.noammm.kav.ui.stopTaken(model, stop)) { model.stationStop = stop; model.tab = Tab.Stations }
         }
     }
 
@@ -1033,9 +1060,10 @@ private fun Shell(model: KavModel) {
             PendingLink.plan = null
             val somewhere = plan.toLat != null && plan.toLon != null
             if (!somewhere && plan.toName == null && plan.shared == null) return@collect
-            model.pendingLink = plan
-            model.settingsOpen = false
-            model.tab = Tab.Directions
+            // A link Kav was opened with: an extension holding link.open is told the trip it asks for first.
+            LinkAsked.plan = plan
+            if (uk.noammm.kav.ext.Actions.take(null, "link.open") { LinkAsked.args(plan) }) return@collect
+            model.openLinkOwn(plan)
         }
     }
 

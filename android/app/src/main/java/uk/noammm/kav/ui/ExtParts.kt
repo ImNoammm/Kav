@@ -37,6 +37,20 @@ internal fun KavPart(name: String, of: Any?, about: () -> JSONObject, inset: Dp 
     }
 }
 
+// A part that is one row of a lazy list (a departure on a stop's board): the row's own modifier, its item animation, on
+// Kav's row alone when no extension adds to it, and on the views and the row together when one does, so they move as one
+// item. Rows of such a list sit with no space between them, and so do the views.
+@Composable
+internal fun KavPartRow(name: String, of: Any?, about: () -> JSONObject, modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    val part = rememberPart(name, of, about)
+    if (part == null) { content(modifier); return }
+    Column(modifier.fillMaxWidth()) {
+        for ((p, v) in part.before) PartView(p, v)
+        part.replaced?.let { (p, v) -> PartView(p, v) } ?: content(Modifier)
+        for ((p, v) in part.after) PartView(p, v)
+    }
+}
+
 // The views of a part made for what it shows, in order; null when no extension adds to it.
 internal class PartViews(
     val before: List<Pair<Parts.Piece, android.view.View>>,

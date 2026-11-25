@@ -89,8 +89,9 @@ internal object PayEntry {
         ACTION_TICKET -> {
             TicketStore.load(ctx)
             val key = intent.getStringExtra(TicketReader.EXTRA_TICKET)
-            TicketStore.opened = key?.takeIf { k -> TicketStore.kept.any { it.key == k } }
-                ?: TicketTimes.latest(TicketStore.kept, System.currentTimeMillis())?.key
+            // As any ticket opened: an extension holding ticket.open goes first.
+            (key?.takeIf { k -> TicketStore.kept.any { it.key == k } } ?: TicketTimes.latest(TicketStore.kept, System.currentTimeMillis())?.key)
+                ?.let { uk.noammm.kav.ui.openTicket(ctx, it) }
             true
         }
         else -> false

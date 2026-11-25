@@ -357,6 +357,16 @@ private fun LiveScreenForSource(model: KavModel) {
     val followed = rememberKavSpots(listOfNotNull(followedRoute))
 
     val stopsById = remember(near, farStop) { (near + listOfNotNull(farStop)).associateBy { it.id } }
+    // A vehicle or a stop opened, on the map, the list or a stop's card: an extension holding live.vehicle.open or
+    // live.stop.open is asked first.
+    fun openVehicle(v: Tracked, from: Int? = null) {
+        if (!uk.noammm.kav.ext.Actions.take(ctx, "live.vehicle.open") { liveVehicleArgs(v) }) focus = LiveFocus.Vehicle(v.tripId, from)
+    }
+    fun openStop(s: Transit.Stop) {
+        if (uk.noammm.kav.ext.Actions.take(ctx, "live.stop.open") { liveStopArgs(model.net, s, s.id) }) return
+        if (s.id !in stopsById) farStop = s
+        focus = LiveFocus.Stop(s.id)
+    }
     val vehicles = remember(area, stopBuses, stopLines, followed) {
         // Each bus where it was seen last, from the snapshot or the stops in view. Nearest first: there's no stop of
         // yours to time them at.
@@ -370,6 +380,15 @@ private fun LiveScreenForSource(model: KavModel) {
                 val from = stopsAt
                 all.map { it to metres(from.first, from.second, it.arrival.lat, it.arrival.lon) }.sortedBy { it.second }.map { it.first }
             }
+    }
+    // Kav's own opening of a vehicle or stop of those around, for an extension's Kav.kavAction.
+    SideEffect {
+        uk.noammm.kav.ext.Actions.own("live.vehicle.open") { _, a ->
+            vehicles.firstOrNull { it.arrival.vehicleId == a.optString("key") }?.let { focus = LiveFocus.Vehicle(it.tripId) }
+        }
+        uk.noammm.kav.ext.Actions.own("live.stop.open") { _, a ->
+            near.firstOrNull { liveStopArgs(model.net, it, it.id).optString("stop") == a.optString("stop") }?.let { focus = LiveFocus.Stop(it.id) }
+        }
     }
     // The roads of the nearest vehicles asked ahead from Kav's server, two at a time, so one tapped opens at once with
     // its road; each is kept for the session.
@@ -651,9 +670,9 @@ private fun LiveScreenForSource(model: KavModel) {
                             layout(constraints.maxWidth, constraints.maxHeight) { p.place(0, 0) }
                         }
                         .fillMaxSize().glassBackdrop(liveLiquid),
-                    onVehicle = { focus = LiveFocus.Vehicle(it.tripId) },
+                    onVehicle = { openVehicle(it) },
                     onGroup = { gathered = it.mapTo(HashSet()) { v -> v.tripId } },
-                    onStop = { s -> if (s.id !in stopsById) farStop = s; focus = LiveFocus.Stop(s.id) },
+                    onStop = { s -> openStop(s) },
                     stopRef = { s -> model.net?.code?.getOrNull(-s.id - 1)?.takeIf { it > 0 }?.let { "il.mot/gtfs/stop/$it" } },
                     status = {
                         Column(Modifier.panel(K.rTile).padding(6.dp)) {
@@ -729,16 +748,22 @@ private fun LiveScreenForSource(model: KavModel) {
                                         val kinds = remember(b) {
                                             (b?.lines?.values.orEmpty().map { it.type } + 3).associateBy { KavLive.agencyOf(it) }
                                         }
+                                        KavPart("live.stop", f.id, { liveStopArgs(model.net, stopsById[f.id], f.id) }) {
                                         LiveStopCard(
                                             stopsById[f.id], f.id, KavLive.fresher(due, followed), dueLines, kinds, now,
-                                            onVehicle = { v -> picked = v; focus = LiveFocus.Vehicle(v.tripId, from = f.id) },
+                                            onVehicle = { v -> picked = v; openVehicle(v, from = f.id) },
                                             onClose = { focus = null },
                                         )
+                                        }
                                     }
-                                    is LiveFocus.Vehicle -> LiveVehicleCard(
-                                        focusVehicle?.takeIf { it.tripId == f.tripId }, now, lineStops, progress, reportStops, crowd,
-                                        onReport = { model.openReport(it) },
-                                    ) { focus = f.from?.let { LiveFocus.Stop(it) } }
+                                    is LiveFocus.Vehicle -> {
+                                        val v = focusVehicle?.takeIf { it.tripId == f.tripId }
+                                        KavPart("live.vehicle", f.tripId, { v?.let(::liveVehicleArgs) ?: org.json.JSONObject() }) {
+                                            LiveVehicleCard(v, now, lineStops, progress, reportStops, crowd, onReport = { model.openReport(it) }) {
+                                                focus = f.from?.let { LiveFocus.Stop(it) }
+                                            }
+                                        }
+                                    }
                                     else -> Unit
                                 }
                             }
@@ -794,15 +819,27 @@ private fun LiveScreenForSource(model: KavModel) {
                         .padding(bottom = LocalBottomBarInset.current),
                     contentAlignment = Alignment.Center,
                 ) { LoadingPulse(T("Finding vehicles", "מאתרים כלי רכב")) }
-                else -> LiveList(if (state == 2) emptyList() else listed, now, stopsAt, unreached, Modifier.fillMaxWidth()
-                    .height(LIVE_LIST + LocalBottomBarInset.current).padding(K.gap2)) {
-                    focus = LiveFocus.Vehicle(it.tripId)
+                else -> KavPart("live.list", state, { org.json.JSONObject().put("vehicles", if (state == 2) 0 else listed.size) }) {
+                    LiveList(if (state == 2) emptyList() else listed, now, stopsAt, unreached, Modifier.fillMaxWidth()
+                        .height(LIVE_LIST + LocalBottomBarInset.current).padding(K.gap2)) { openVehicle(it) }
                 }
             }
         }
         }
     }
 }
+
+// What the Live tab's spots are told of a vehicle (live.vehicle, live.vehicle.open): its key as Kav.vehicles gives it,
+// its plate, line, mode and where it goes, where it was last and when (seconds since 1970).
+private fun liveVehicleArgs(v: Tracked): org.json.JSONObject = org.json.JSONObject().put("key", v.arrival.vehicleId)
+    .put("plate", KavLive.plateOf(v.arrival.vehicleId) ?: org.json.JSONObject.NULL).put("line", v.number)
+    .put("to", v.line?.destination?.ifBlank { null } ?: org.json.JSONObject.NULL).put("mode", v.routeType)
+    .put("lat", v.arrival.lat).put("lon", v.arrival.lon).put("at", v.arrival.sampleUtc)
+
+// And of a stop (live.stop, live.stop.open): its reference, when it is one of the timetable's, and its name.
+private fun liveStopArgs(net: uk.noammm.kav.data.Net?, s: Transit.Stop?, id: Int): org.json.JSONObject = org.json.JSONObject()
+    .put("stop", net?.code?.getOrNull(-id - 1)?.takeIf { it > 0 }?.let { "il.mot/gtfs/stop/$it" } ?: org.json.JSONObject.NULL)
+    .put("name", s?.name ?: org.json.JSONObject.NULL)
 
 // Where each stop of a line is along its road, and the road's place by it, worked out once for the road and stops.
 private class StopsOnRoute(val route: List<Pair<Double, Double>>, val stops: List<Transit.Stop>) {

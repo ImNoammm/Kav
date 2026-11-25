@@ -571,6 +571,15 @@ internal object TicketStore {
         runCatching { saveHistory(ctx) }
     }
 
+    // Rides an extension put in the history (Kav.addRides), each already there by its key brought up to date.
+    fun putRides(ctx: Context, rides: List<Ride>) {
+        load(ctx)
+        val next = uk.noammm.kav.ext.KavData.withRides(history, rides)
+        if (next == history) return
+        history = next
+        runCatching { saveHistory(ctx) }
+    }
+
     // Rav-Pass says it has no active ticket of these kinds (TicketReader).
     fun end(ctx: Context, kinds: Set<TicketScreens.Kind>, since: Long) {
         val left = Tickets.end(kept, kinds, since)

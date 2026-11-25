@@ -237,22 +237,22 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                     NoteCard(T("No stop by that name or code.", "אין תחנה בשם או במספר הזה."), listMotion(quick = true).padding(vertical = K.gap4))
                 } else if (hits.isNotEmpty()) item(key = "hits-gap") { Spacer(listMotion(quick = true).height(K.gap2)) }
                 itemsIndexed(hits, key = { _, s -> s }) { i, s ->
-                    Box(listMotion(quick = true)) {
+                    Box(listMotion(quick = true)) { KavPart("stops.row", s, { stopArgs(net, s).put("list", "search") }) {
                         if (RefTable.isHandle(s)) ExtStopListRow(s, null, first = i == 0, last = i == hits.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
                         else StopListRow(net, s, null, town = true, first = i == 0, last = i == hits.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
-                    }
+                    } }
                 }
             } else {
                 if (yours.isNotEmpty() || yoursExt.isNotEmpty()) {
                     item(key = "saved") { SectionHeader(T("Saved", "שמורות"), listMotion(quick = true)) }
                     itemsIndexed(yours, key = { _, s -> "saved-$s" }) { i, s ->
-                        Box(listMotion(quick = true)) {
+                        Box(listMotion(quick = true)) { KavPart("stops.row", s, { stopArgs(net, s).put("list", "saved") }) {
                             SavedStopRow(
                                 net, s, yoursLive[s].orEmpty(), shownAt, model.lineAlerts.filter { it.stop == net.stopKey(s) },
                                 first = i == 0, last = i == yours.lastIndex, day = yoursDays[s],
                                 asking = Schedules.boards && net.code.getOrElse(s) { 0 } > 0,
                             ) { if (!stopTaken(model, s)) model.stationStop = s }
-                        }
+                        } }
                     }
                     itemsIndexed(yoursExt, key = { _, s -> "saved-x-$s" }) { i, s ->
                         Box(listMotion(quick = true)) {
@@ -292,12 +292,12 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                         )
                     }
                     else -> itemsIndexed(near, key = { _, it -> it.first }) { i, (s, d) ->
-                        Box(listMotion(quick = true)) {
+                        Box(listMotion(quick = true)) { KavPart("stops.row", s, { stopArgs(net, s).put("list", "nearby").put("metres", Math.round(d)) }) {
                             if (RefTable.isHandle(s)) ExtStopListRow(s, distanceLabel(d), first = i == 0, last = i == near.lastIndex) { if (!stopTaken(model, s)) model.stationStop = s }
                             else StopListRow(net, s, distanceLabel(d), town = net.cityName(s) != homeTown, first = i == 0, last = i == near.lastIndex) {
                                 if (!stopTaken(model, s)) model.stationStop = s
                             }
-                        }
+                        } }
                     }
                 }
             }
@@ -401,7 +401,8 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                             alerts, "1 line alert at this stop", "התראת קו אחת בתחנה הזו",
                             "line alerts at this stop", "התראות קווים בתחנה הזו",
                         ) else T("Get line alerts at this stop", "התראות על קווים בתחנה הזו"),
-                        lit = alerts > 0, badge = alerts, onClick = { alerting = true },
+                        lit = alerts > 0, badge = alerts,
+                        onClick = { if (!uk.noammm.kav.ext.Actions.take(ctx, "stop.alerts.open") { about() }) alerting = true },
                     ) { ink, fill -> bellGlyph(ink, fill) }
                 }
             }
@@ -432,6 +433,9 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
         }
         val clock = rememberClockSec()
         val lines = remember(rows, trains, T.lang, clock) { rows.map { boardLine(net, it, live, trains, shownAt, clock, shared = asking) } }
+        // The midnight the rows' times count from, for what their parts are told.
+        val shownDay = day
+        val base = if (shownDay?.departures != null) shownDay.midnight else System.currentTimeMillis() / 1000 - secOfDay(System.currentTimeMillis())
         // The lines of its next departures asked ahead, so the line page a row opens has its provider's ways already.
         val aheadLines = remember(lines) { lines.mapNotNull { it.line }.distinctBy { it.id }.take(6) }
         LaunchedEffect(aheadLines) { if (aheadLines.isNotEmpty()) { delay(1_500); BoardsAhead.lines(aheadLines, 6) } }
@@ -478,12 +482,16 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
                     )
                 }
                 item(key = keys[i]) {
-                    BoardLineRow(net, l, columns, Modifier.animateItem(boardFadeIn, boardGlide, boardFadeOut)) {
+                    // Each departure is a part of its own (stop.departure), told the stop and the departure.
+                    KavPartRow("stop.departure", l.key to l.live, { departureArgs(net, stop, l, rows.getOrNull(i), base) },
+                        Modifier.animateItem(boardFadeIn, boardGlide, boardFadeOut)) { m ->
+                    BoardLineRow(net, l, columns, m) {
                         // The line itself, open at this stop, as the Lines tab shows it: the provider's own when it's
                         // the timetable picked.
                         val line = l.line
                         if (line != null) model.openSchedule(line, code)
                         else openTimetableLine(model, l.route, stop)
+                    }
                     }
                 }
             }
@@ -491,6 +499,8 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
             partRows(board, "after")
         }
     }
+    // Kav's own opening of the stop's line alerts, for an extension's Kav.kavAction while this board is open.
+    SideEffect { uk.noammm.kav.ext.Actions.own("stop.alerts.open") { _, _ -> alerting = true } }
     if (alerting) AlertSheet(model, net, stop) { alerting = false }
     }
 }
@@ -873,6 +883,35 @@ private fun boardRows(net: Net, stop: Int, t0: Int, live: List<LiveAt>, limit: I
         .map { (c, dep) -> BoardRow(c, dep, live.at(net, net.tripOf(c), dep)?.rt ?: dep) } +
         live.filter { it.own }.map { BoardRow(-1, it.rt, it.rt, it) })
         .filter { it.shown >= t0 }.sortedBy { it.shown }.take(limit)
+}
+
+// A stop's next departures as its board shows them now, for an extension (Kav.departures, ext/KavData.kt): the
+// provider's day where Kav asks one, else the week's, each at its live time where there is one. Each {"line", "to",
+// "mode", "platform", "at", "live", "cancelled"}: at the timetable's time and live the live one (null with none), in
+// seconds since 1970. Off the main thread.
+internal suspend fun boardJson(ctx: android.content.Context, net: Net, stop: Int, limit: Int): org.json.JSONArray {
+    val nowMs = System.currentTimeMillis()
+    val t0 = secOfDay(nowMs)
+    val midnight = nowMs / 1000 - t0
+    val (live, trains) = stopLive(net, stop) ?: (emptyList<LiveAt>() to TrainsToday())
+    val code = net.code.getOrElse(stop) { 0 }
+    val day = if (Schedules.boards && code > 0) scheduleDay(ctx, code) else null
+    val rows = day?.departures?.let { scheduleRows(it, day.midnight, t0, live, limit) } ?: boardRows(net, stop, t0, live, limit)
+    val base = if (day?.departures != null) day.midnight else midnight
+    return org.json.JSONArray(rows.map { row -> departureJson(net, boardLine(net, row, live, trains, t0, t0, shared = day?.departures != null), row, base) })
+}
+
+// A departure as an extension is told it: its line, where it goes, its mode and platform, its timetable time and live
+// time (null with none) in seconds since 1970, and whether it's canceled.
+private fun departureJson(net: Net, l: BoardLine, row: BoardRow, base: Long): org.json.JSONObject = org.json.JSONObject()
+    .put("line", l.label?.ifBlank { null } ?: net.rShort.getOrElse(l.route) { "" }).put("to", l.to)
+    .put("mode", l.type).put("platform", l.platform).put("at", base + row.dep)
+    .put("live", if (l.live != null) base + row.shown else org.json.JSONObject.NULL).put("cancelled", l.cancelled)
+
+// And as a stop board's row part (stop.departure) is told it, with the stop.
+private fun departureArgs(net: Net, stop: Int, l: BoardLine, row: BoardRow?, base: Long): org.json.JSONObject {
+    val d = if (row != null) departureJson(net, l, row, base) else org.json.JSONObject()
+    return stopArgs(net, stop).put("departure", d)
 }
 
 // Stops' provider days and lines' ways asked ahead of a likely tap (the nearest stops, a trip's stops, a line page's,
