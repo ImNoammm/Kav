@@ -299,6 +299,12 @@ fun NavigateScreen(
         ?.let { leg -> shownArrival(leg, waitingFor, r, now)?.takeIf { it.hasLocation }?.let { leg to it } }
     val pager = rememberPagerState(initialPage = currentStep) { steps.size }
     LaunchedEffect(currentStep) { pager.animateScrollToPage(currentStep) }
+    // The card on screen, for extensions following the trip: the page the cards settled on, -1 once navigation leaves.
+    LaunchedEffect(pager, journey != null) {
+        if (journey == null) { model.journeyShown = -1; return@LaunchedEffect }
+        snapshotFlow { pager.settledPage }.collect { model.journeyShown = it }
+    }
+    DisposableEffect(pager) { onDispose { model.journeyShown = -1 } }
     // Derived, so the screen and its map are composed again only when following changes, not at each page the pager
     // passes.
     val following by remember(currentStep, steps) {
@@ -351,6 +357,14 @@ fun NavigateScreen(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     fun tripArgs() = org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(trip, r))
     fun failureArgs(f: Failure) = tripArgs().put("reason", f.kind.name.lowercase()).put("key", f.key)
+    // Under the step dots (nav.banner): the step the rider is on, its kind, and its leg with the leg's index when it has one.
+    fun bannerArgs(): org.json.JSONObject {
+        val s = steps.getOrNull(currentStep)
+        val leg = uk.noammm.kav.ext.TripEvents.legOf(s, chosen)
+        return tripArgs().put("step", currentStep).put("kind", uk.noammm.kav.ext.TripEvents.kind(s))
+            .put("leg", leg?.let { uk.noammm.kav.ext.Pipeline.legJson(it, r) } ?: org.json.JSONObject.NULL)
+            .put("index", uk.noammm.kav.ext.TripEvents.legIndex(s, trip))
+    }
     fun showStep(step: Int) { scope.launch { pager.animateScrollToPage(step) } }
     fun keep(f: Failure) { kept = kept + f.key; replanFailed = false }
     fun stepTapped(step: Int) {
@@ -420,7 +434,11 @@ fun NavigateScreen(
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
                         tint = K.text)
                 } }
-                if (!compact) StepStrip(pager, steps.size, currentStep, ::stepTapped)
+                if (!compact) {
+                    StepStrip(pager, steps.size, currentStep, ::stepTapped)
+                    KavPart("nav.banner", Triple(trip, currentStep, chosen), ::bannerArgs, inset = K.gap3,
+                        surface = Modifier.padding(top = K.gap2).glassSurface(K.rCard)) {}
+                }
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
                 if (failure != null) KavPart("nav.problem", failure.key, { failureArgs(failure) }) {
                     ReplanCard(failure, r, now, replanning, replanFailed, countdown.takeIf { counting && it > 0 },
@@ -435,6 +453,8 @@ fun NavigateScreen(
             ) {
                 if (compact) {
                     StepStrip(pager, steps.size, currentStep, ::stepTapped)
+                    KavPart("nav.banner", Triple(trip, currentStep, chosen), ::bannerArgs, inset = K.gap3,
+                        surface = Modifier.padding(top = K.gap2).glassSurface(K.rCard)) {}
                     Spacer(Modifier.height(K.gap2))
                 } else {
                     // The map's credit sits in the right corner just above the card, whatever the card's height or the

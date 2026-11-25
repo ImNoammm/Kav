@@ -69,9 +69,10 @@ object TripAccess {
 // The trip the rider follows, told to the extensions the rider allows (TripAccess.FOLLOW) as it changes: MainActivity
 // passes each change of the journey and its step (seen), and a listener set during a trip is told it at once (catchUp).
 object TripEvents {
-    // A followed trip as far as its events go: the trip itself (a new one on the way is a replan), its step, and the
-    // index of its last step (Arrive), so an end there is an arrival.
-    class Seen(val trip: Transit.Itinerary, val step: Int, val last: Int)
+    // A followed trip as far as its events go: the trip itself (a new one on the way is a replan), its step, the
+    // index of its last step (Arrive), so an end there is an arrival, and the step card navigation shows (-1 while
+    // navigation isn't open). The rider can swipe to another card than the trip's step to look at it.
+    class Seen(val trip: Transit.Itinerary, val step: Int, val last: Int, val shown: Int = -1)
 
     // The events between what was seen and what is now, in order.
     internal fun changes(was: Seen?, now: Seen?): List<String> = when {
@@ -80,36 +81,61 @@ object TripEvents {
         now == null -> listOf("end")
         was.trip !== now.trip -> listOf("replan")
         was.step != now.step -> listOf("step")
+        was.shown != now.shown -> listOf("shown")
         else -> emptyList()
     }
 
     // An end at the trip's last step is an arrival; any other, the rider ending it.
     internal fun reason(was: Seen) = if (was.step >= was.last) "arrived" else "ended"
 
-    // An event as Kav.onTrip tells it: the trip in the shape slots and parts get it (Slots.trip), its places' names, and
-    // the step the rider is on.
-    internal fun json(event: String, j: ActiveJourney, step: Int, steps: List<Step>, reason: String? = null): JSONObject {
+    // An event as Kav.onTrip tells it: the trip in the shape slots and parts get it (Slots.trip), its places' names, the
+    // step the rider is on and the one navigation shows, and every step of the trip (stepList).
+    internal fun json(event: String, j: ActiveJourney, step: Int, steps: List<Step>, reason: String? = null, shown: Int = -1): JSONObject {
         val r = j.resolved
         val s = steps.getOrNull(step)
-        val legIndex = when (s) {
-            is Step.Wait -> s.legIndex
-            is Step.Ride -> s.legIndex
-            is Step.Taxi -> j.trip.legs.indexOf(s.leg)
-            is Step.Cycle -> j.trip.legs.indexOf(s.leg)
-            else -> -1
-        }
-        val leg = when (s) {
-            is Step.Wait -> uk.noammm.kav.ui.boardingChoice(s.ride, s.wait, j.chosen[s.legIndex] ?: 0).first
-            is Step.Ride -> uk.noammm.kav.ui.boardingChoice(s.ride, s.wait, j.chosen[s.legIndex] ?: 0).first
-            is Step.Walk -> s.leg
-            is Step.Taxi -> s.leg
-            is Step.Cycle -> s.leg
-            else -> null
-        }
+        val leg = legOf(s, j.chosen)
         val stepJson = JSONObject().put("index", step).put("count", steps.size).put("kind", kind(s))
-            .put("leg", leg?.let { Pipeline.legJson(it, r) } ?: JSONObject.NULL).put("legIndex", legIndex)
+            .put("leg", leg?.let { Pipeline.legJson(it, r) } ?: JSONObject.NULL).put("legIndex", legIndex(s, j.trip))
+            .put("shown", shown)
         return JSONObject().put("event", event).put("trip", Slots.trip(j.trip, r)).put("from", j.fromLabel).put("to", j.toLabel)
-            .put("step", stepJson).apply { if (reason != null) put("reason", reason) }
+            .put("step", stepJson).put("steps", stepList(j, steps)).apply { if (reason != null) put("reason", reason) }
+    }
+
+    // Each step of the trip, in navigation's order, so an extension knows what every one is: its kind, the index of its
+    // leg in trip.legs (-1 for none), the line a wait or ride is for (the one the rider chose there), and the place it's
+    // about: where it starts, the stop walked to, the stop boarded at, the stop got off at, or where the trip ends.
+    internal fun stepList(j: ActiveJourney, steps: List<Step>): JSONArray = JSONArray(steps.map { s ->
+        val r = j.resolved
+        val leg = legOf(s, j.chosen)
+        val line = if (s is Step.Wait || s is Step.Ride) leg?.let { it.shortName.ifBlank { r.line(it.lineId)?.number.orEmpty() }.ifBlank { null } } else null
+        val place = when (s) {
+            is Step.Start -> s.label
+            is Step.Walk -> r.stop(s.toStop)?.shown() ?: s.toName
+            is Step.Wait -> leg?.let { r.stop(it.fromStop)?.shown() }
+            is Step.Ride, is Step.Taxi, is Step.Cycle -> leg?.let { r.stop(it.toStop)?.shown() }
+            is Step.Arrive -> s.label
+        }
+        JSONObject().put("kind", kind(s)).put("legIndex", legIndex(s, j.trip))
+            .put("line", line ?: JSONObject.NULL).put("place", place ?: JSONObject.NULL)
+    })
+
+    // A step's leg's index in trip.legs, -1 for a step with none of its own (a walk is made of one or more walks).
+    internal fun legIndex(s: Step?, trip: Transit.Itinerary): Int = when (s) {
+        is Step.Wait -> s.legIndex
+        is Step.Ride -> s.legIndex
+        is Step.Taxi -> trip.legs.indexOf(s.leg)
+        is Step.Cycle -> trip.legs.indexOf(s.leg)
+        else -> -1
+    }
+
+    // A step's leg, a wait's and a ride's the bus the rider chose there.
+    internal fun legOf(s: Step?, chosen: Map<Int, Int>): Transit.Leg? = when (s) {
+        is Step.Wait -> uk.noammm.kav.ui.boardingChoice(s.ride, s.wait, chosen[s.legIndex] ?: 0).first
+        is Step.Ride -> uk.noammm.kav.ui.boardingChoice(s.ride, s.wait, chosen[s.legIndex] ?: 0).first
+        is Step.Walk -> s.leg
+        is Step.Taxi -> s.leg
+        is Step.Cycle -> s.leg
+        else -> null
     }
 
     internal fun kind(s: Step?): String = when (s) {
@@ -127,6 +153,7 @@ object TripEvents {
     fun catchUp(identity: String) {
         val (j, step) = uk.noammm.kav.TripBridge.journey?.invoke() ?: return
         val steps = uk.noammm.kav.ui.buildSteps(j.trip, j.fromLabel, j.toLabel)
-        Native.tripEvent(json("start", j, step, steps).toString(), identity)
+        val shown = uk.noammm.kav.TripBridge.shown?.invoke() ?: -1
+        Native.tripEvent(json("start", j, step, steps, shown = shown).toString(), identity)
     }
 }

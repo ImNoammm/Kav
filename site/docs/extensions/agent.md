@@ -506,6 +506,7 @@ its cards.
 | `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:452` |
 | `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:804` |
 | `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:847` |
+| `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:439` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
 | `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:130` |
@@ -657,7 +658,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `parts-sample` | API 4: a row after Home's pay card, and each ride of a trip drawn its own way |
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
-| `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, and adds a line to the wait and ride cards |
+| `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, adds a line to the wait and ride cards, and a banner under navigation's step dots |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 
@@ -1528,18 +1529,34 @@ kav.onTrip { event ->
 ```json
 {"event": "step", "from": "Home", "to": "Azrieli",
  "trip": {"provider": "", "dep": 1795421100, "arr": 1795422900, "legs": [...]},
- "step": {"index": 2, "count": 6, "kind": "wait", "legIndex": 1, "leg": {"kind": "ride", "lineNumber": "18", ...}}}
+ "step": {"index": 2, "count": 6, "kind": "wait", "legIndex": 1, "leg": {"kind": "ride", "lineNumber": "18", ...},
+          "shown": 2},
+ "steps": [{"kind": "start", "legIndex": -1, "line": null, "place": "Home"},
+           {"kind": "walk", "legIndex": -1, "line": null, "place": "Allenby"},
+           {"kind": "wait", "legIndex": 1, "line": "18", "place": "Allenby"},
+           {"kind": "ride", "legIndex": 1, "line": "18", "place": "Azrieli Center"},
+           {"kind": "walk", "legIndex": -1, "line": null, "place": "Azrieli"},
+           {"kind": "arrive", "legIndex": -1, "line": null, "place": "Azrieli"}]}
 ```
 
 - `event`: `"start"` (the rider started following it, or Kav started again with it under way), `"step"` (the rider
   moved on to another step: off a bus, the next walk or wait, and so on), `"replan"` (Kav planned a new route on the
-  way; `trip` is the new one) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or `"ended"` when
-  the rider ended it before.
+  way; `trip` is the new one), `"shown"` (the rider swiped navigation's cards to another step, or opened or left
+  navigation; only `step.shown` changed) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or
+  `"ended"` when the rider ended it before. Ignore an event you don't know: a later Kav may add more.
 - `trip`: the trip as slots, parts and route rules get it (its legs, stops, lines and times).
-- `step`: the step the navigation screen shows as current: its `index` and the `count` of steps, its `kind` (`start`,
-  `walk`, `wait`, `ride`, `taxi`, `cycle` or `arrive`), its leg (`leg`, as a leg of `trip`; for a wait or a ride, the
-  line the rider chose to take) and that leg's place in `trip.legs` (`legIndex`, `-1` for a walk or the start and end).
-  Getting off a bus is the step after its ride.
+- `step`: the step the trip is on, the one navigation marks as current: its `index` and the `count` of steps, its
+  `kind` (`start`, `walk`, `wait`, `ride`, `taxi`, `cycle` or `arrive`), its leg (`leg`, as a leg of `trip`; for a
+  wait or a ride, the line the rider chose to take) and that leg's place in `trip.legs` (`legIndex`, `-1` for a walk
+  or the start and end).
+  Getting off a bus is the step after its ride. `shown` is the step whose card navigation shows: the rider can swipe
+  the cards, or tap the step dots, to look at another step than the one the trip is on. It's `-1` while navigation
+  isn't open (the rider went back to Home during the trip).
+- `steps`: every step of the trip, in navigation's order, so `step.index` and `step.shown` are places in it. Each
+  has its `kind` and `legIndex` as above, the `line` a wait or a ride is for (the line the rider chose there, `null`
+  for other steps), and the `place` the step is about: where the trip starts, the stop a walk goes to, the stop a
+  wait boards at, the stop a ride gets off at (a taxi's or a bike's too, when it ends at one), or where the trip ends.
+  `null` when it has none.
 - Set while a trip is under way (from `start()`, or when the rider allows it during a trip), the listener is told that
   trip at once, as `"start"`. `null` stops it. Without a `trips.follow` contribution `kav.onTrip` throws.
 

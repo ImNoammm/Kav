@@ -29,7 +29,7 @@ object Parts {
         "ticket.header", "ticket.validity", "ticket.ride",
         "pay.history.header", "pay.history.summary", "pay.history.empty", "pay.history.month", "pay.history.ride",
         "nav.header", "nav.problem", "nav.card", "share.targets", "ticket.codes", "pay.setup",
-        "nav.wait.details", "nav.ride.details",
+        "nav.wait.details", "nav.ride.details", "nav.banner",
     ) + SETTINGS_PAGES.map { "settings.page.$it" }
 
     const val CAPABILITY = "part."

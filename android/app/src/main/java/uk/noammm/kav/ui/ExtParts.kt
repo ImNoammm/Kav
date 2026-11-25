@@ -22,12 +22,14 @@ import uk.noammm.kav.ext.SafeMode
 // when one gives a view. With none, the part is drawn as it always is, and about is never built. of: what the part
 // shows, so its views are made again only when that changes. The views sit as far from Kav's own as its cards do from
 // each other, and inset as far as the part's cards are; ownGap: the part's content keeps the space above itself (Home's
-// cards), so each view keeps the same space above it.
+// cards), so each view keeps the same space above it. surface: what each view sits on, inside its inset (navigation's
+// banner, over the map, is on glass as the step dots are).
 @Composable
-internal fun KavPart(name: String, of: Any?, about: () -> JSONObject, inset: Dp = 0.dp, ownGap: Boolean = false, content: @Composable () -> Unit) {
+internal fun KavPart(name: String, of: Any?, about: () -> JSONObject, inset: Dp = 0.dp, ownGap: Boolean = false,
+    surface: Modifier = Modifier, content: @Composable () -> Unit) {
     val part = rememberPart(name, of, about)
     if (part == null) { content(); return }
-    val at = Modifier.padding(start = inset, end = inset, top = if (ownGap) K.gap4 else 0.dp)
+    val at = Modifier.padding(start = inset, end = inset, top = if (ownGap) K.gap4 else 0.dp).then(surface)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (ownGap) 0.dp else K.gap4)) {
         for ((p, v) in part.before) PartView(p, v, at)
         part.replaced?.let { (p, v) -> PartView(p, v, at) } ?: content()

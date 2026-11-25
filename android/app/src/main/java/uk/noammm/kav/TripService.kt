@@ -464,6 +464,8 @@ class TripService : Service() {
 object TripBridge {
     @Volatile var end: (() -> Unit)? = null
     @Volatile var journey: (() -> Pair<ActiveJourney, Int>?)? = null
+    // The step card navigation shows, -1 while it isn't open.
+    @Volatile var shown: (() -> Int)? = null
     @Volatile var fix: ((Fix) -> Unit)? = null
     @Volatile var fixNow: (() -> Fix?)? = null
 }

@@ -478,6 +478,7 @@ its cards.
 | `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:452` |
 | `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:804` |
 | `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:847` |
+| `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:439` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
 | `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:130` |
@@ -629,7 +630,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `parts-sample` | API 4: a row after Home's pay card, and each ride of a trip drawn its own way |
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
-| `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, and adds a line to the wait and ride cards |
+| `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, adds a line to the wait and ride cards, and a banner under navigation's step dots |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 

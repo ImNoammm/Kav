@@ -412,6 +412,9 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var liveShow by mutableStateOf(LiveShow.ALL)
 
     var journeyStep by mutableIntStateOf(0)
+    // The step card navigation shows, which the rider can swipe away from the trip's step to look at another; -1 while
+    // navigation isn't open. Told to extensions following the trip (TripEvents).
+    var journeyShown by mutableIntStateOf(-1)
 
     var pendingFrom by mutableStateOf<Transit.Place?>(null)
     var pendingTo by mutableStateOf<Transit.Place?>(null)
@@ -919,11 +922,11 @@ private fun Shell(model: KavModel) {
         var was: uk.noammm.kav.ext.TripEvents.Seen? = null
         var wasJourney: ActiveJourney? = null
         var steps: Pair<Transit.Itinerary, List<uk.noammm.kav.ui.Step>>? = null
-        snapshotFlow { model.activeJourney to model.journeyStep }.collect { (journey, step) ->
+        snapshotFlow { Triple(model.activeJourney, model.journeyStep, model.journeyShown) }.collect { (journey, step, shown) ->
             val now = journey?.let { j ->
                 val s = steps?.takeIf { it.first === j.trip }?.second
                     ?: buildSteps(j.trip, j.fromLabel, j.toLabel).also { steps = j.trip to it }
-                uk.noammm.kav.ext.TripEvents.Seen(j.trip, step, s.lastIndex)
+                uk.noammm.kav.ext.TripEvents.Seen(j.trip, step, s.lastIndex, shown)
             }
             val events = uk.noammm.kav.ext.TripEvents.changes(was, now)
             val before = was; val ended = wasJourney
@@ -934,8 +937,8 @@ private fun Shell(model: KavModel) {
                 for (e in events) runCatching {
                     val json = if (e == "end" && ended != null && before != null)
                         uk.noammm.kav.ext.TripEvents.json(e, ended, before.step, buildSteps(ended.trip, ended.fromLabel, ended.toLabel),
-                            uk.noammm.kav.ext.TripEvents.reason(before))
-                    else if (journey != null) uk.noammm.kav.ext.TripEvents.json(e, journey, step, stepsNow)
+                            uk.noammm.kav.ext.TripEvents.reason(before), before.shown)
+                    else if (journey != null) uk.noammm.kav.ext.TripEvents.json(e, journey, step, stepsNow, shown = shown)
                     else null
                     json?.let { uk.noammm.kav.ext.Native.tripEvent(it.toString()) }
                 }
@@ -1075,6 +1078,7 @@ private fun Shell(model: KavModel) {
         if (model.restored) {
             TripBridge.end = { model.activeJourney = null }
             TripBridge.journey = { model.activeJourney?.let { it to model.journeyStep } }
+            TripBridge.shown = { model.journeyShown }
             TripBridge.fix = {
                 if (it.accuracy > ROUGH_FIX_M) model.glimpse(it.lat, it.lon, it.speed, it.at, it.accuracy)
                 else model.track(it.lat, it.lon, it.speed, it.at, it.accuracy)
@@ -1084,6 +1088,7 @@ private fun Shell(model: KavModel) {
         onDispose {
             TripBridge.end = null
             TripBridge.journey = null
+            TripBridge.shown = null
             TripBridge.fix = null
             TripBridge.fixNow = null
         }
