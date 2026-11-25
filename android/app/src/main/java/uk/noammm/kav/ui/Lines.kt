@@ -382,13 +382,18 @@ private fun foldRoutes(
 // Rows of one line (its operator, kind and number) that would show the same start or the same end, and the ends that
 // tell them apart, by line, end name and town: true for an end of that name in another town too, shown with its town
 // (one in the same town has its whole name); false for the far end of a one-way row out of, or into, the same place as
-// another row, such as two routes out of one stop to two places, shown with its whole name. Rows that differ otherwise
-// and loops aren't in it.
+// another row, such as two routes out of one stop to two places, shown with its whole name, unless what its whole name
+// adds is only a part of the same place (a station's drop-off or platforms: another stop of that name within 150 m).
+// Rows that differ otherwise and loops aren't in it.
 internal fun twinEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boolean> {
     if (ends.isEmpty()) return emptyMap()
     val out = HashMap<String, Boolean>()
     val rows = foldRoutes(net, 0 until net.nRoutes, ends, namesakeEnds(net, ends))
         .filter { it.a >= 0 && terminusName(net, it.a) != terminusName(net, it.b) }
+    val named by lazy { (0 until net.nStops).groupBy { terminusName(net, it) } }
+    fun partOfPlace(s: Int) = named[terminusName(net, s)].orEmpty().any { o ->
+        net.name[o] != net.name[s] && metres(net.lat[s], net.lon[s], net.lat[o], net.lon[o]) < 150.0
+    }
     for ((line, rs) in rows.groupBy { twinLine(net, it.route) }) {
         if (rs.size < 2) continue
         fun mark(s: Int, town: Boolean) { val k = twinKey(net, line, s); out[k] = town || out[k] == true }
@@ -397,7 +402,7 @@ internal fun twinEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boo
             val s1 = if (start) r1.a else r1.b; val s2 = if (start) r2.a else r2.b
             if (terminusName(net, s1) != terminusName(net, s2)) continue
             if (net.name[s1] == net.name[s2] && net.cityOf[s1] == net.cityOf[s2]) {
-                for (r in listOf(r1, r2)) if (!r.both) mark(if (start) r.b else r.a, false)
+                for (r in listOf(r1, r2)) if (!r.both) (if (start) r.b else r.a).let { if (!partOfPlace(it)) mark(it, false) }
             } else {
                 val town = net.cityOf[s1] != net.cityOf[s2]
                 mark(s1, town); mark(s2, town)
@@ -528,8 +533,10 @@ private fun LineSpan(net: Net, row: LineRow, twins: Map<String, Boolean>, modifi
         row.both -> "\u2068$a\u2069 ↔ \u2068$b\u2069"
         else -> T("\u2068$a\u2069 → \u2068$b\u2069", "\u2068$a\u2069 ← \u2068$b\u2069")
     }
+    // A row told apart by a longer end has a line more, so the longer end isn't cut off.
+    val longer = a != shownEnd(net, row.a) || b != shownEnd(net, row.b)
     Text(
-        text, style = K.type.bodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = modifier,
+        text, style = K.type.bodyStrong, maxLines = if (longer) 3 else 2, overflow = TextOverflow.Ellipsis, modifier = modifier,
     )
 }
 
