@@ -331,23 +331,25 @@ val stations = kav.stops("""{"near": [32.08, 34.78], "mode": 2, "limit": 5}""")
 // [{"stop": "il.mot/gtfs/stop/37292", "code": 37292, "name": "...", "city": "...", "lat", "lon", "mode": 2, "platform": "", "metres": 840}]
 
 // Off the main thread: these two ask the network.
-val buses = kav.vehicles("""{"line": "37"}""")            // or {"near": [lat, lon], "km": 1}
+val buses = kav.vehicles("""{"line": "37"}""")            // or {"near": [lat, lon], "km": 1}, or both
 // [{"key", "plate": "12-345-67", "route", "line": "37", "to", "agency", "mode", "lat", "lon", "bearing", "speed", "at"}]
 val board = kav.departures("""{"stop": "il.mot/gtfs/stop/21345", "limit": 10}""")
 // [{"line": "37", "to": "...", "mode": 3, "platform": "", "at": 1795421100, "live": 1795421160, "cancelled": false}]
 
 // Rides already over, into Kav's ride history; the same key again updates one.
-kav.addRides("""[{"key": "r1", "kind": "BUS", "line": "37", "from": "...", "to": "...", "at": 1795421100000, "riders": 1, "price": 600}]""")
+kav.addRides("""[{"key": "r1", "kind": "BUS", "line": "37", "from": "...", "to": "...", "at": 1795421100000, "riders": 1, "band": 15, "price": 600}]""")
 ```
 
 - `stops` answers `null` until Kav's timetable has loaded; nearest first with `near`, else by name. From any thread.
 - `vehicles` and `departures` throw on the main thread. `vehicles` answers `null` when Kav's live source can't be
   reached; for `near`, Kav's server is told only the box around the place, in whole hundredths of a degree, as for the
-  Live tab. `at` is when the vehicle last said where it was, `bearing` and `speed` are `-1` when it didn't say.
+  Live tab. With both `line` and `near`, the line's vehicles come nearest the place first, each with `metres`. `at` is
+  when the vehicle last said where it was, `bearing` and `speed` are `-1` when it didn't say.
 - `departures` is the stop's board as Kav shows it now: the timetable's provider where Kav asks one, else the week on
   the phone, each with its live time where there is one. `at` is the timetable's time, `live` the live one or `null`,
   both in seconds. `null` for a stop Kav doesn't know.
-- `addRides` takes `kind` `BUS`, `TRAIN` or `LIGHT_RAIL`, `at` in milliseconds and `price` in agorot; Kav keeps each
+- `addRides` takes `kind` `BUS`, `TRAIN` or `LIGHT_RAIL`, `at` in milliseconds, `band` the fare's reach in km and
+  `price` in agorot, the same fields its ride history shows; Kav keeps each
   key as `"ext:<your id()>:<key>"`, as with tickets, so you never touch another's rides or the ones Kav read. A ride
   that isn't right (no key, another kind, no `at`) throws, and none of the list is added.
 

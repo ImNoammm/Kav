@@ -187,6 +187,10 @@ class Hello : KavExtension {
 | `onTrip(listener)` | API 5: told as the trip the rider follows starts, moves from step to step and ends, once the rider allows it (the same) |
 | `widget(id, widget)` | API 5: a home screen widget's content, as JSON text Kav draws, and its taps ([screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets)) |
 | `refreshWidget(id)` | API 5: asks Kav to ask that widget for its content again now |
+| `stops(query)` | API 5: stops from Kav's timetable on the phone, nearest first or by name ([below](#kavs-timetable-live-vehicles-and-ride-history)) |
+| `vehicles(query)` | API 5: the live vehicles of a line, or around a place, as Kav's Live tab has them (the same) |
+| `departures(query)` | API 5: a stop's next departures, as its board in Kav shows them (the same) |
+| `addRides(rides)` | API 5: rides already over, into Kav's ride history (the same) |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -335,6 +339,39 @@ set a look again, so keep it quick. Return `null` for Kav's own look for that st
 back Kav's look. When two extensions set a stop look, the last one set wins. `samples/native/map-pins` uses all of
 it.
 
+#### Kav's timetable, live vehicles and ride history
+
+API 5. What Kav already has, without reaching into its code: JSON text in and out. Stops and departures are public
+transit data, and a ride you add is your own, so none of these needs a contribution.
+
+```kotlin
+// Stops: any of near, name, mode (the GTFS route type of its lines, a train station 2), code; limit 20 by default.
+val stations = kav.stops("""{"near": [32.08, 34.78], "mode": 2, "limit": 5}""")
+// [{"stop": "il.mot/gtfs/stop/37292", "code": 37292, "name": "...", "city": "...", "lat", "lon", "mode": 2, "platform": "", "metres": 840}]
+
+// Off the main thread: these two ask the network.
+val buses = kav.vehicles("""{"line": "37"}""")            // or {"near": [lat, lon], "km": 1}, or both
+// [{"key", "plate": "12-345-67", "route", "line": "37", "to", "agency", "mode", "lat", "lon", "bearing", "speed", "at"}]
+val board = kav.departures("""{"stop": "il.mot/gtfs/stop/21345", "limit": 10}""")
+// [{"line": "37", "to": "...", "mode": 3, "platform": "", "at": 1795421100, "live": 1795421160, "cancelled": false}]
+
+// Rides already over, into Kav's ride history; the same key again updates one.
+kav.addRides("""[{"key": "r1", "kind": "BUS", "line": "37", "from": "...", "to": "...", "at": 1795421100000, "riders": 1, "band": 15, "price": 600}]""")
+```
+
+- `stops` answers `null` until Kav's timetable has loaded; nearest first with `near`, else by name. From any thread.
+- `vehicles` and `departures` throw on the main thread. `vehicles` answers `null` when Kav's live source can't be
+  reached; for `near`, Kav's server is told only the box around the place, in whole hundredths of a degree, as for the
+  Live tab. With both `line` and `near`, the line's vehicles come nearest the place first, each with `metres`. `at` is
+  when the vehicle last said where it was, `bearing` and `speed` are `-1` when it didn't say.
+- `departures` is the stop's board as Kav shows it now: the timetable's provider where Kav asks one, else the week on
+  the phone, each with its live time where there is one. `at` is the timetable's time, `live` the live one or `null`,
+  both in seconds. `null` for a stop Kav doesn't know.
+- `addRides` takes `kind` `BUS`, `TRAIN` or `LIGHT_RAIL`, `at` in milliseconds, `band` the fare's reach in km and
+  `price` in agorot, the same fields its ride history shows; Kav keeps each
+  key as `"ext:<your id()>:<key>"`, as with tickets, so you never touch another's rides or the ones Kav read. A ride
+  that isn't right (no key, another kind, no `at`) throws, and none of the list is added.
+
 ### API 4: taking over Kav
 
 API 4 lets an extension change anything in Kav, in two layers:
@@ -409,6 +446,14 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `pay.place.open` | `{"place"}` | Opens one of Rav-Pass's pages from Settings' Paying. See the place names below. | `ui/RavPass.kt:506` |
 | `pay.history.clear` | `{"rides"}` | Clear history in Settings' Paying. Kav's own asks first. | `ui/RavPass.kt:483` |
 | `ticket.ravpass.open` | Same as `ticket.header`. | Open in Rav-Pass on a Rav-Pass ticket. | `ui/TicketCard.kt:343` |
+| `live.vehicle.open` | `{"key", "plate", "line", "to", "mode", "lat", "lon", "at"}` | A vehicle opened on Live: tapped on the map, in the list or on a stop's card. `key` is the one `vehicles` gives, `at` when it last said where it was (seconds). Kav's own opens its card, for a vehicle of those around. Needs `"api": 5`. | `ui/LiveScreen.kt:363` |
+| `live.stop.open` | `{"stop", "name"}` | A stop tapped on Live's map. `stop` is `null` for one that isn't the timetable's. Kav's own opens its card, for a stop of those around. Needs `"api": 5`. | `ui/LiveScreen.kt:366` |
+| `stop.alerts.open` | `{"stop", "name"}` | The Alerts button on a stop's board. Kav's own opens its line alerts while that board is open. Needs `"api": 5`. | `ui/Stations.kt:408` |
+| `line.alerts.save` | `{"alerts": [{"id", "stop", "name", "lines", "days", "from", "to", "toward"}]}`, the whole list as it would be kept | A line alert added or deleted. `days` has bit 0 for Sunday, `from` and `to` are minutes of the day, `toward` (a train station's) the places the trains end. Kav's own keeps the list given. Needs `"api": 5`. | `MainActivity.kt:485` |
+| `line.getoff` | `{"number", "operator", "stop", "name", "index"}` | "Get off here" on a line's page: the trip on board to that stop. `index` is the stop's place on the way shown, from zero. Kav's own works while that page is open. Needs `"api": 5`. | `ui/Lines.kt:1572` |
+| `report.send` | `report`'s args, with `"about"`, `"issue"`, `"line"` and `"words"` | "Fill in the ministry's form" at the end of a report. Never told who reports it: the rider's name, phone, ID and photos stay in Kav's form. Kav's own opens the form while that step is open. Needs `"api": 5`. | `ui/Report.kt:947` |
+| `place.pick` | `{"place": {"name", "detail", "lat", "lon", "type", "mode"}, "title"}` | A place chosen in Kav's place search (a result, a saved place, a recent one, a stop), for any end of a trip. `title` is the search's heading. Kav's own uses the place given, so `kavAction` can give another; while the search is open. Needs `"api": 5`. | `ui/Pickers.kt:223` |
+| `link.open` | `{"from", "to", "toName", "at", "shared"}` | A trip link Kav was opened with (`kav://trip`, a shared trip, a `geo:` place). Each place is `{"name", "lat", "lon"}`, or `null` when the link leaves it to the rider; `at` in seconds, 0 for now; `shared` for a whole trip someone shared. Kav's own opens it in the planner. Needs `"api": 5`. | `MainActivity.kt:1066` |
 
 The sort orders are `recommended`, `fastest`, `earliest_departure`, `earliest_arrival`, `least_transfers`,
 `least_walking`, `cheapest` and `lowest_co2` (when emissions are shown). Call the default `results.*` actions
@@ -509,6 +554,22 @@ when the part next shows.
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
 | `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:130` |
+| `stops.row` | `{"stop", "name", "list", "metres"}` | Each stop in the Stops tab. `list` is `saved`, `nearby` or `search`; `metres` only for `nearby`. Needs `"api": 5`. | `ui/Stations.kt:240` |
+| `stop.departure` | `{"stop", "name", "departure"}` | Each departure on a stop's board, as its own row. `departure` is as `departures` gives it. Rows sit with no space between them. Needs `"api": 5`. | `ui/Stations.kt:489` |
+| `stop.alerts` | `{"stop", "name"}` | Everything under the heading of a stop's line alerts. Needs `"api": 5`. | `ui/AlertSheet.kt:106` |
+| `lines.row` | `{"number", "operator", "mode", "from", "to"}` | Each line in the Lines tab, in both timetable modes. Needs `"api": 5`. | `ui/Lines.kt:223` |
+| `line.live` | `{"number", "operator"}` | A line page's next departures and how busy it usually is, under its name. Needs `"api": 5`. | `ui/Lines.kt:1713` |
+| `line.map` | `{"number", "operator"}` | A line page's map. Needs `"api": 5`. | `ui/Lines.kt:1742` |
+| `line.stop` | `{"number", "operator", "stop", "name", "index", "count"}` | Each stop on a line's page, with its card when open. `index` is its place on the way shown, from zero. Needs `"api": 5`. | `ui/Lines.kt:1896` |
+| `live.list` | `{"vehicles"}` | The list under Live's map, or its note when there are none. Needs `"api": 5`. | `ui/LiveScreen.kt:815` |
+| `live.vehicle` | `live.vehicle.open`'s, `{}` once it stops reporting | A vehicle's card on Live. Needs `"api": 5`. | `ui/LiveScreen.kt:754` |
+| `live.stop` | `{"stop", "name"}` | A stop's card on Live. Needs `"api": 5`. | `ui/LiveScreen.kt:744` |
+| `home.nearest` | `{"stop", "name", "metres"}` | The nearest station in Home's suggestions. Needs `"api": 5`. | `ui/HomeSuggestions.kt:233` |
+| `results.empty` | `{"reason"}` | The note when a search shows no routes. `reason` is `none`, `filtered` (the rider's filters hide them all), `shabbat`, `error` or `too_close`. Needs `"api": 5`. | `ui/DirectionsOnline.kt:852` |
+| `results.hidden` | `{"count", "reasons"}` | The row of routes the rider's rules hid, and why. Needs `"api": 5`. | `ui/DirectionsOnline.kt:926` |
+| `alert.sheet` | `{"label", "ids"}` | A service alert's notices, under its heading. Needs `"api": 5`. | `ui/Common.kt:604` |
+| `report.step` | `report`'s args, with `"step"` | Each page of the report form: `about`, `what`, `ride`, `more`, `you` or `check`. Needs `"api": 5`. | `ui/Report.kt:713` |
+| `search.result` | `{"place", "section", "index"}` | Each result of Kav's place search. `place` is as `place.pick` gives it; `section` is `recent`, `places` or `stops`. Needs `"api": 5`. | `ui/Pickers.kt:443` |
 
 `{"trip"}` is the route as route rules get it ([hooks.md](https://kavapp.link/docs/extensions/hooks)); `leg` one of its `legs`, and `index` its place
 in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
@@ -539,7 +600,7 @@ one or one Kav can't read, Kav shows its own. When your buttons change (a ride k
 `kav.provide("trip.notification", ...)` again: Kav posts the notification again at once. Kav 5.1 and older never ask,
 and show their own buttons.
 
-### Tickets
+#### Tickets
 
 ```java
 kav.addTicket(new JSONObject()
@@ -681,6 +742,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
 | `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, adds a line to the wait and ride cards, and a banner under navigation's step dots |
 | `shuttle-widgets` | API 5: two home screen widgets, the next departures of an invented shuttle from the stop chosen in its settings, and the rider's recent trips, a tap from planning one again |
+| `spots-sample` | API 5: parts on a line's page, a stop's board, Home and Live, an action of Live's taken over, and Kav's timetable and live vehicles read with `stops`, `vehicles` and `departures` |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 
@@ -703,7 +765,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides. */
     int API = 5;
 
     int apiVersion();
@@ -741,6 +803,32 @@ public interface Kav {
 
     /** API 5. Asks Kav to ask a widget of this extension for its content again now (its data changed). From any thread. */
     default void refreshWidget(String id) {}
+
+    /** API 5. Stops from Kav's timetable on the phone. query, as JSON text: {"near": [lat, lon], "name", "mode", "code",
+     *  "limit"}, each optional; the stops that match all given, nearest first with near, else by name, at most limit (20
+     *  by default, 200 at most). mode is the GTFS route type of a stop's lines (a train station 2). Answers a JSON array
+     *  of {"stop", "code", "name", "city", "lat", "lon", "mode", "platform"}, with "metres" when near is given; null
+     *  until the timetable has loaded. From any thread. */
+    default String stops(String query) { return null; }
+
+    /** API 5. The live vehicles Kav has, as its Live tab and a line's page show them. query: {"line": "<number>"}, every
+     *  vehicle on the routes with that number, or {"near": [lat, lon], "km"}, those around a place; both, the line's
+     *  nearest the place first. Answers a JSON array of {"key", "plate", "route", "line", "to", "agency", "mode", "lat",
+     *  "lon", "bearing", "speed", "at"}, with "metres" when near is given; null when
+     *  Kav's live source can't be reached. It asks the network: never on the main thread, where it throws. */
+    default String vehicles(String query) { return null; }
+
+    /** API 5. A stop's next departures, as its board in Kav shows them now. query: {"stop": "il.mot/gtfs/stop/<code>",
+     *  "limit"} (20 by default, 100 at most). Answers a JSON array of {"line", "to", "mode", "platform", "at", "live",
+     *  "cancelled"}, times in seconds since 1970, live null for one with no live time; null when Kav doesn't know the
+     *  stop or its timetable hasn't loaded. It asks the network: never on the main thread, where it throws. */
+    default String departures(String query) { return null; }
+
+    /** API 5. Rides already over, into Kav's ride history (Settings › Paying › Ride history, Home's "This month"): a JSON
+     *  array of {"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}, kind "BUS", "TRAIN" or
+     *  "LIGHT_RAIL", at in milliseconds, band the fare's reach in km, price in agorot. The same key again updates that ride. Kav keeps the key as
+     *  "ext:<id()>:<key>", as with addTicket. A ride that isn't right throws. From any thread. */
+    default void addRides(String rides) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
