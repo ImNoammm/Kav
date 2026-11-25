@@ -1,5 +1,8 @@
 package uk.noammm.kav.data
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 // A search for trips, the same whoever plans it.
 class PlanRequest(
     val from: Pair<Double, Double>, val to: Pair<Double, Double>, val whenMs: Long, val timeType: Int,
@@ -116,7 +119,8 @@ class LegByLeg(private val inner: TripPlanner) : TripPlanner {
 }
 
 // The planner at a server address (KavPlan.planner, plannerOf), or an extension's at its address (Extensions.address).
-fun plannerFor(at: String): TripPlanner = uk.noammm.kav.ext.Extensions.plannerAt(at) ?: ServerPlanner(at)
+fun plannerFor(at: String): TripPlanner =
+    if (at == KavPlan.TRANSITOUS) TransitousPlanner() else uk.noammm.kav.ext.Extensions.plannerAt(at) ?: ServerPlanner(at)
 
 // The labels Kav's server gives its routes (server/live.py tag()), worked out on the phone for routes that come with
 // none: routes joined part by part. Warnings first, then what a route is best at; two at most.
@@ -172,6 +176,96 @@ internal object RouteTags {
             val tags = found[i].distinct().sortedBy(ORDER::indexOf).take(2)
             Transit.Itinerary(t.guid, t.group, t.legs, t.dep, t.arr, t.fare, t.currency, t.co2g, t.accessible, tags,
                 t.section, t.sectionId, provider = t.provider, policy = t.policy)
+        }
+    }
+}
+
+// #113: trips planned by Transitous (api.transitous.org, MOTIS 2), with the ministry's timetable it has for Israel and no
+// live times. Its answer is turned into the plan Kav's server gives, in the ministry's own ids (a stop's code, a line's
+// route id, a trip's id), so Kav's plan reader and live times take it as they take the server's. Stops on the way are
+// planned part by part, as for any planner that takes none.
+class TransitousPlanner : TripPlanner {
+    override fun plan(r: PlanRequest): KavPlan.Planned {
+        if (r.stopovers.isNotEmpty()) return LegByLeg(this).plan(r)
+        val at = java.time.Instant.ofEpochMilli(if (r.whenMs > 0) r.whenMs else System.currentTimeMillis())
+            .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()
+        val modes = r.routeTypes.distinct().sorted().mapNotNull { MODES[it] }.distinct()
+        val speed = when (r.settings.pace) {
+            PlanSettings.Pace.SLOW -> "&pedestrianSpeed=1.0"
+            PlanSettings.Pace.FAST -> "&pedestrianSpeed=1.6"
+            else -> ""
+        }
+        val url = String.format(java.util.Locale.US, "%s/api/v5/plan?fromPlace=%.6f,%.6f&toPlace=%.6f,%.6f&time=%s&arriveBy=%s&numItineraries=6%s%s",
+            BASE, r.from.first, r.from.second, r.to.first, r.to.second, at, r.timeType == Transit.TIME_ARRIVAL, speed,
+            if (modes.isEmpty()) "" else "&transitModes=" + modes.joinToString(","))
+        val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        c.connectTimeout = 10_000; c.readTimeout = 25_000
+        c.setRequestProperty("User-Agent", "Kav-fork (Transitous planner)"); c.setRequestProperty("Accept", "application/json")
+        val body = try {
+            if (c.responseCode !in 200..299) throw java.io.IOException("Transitous HTTP ${c.responseCode}")
+            c.inputStream.bufferedReader().use { it.readText() }
+        } finally { c.disconnect() }
+        return KavPlan.parse(convert(body))
+    }
+
+    companion object {
+        private const val BASE = "https://api.transitous.org"
+        private const val PREFIX = "il-Israel-MOT_"
+        // GTFS route types to MOTIS modes.
+        private val MODES = mapOf(0 to "TRAM", 1 to "SUBWAY", 2 to "RAIL", 3 to "BUS", 4 to "FERRY", 5 to "CABLE_CAR", 6 to "AERIAL_LIFT", 7 to "FUNICULAR")
+
+        private fun epoch(s: String): Long = try { java.time.Instant.parse(s).epochSecond } catch (e: Exception) { 0L }
+
+        // MOTIS's answer as a plan in the shape of server/API.md. An itinerary with a ride Kav can't name in the ministry's
+        // ids (not numbers) is left out whole.
+        internal fun convert(body: String): String {
+            val o = JSONObject(body)
+            val stops = JSONObject(); val lines = JSONObject(); val agencies = JSONObject(); val routes = JSONArray()
+            fun code(p: JSONObject?): String? {
+                if (p == null) return null
+                val code = p.optString("stopCode").ifBlank { return null }
+                if (code.toIntOrNull() == null) return null
+                if (!stops.has(code)) stops.put(code, JSONArray().put(code).put(p.optString("name")).put(p.optDouble("lat")).put(p.optDouble("lon")))
+                return code
+            }
+            val found = ArrayList<JSONObject>()
+            o.optJSONArray("itineraries")?.let { a -> for (i in 0 until a.length()) found += a.getJSONObject(i) }
+            o.optJSONArray("direct")?.let { a -> for (i in 0 until minOf(a.length(), 1)) found += a.getJSONObject(i) }
+            for (it in found) {
+                val legs = JSONArray()
+                var ok = true
+                val parts = it.optJSONArray("legs") ?: JSONArray()
+                for (j in 0 until parts.length()) {
+                    val l = parts.getJSONObject(j)
+                    val dep = epoch(l.optString("startTime")); val arr = epoch(l.optString("endTime"))
+                    val shape = l.optJSONObject("legGeometry")?.optString("points").orEmpty()
+                    val precision = l.optJSONObject("legGeometry")?.optInt("precision", 6) ?: 6
+                    val number = l.optString("routeShortName")
+                    if (number.isBlank() && !l.has("routeId")) {
+                        legs.put(JSONObject().put("k", "w").put("dep", dep).put("arr", arr).put("m", l.optDouble("distance", 0.0).toInt())
+                            .put("shape", shape).put("precision", precision))
+                        continue
+                    }
+                    val route = l.optString("routeId").substringAfter(PREFIX)
+                    val trip = l.optString("tripId").substringAfter(PREFIX)
+                    val agency = l.optString("agencyId")
+                    val from = code(l.optJSONObject("from")); val to = code(l.optJSONObject("to"))
+                    if (route.toIntOrNull() == null || trip.isBlank() || from == null || to == null || agency.toIntOrNull() == null) { ok = false; break }
+                    val calls = JSONArray().put(from)
+                    l.optJSONArray("intermediateStops")?.let { m -> for (k in 0 until m.length()) code(m.getJSONObject(k))?.let { c -> calls.put(c) } }
+                    calls.put(to)
+                    val type = l.optInt("routeType", 3)
+                    agencies.put(agency, l.optString("agencyName"))
+                    val head = l.optString("headsign")
+                    val fromName = l.optJSONObject("from")?.optString("name").orEmpty()
+                    if (!lines.has(route)) lines.put(route, JSONArray().put(number).put(head).put("").put(fromName).put("").put(agency.toInt()).put(type).put(l.optString("routeLongName")))
+                    legs.put(JSONObject().put("k", "r").put("line", route).put("trip", trip).put("dep", dep).put("arr", arr).put("sdep", epoch(l.optString("scheduledStartTime")).takeIf { s -> s > 0 } ?: dep)
+                        .put("head", head).put("stops", calls).put("shape", shape).put("precision", precision))
+                }
+                if (!ok || legs.length() == 0) continue
+                routes.put(JSONObject().put("dep", epoch(it.optString("startTime"))).put("arr", epoch(it.optString("endTime"))).put("legs", legs))
+            }
+            return JSONObject().put("it", routes).put("stops", stops).put("lines", lines).put("agencies", agencies).put("errors", JSONArray()).toString()
         }
     }
 }
