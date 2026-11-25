@@ -427,12 +427,19 @@ private fun HelpSection() {
         title, subtitle = subtitle, onClick = { openLink(ctx, url()) }, chevron = false,
         trailing = { Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp)) },
     )
+    var askBug by remember { mutableStateOf(false) }
+    if (askBug) BugReportAsk(ctx) { askBug = false }
     InfoHeader(T("Help and feedback", "עזרה ומשוב"), T(
-            "The forms open with Kav's version and your phone's model filled in, for you to check. Nothing is sent without you.",
-            "הטפסים נפתחים כשגרסת Kav ודגם הטלפון כבר ממולאים, כדי שתבדקו. שום דבר לא נשלח בלעדיכם.",
+            "Reporting a bug asks first whether to fill in Kav's version and your phone's model. The feature form opens with Kav's version filled in. Nothing is sent without you.",
+            "דיווח על באג שואל קודם אם למלא את גרסת Kav ודגם הטלפון. טופס הבקשה לפיצ'ר נפתח כשגרסת Kav ממולאת. שום דבר לא נשלח בלעדיכם.",
         ))
     ListGroup {
-        row { link(T("Report a bug", "דיווח על באג"), T("On GitHub", "ב-GitHub")) { feedbackLink(ctx, bug = true) } }
+        row {
+            ListRow(
+                T("Report a bug", "דיווח על באג"), subtitle = T("On GitHub", "ב-GitHub"), onClick = { askBug = true }, chevron = false,
+                trailing = { Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp)) },
+            )
+        }
         row { link(T("Ask for a feature", "בקשה לפיצ'ר"), T("On GitHub", "ב-GitHub")) { feedbackLink(ctx, bug = false) } }
         row { link(T("Kav's code", "הקוד של Kav"), T("And its server's", "ושל השרת שלה")) { REPO_URL } }
         row { link(T("Buy me a coffee", "קנו לי קפה"), T("If you like Kav", "אם Kav עוזרת לכם")) { COFFEE_URL } }
