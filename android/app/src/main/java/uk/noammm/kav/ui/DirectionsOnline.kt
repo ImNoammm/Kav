@@ -97,7 +97,7 @@ internal fun startedNow(trip: Transit.Itinerary, now: Long): Transit.Itinerary {
     )
 }
 
-private fun endpointName(p: Place?) = if (isHere(p)) hereName() else p?.name
+private fun endpointName(p: Place?) = if (isHere(p)) hereName() else p?.name?.let(::shownStart)
 
 // Whether the rider is where the trip starts as they begin it: by a fresh position when there is one, else by the trip
 // being planned from where they are.
@@ -484,7 +484,7 @@ fun DirectionsOnline(model: KavModel) {
             val again = againTrip
             val match = named?.let { raw.firstOrNull { exactTrip(it, named) } ?: raw.firstOrNull { sameLines(it, named) } }
                 ?: again?.let { raw.filter { sameLines(it, again) }.minByOrNull { it.dep } }
-            val fromName = fromPlace?.name ?: hereName()
+            val fromName = fromPlace?.name?.let(::shownStart) ?: hereName()
             val toName = toPlace?.name ?: T("Destination", "יעד")
             if (match != null) {
                 open = OpenTrip(match, resolved, fromName, toName, stopovers = stopovers)
@@ -1034,7 +1034,7 @@ fun DirectionsOnline(model: KavModel) {
                                     // Not before the rider's required rules have judged it.
                                     if (checking) return@ItineraryCard
                                     openTrip(OpenTrip(
-                                        shown[i], resolved, fromPlace?.name ?: T("Current location", "המיקום הנוכחי"),
+                                        shown[i], resolved, fromPlace?.name?.let(::shownStart) ?: T("Current location", "המיקום הנוכחי"),
                                         toPlace?.name ?: T("Destination", "יעד"), stopovers = stopovers,
                                         asked = if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L,
                                     ))
