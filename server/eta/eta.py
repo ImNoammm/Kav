@@ -24,6 +24,7 @@ import traceback
 import urllib.request
 import zipfile
 import zoneinfo
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import polars as pl
@@ -40,8 +41,10 @@ MODEL = os.environ.get("MODEL", "/models/live3_all.npz")
 # control, fine-tuned beside it on the same days without the motion inputs. None: the motion model's own times.
 MODEL_FALLBACK = os.environ.get("MODEL_FALLBACK", "")
 RAIL = os.environ.get("RAIL", "/models/rail")  # the train and light-rail models, gbdt-<operator>.txt and theirs
-# A second look at the buses' times before they go out (Nudge): the folder of its model, or none.
-NUDGE = os.environ.get("NUDGE", "")
+# A second look at the buses' times before they go out (Nudge): the folder of its model, the nudge folder beside the
+# bus model unless set; no nudge.json there, or set to nothing, and there's no second look.
+NUDGE = os.environ.get("NUDGE", os.path.join(os.path.dirname(MODEL), "nudge"))
+NUDGE_LIMIT = 4  # seconds its model may take in a round before the times go out without it
 REALTIME = os.environ.get("REALTIME", "/realtime")
 OUT = os.environ.get("OUT", "/eta")
 KAV_LIVE = os.environ.get("KAV_LIVE", "http://kav-live:8080")
@@ -702,14 +705,23 @@ class Nudge:
     FEATURES = ["source", "ahead", "pooling", "blend", "base", "push", "sched_left", "elapsed", "stops_ahead", "order_j",
                 "since_first", "hour", "weekday"]
 
-    def __init__(self, folder):
+    def __init__(self, folder, limit=NUDGE_LIMIT):
         import lightgbm as lgb
         with open(os.path.join(folder, "nudge.json")) as f:
             saved = json.load(f)
         if saved.get("features") != self.FEATURES:
             raise ValueError("a nudge model for other inputs: %s" % saved.get("features"))
+        with open(os.path.join(folder, "nudge.txt"), "rb") as f:
+            model = f.read()
+        # LightGBM crashes the whole process on a model file cut short, which nothing here could catch: it is given
+        # only the very bytes nudge.json names.
+        if hashlib.sha256(model).hexdigest() != saved.get("sha256"):
+            raise ValueError("nudge.txt isn't the file nudge.json names (sha256)")
         self.full, self.none, self.name = saved["full"], saved["none"], saved.get("name", "nudge")
-        self.booster = lgb.Booster(model_file=os.path.join(folder, "nudge.txt"))
+        # The least and the most seconds the model said on the days it was made from: what it says is kept within.
+        self.least, self.most = saved["least"], saved["most"]
+        self.booster = lgb.Booster(model_str=model.decode())
+        self.limit, self.pool, self.busy = limit, ThreadPoolExecutor(1), None
 
     @classmethod
     def inputs(cls, x):
@@ -730,20 +742,33 @@ class Nudge:
     def moved(self, x):
         """The seconds to add to each row's time (pooled): the model's for the network's times of buses on the road
         (source "bus"), by how soon they're due; nothing for the rest (buses just set out, trains, the light rail).
-        Never to before a second after the moment asked."""
+        Never to before a second after the moment asked. What the model says is kept within what it said on the days
+        it was made from (least, most), and anything that isn't a number refuses the lot."""
         ahead = (x["pooled"] - x["t"]).cast(pl.Float64).to_numpy()
         share = np.clip((self.none - ahead) / (self.none - self.full), 0, 1) * (x["source"] == "bus").to_numpy()
         out, on = np.zeros(x.height), share > 0
         if on.any():
-            out[on] = np.maximum(np.round(share[on] * self.booster.predict(self.inputs(x.filter(pl.Series(on))))), 1 - ahead[on])
+            said = np.asarray(self.booster.predict(self.inputs(x.filter(pl.Series(on)))), dtype=np.float64)
+            if said.shape != (int(on.sum()),) or not np.isfinite(said).all():
+                raise ValueError("the nudge's model said something that isn't a time for each row")
+            out[on] = np.maximum(np.round(share[on] * np.clip(said, self.least, self.most)), 1 - ahead[on])
         return out.astype(np.int64)
+
+    def in_time(self, x):
+        """moved(), given up on after `limit` seconds, so a slow model can't hold the round: the times then go out as
+        they were. A call still running from an earlier round is left to end before another is made."""
+        if self.busy is not None and not self.busy.done():
+            raise TimeoutError("the nudge's last call is still running")
+        self.busy = self.pool.submit(self.moved, x)
+        return self.busy.result(timeout=self.limit)
 
 
 def hand_over(made, buses, now, nudge=None):
     """The buses' predictions for live.py, which gives them to the planner and to the app instead of the ministry's
     expected times: each journey's stops ahead by route and first departure, as [place on the trip, stop code, when],
     the nearest in order along the trip (in_order_ahead()). With a nudge (Nudge; made then with its inputs, handing()),
-    the times of buses due soon after its second look, put in order again."""
+    the times of buses due soon after its second look, put in order again; should any of that fail, or take too long,
+    every time goes out as it was."""
     rows = made.filter(pl.col("route").is_in(sorted(buses))).sort("route", "first", "order_j")
     runs = {}
     for route, first, order, code, eta in rows.select("route", "first", "order_j", "code_j", "eta").iter_rows():
@@ -754,13 +779,16 @@ def hand_over(made, buses, now, nudge=None):
         try:
             # A run's rows are together in rows and in the order runs has them, so the times line up one to one.
             pooled = pl.Series("pooled", [stop[2] for stops in runs.values() for stop in stops], dtype=pl.Int64)
-            moved = iter(nudge.moved(rows.with_columns(pooled)).tolist())
-            for stops in runs.values():
-                was = [stop[2] for stop in stops]
-                for stop in stops:
-                    stop[2] += next(moved)
-                if [stop[2] for stop in stops] != was:
-                    in_order_ahead(stops, now)
+            moved = nudge.in_time(rows.with_columns(pooled)).tolist()
+            if len(moved) != len(pooled):
+                raise ValueError("the nudge moved %d times of %d" % (len(moved), len(pooled)))
+            moved, nudged = iter(moved), {}
+            for key, stops in runs.items():
+                new = [[order, code, when + next(moved)] for order, code, when in stops]
+                if new != stops:
+                    in_order_ahead(new, now)
+                nudged[key] = new
+            runs = nudged  # only now, with every run done: a failure part way leaves each time as it was
         except Exception:  # the times go out as they were
             log("nudge failing:", traceback.format_exc())
     path = os.path.join(OUT, "now.json")
@@ -850,7 +878,7 @@ def main():
     model = Model(model_path, Model(fallback_path) if fallback_path else None)
     rail = {a: RailModel(rail_path, a) for a in OPERATORS if os.path.exists(os.path.join(rail_path, "gbdt-%s.txt" % a))}
     nudge = None
-    if NUDGE:
+    if NUDGE and os.path.exists(os.path.join(NUDGE, "nudge.json")):
         try:
             nudge = Nudge(NUDGE)
             log("nudge", nudge.name, "in full to", nudge.full, "s ahead, none from", nudge.none)
