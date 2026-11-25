@@ -2861,6 +2861,39 @@
    }
   },
   {
+   "id": "buildings_3d",
+   "type": "fill-extrusion",
+   "source": "protomaps",
+   "source-layer": "buildings",
+   "minzoom": 16,
+   "filter": [
+    "in",
+    "kind",
+    "building",
+    "building_part"
+   ],
+   "paint": {
+    "fill-extrusion-color": "#2c2c2c",
+    "fill-extrusion-height": [
+     "coalesce",
+     [
+      "get",
+      "height"
+     ],
+     6
+    ],
+    "fill-extrusion-base": [
+     "coalesce",
+     [
+      "get",
+      "min_height"
+     ],
+     0
+    ],
+    "fill-extrusion-opacity": 0
+   }
+  },
+  {
    "id": "address_label",
    "type": "symbol",
    "source": "protomaps",
@@ -8710,39 +8743,6 @@
      13,
      1
     ]
-   }
-  },
-  {
-   "id": "buildings_3d",
-   "type": "fill-extrusion",
-   "source": "protomaps",
-   "source-layer": "buildings",
-   "minzoom": 15,
-   "filter": [
-    "in",
-    "kind",
-    "building",
-    "building_part"
-   ],
-   "paint": {
-    "fill-extrusion-color": "#2c2c2c",
-    "fill-extrusion-height": [
-     "coalesce",
-     [
-      "get",
-      "height"
-     ],
-     6
-    ],
-    "fill-extrusion-base": [
-     "coalesce",
-     [
-      "get",
-      "min_height"
-     ],
-     0
-    ],
-    "fill-extrusion-opacity": 0
    }
   },
   {
