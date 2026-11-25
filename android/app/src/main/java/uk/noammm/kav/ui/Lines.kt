@@ -125,6 +125,7 @@ suspend fun warmLines(ctx: android.content.Context, net: Net, here: Pair<Double,
     withContext(Dispatchers.Default) {
         val ends = lineEndpoints(net)
         val sections = foldLines(net, "", FILTERS[0].second, ends)
+        twinsFor(net, ends)
         val lead = leadSections(ctx, net, here, ends)
         withContext(Dispatchers.Main) {
             list.endpoints = ends; list.sections = sections; list.lead = lead; list.leadReady = true
@@ -171,11 +172,12 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
     var sections by list::sections
     var endpoints by list::endpoints
     LaunchedEffect(net) {
-        if (endpoints.isEmpty()) endpoints = withContext(Dispatchers.Default) { lineEndpoints(net) }
+        if (endpoints.isEmpty()) endpoints = withContext(Dispatchers.Default) { lineEndpoints(net).also { twinsFor(net, it) } }
     }
     LaunchedEffect(net, q, types, endpoints) {
         sections = withContext(Dispatchers.Default) { foldLines(net, q, types, endpoints) }
     }
+    val twins = remember(net, endpoints) { twinsFor(net, endpoints) }
     var lead by list::lead
     LaunchedEffect(Unit) {
         if (model.here == null && uk.noammm.kav.hasLocationPermission(ctx)) {
@@ -220,13 +222,13 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
             }
             lead.forEach { (label, rows) ->
                 item(key = "lead-$label") { Box(Modifier.animateItem()) { SectionLabel(label) } }
-                itemsIndexed(rows, key = { _, it -> "lead-$label-${it.route}" }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex) } }
+                itemsIndexed(rows, key = { _, it -> "lead-$label-${it.route}" }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } }
             }
             if (listReady) sections.forEach { (operator, rows) ->
                 if (operator.isNotBlank()) item(key = "op-$operator") {
                     Box(Modifier.animateItem()) { SectionLabel(operatorLabel(operator)) }
                 }
-                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex) } }
+                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } }
             }
         }
         ScrollEdge(listState.canScrollBackward)
@@ -272,7 +274,7 @@ private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp): Modifier = layout {
 private fun SectionLabel(label: String) = SectionHeader(label)
 
 @Composable
-private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean, last: Boolean) {
+private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean, last: Boolean, twins: Map<String, Boolean>) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -283,7 +285,7 @@ private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean,
         horizontalArrangement = Arrangement.spacedBy(K.gap3),
     ) {
         LineIdentity(net.rType[row.route], net.rShort[row.route], busOperator(net.rType[row.route], -1) { Operators.of(net, row.route) })
-        LineSpan(net, row, Modifier.weight(1f))
+        LineSpan(net, row, twins, Modifier.weight(1f))
         RowChevron()
     }
 }
@@ -294,7 +296,7 @@ private fun RowChevron() = Icon(
     Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp),
 )
 
-private fun lineEndpoints(net: Net): Map<Int, Pair<Int, Int>> {
+internal fun lineEndpoints(net: Net): Map<Int, Pair<Int, Int>> {
     val longest = IntArray(net.nRoutes) { -1 }
     for (t in net.tripRoute.indices) {
         val route = net.tripRoute[t]
@@ -376,6 +378,43 @@ private fun foldRoutes(
     }
     return rows.values
 }
+
+// Rows of one line (its operator, kind and number) that would show the same start or the same end, and the ends that
+// tell them apart, by line, end name and town: true for an end of that name in another town too, shown with its town
+// (one in the same town has its whole name); false for the far end of a one-way row out of, or into, the same place as
+// another row, such as two routes out of one stop to two places, shown with its whole name. Rows that differ otherwise
+// and loops aren't in it.
+internal fun twinEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boolean> {
+    if (ends.isEmpty()) return emptyMap()
+    val out = HashMap<String, Boolean>()
+    val rows = foldRoutes(net, 0 until net.nRoutes, ends, namesakeEnds(net, ends))
+        .filter { it.a >= 0 && terminusName(net, it.a) != terminusName(net, it.b) }
+    for ((line, rs) in rows.groupBy { twinLine(net, it.route) }) {
+        if (rs.size < 2) continue
+        fun mark(s: Int, town: Boolean) { val k = twinKey(net, line, s); out[k] = town || out[k] == true }
+        for (i in rs.indices) for (j in i + 1 until rs.size) for (start in listOf(true, false)) {
+            val (r1, r2) = rs[i] to rs[j]
+            val s1 = if (start) r1.a else r1.b; val s2 = if (start) r2.a else r2.b
+            if (terminusName(net, s1) != terminusName(net, s2)) continue
+            if (net.name[s1] == net.name[s2] && net.cityOf[s1] == net.cityOf[s2]) {
+                for (r in listOf(r1, r2)) if (!r.both) mark(if (start) r.b else r.a, false)
+            } else {
+                val town = net.cityOf[s1] != net.cityOf[s2]
+                mark(s1, town); mark(s2, town)
+            }
+        }
+    }
+    return out
+}
+
+internal fun twinLine(net: Net, r: Int) = "${net.rAgency.getOrElse(r) { -1 }}|${net.rType[r]}|${net.rShort[r]}"
+internal fun twinKey(net: Net, line: String, s: Int) = "$line|${terminusName(net, s)}|${net.cityOf[s]}"
+
+// Kept with the ends they're from, worked out off the main thread before the list shows them.
+@Volatile private var twinsKept: Pair<Map<Int, Pair<Int, Int>>, Map<String, Boolean>>? = null
+
+private fun twinsFor(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boolean> =
+    twinsKept?.takeIf { it.first === ends }?.second ?: twinEnds(net, ends).also { twinsKept = ends to it }
 
 private fun foldLines(
     net: Net, q: String, types: IntArray, ends: Map<Int, Pair<Int, Int>>,
@@ -471,12 +510,19 @@ private fun operatorLabel(name: String): String = when (name) {
 }
 
 @Composable
-private fun LineSpan(net: Net, row: LineRow, modifier: Modifier = Modifier) {
+private fun LineSpan(net: Net, row: LineRow, twins: Map<String, Boolean>, modifier: Modifier = Modifier) {
     if (row.a < 0) {
         Text(T("Route stops", "תחנות המסלול"), style = K.type.body, color = K.muted, modifier = modifier)
         return
     }
-    val a = shownEnd(net, row.a); val b = shownEnd(net, row.b)
+    val line = twinLine(net, row.route)
+    // An end that would read the same as another row's of the line: with its town, or as its whole name (twinEnds).
+    fun end(s: Int): String = when (twins[twinKey(net, line, s)]) {
+        true -> net.cityName(s).takeIf { it.isNotBlank() }?.let { "${shownEnd(net, s)} · $it" } ?: net.stopName(s)
+        false -> net.stopName(s)
+        null -> shownEnd(net, s)
+    }
+    val (a, b) = if (shownEnd(net, row.a) == shownEnd(net, row.b)) shownEnd(net, row.a).let { it to it } else end(row.a) to end(row.b)
     val text = when {
         a == b -> "\u2068$a\u2069"
         row.both -> "\u2068$a\u2069 ↔ \u2068$b\u2069"
@@ -1307,7 +1353,7 @@ private fun TimetableLineDetail(model: KavModel, net: Net, route: Int, onBack: (
     val list = remember(net) { lineListFor(net) }
     var ways by remember(route) { mutableStateOf(emptyList<Pair<Int, String>>()) }
     LaunchedEffect(route) {
-        val ends = list.endpoints.ifEmpty { withContext(Dispatchers.Default) { lineEndpoints(net) }.also { list.endpoints = it } }
+        val ends = list.endpoints.ifEmpty { withContext(Dispatchers.Default) { lineEndpoints(net).also { twinsFor(net, it) } }.also { list.endpoints = it } }
         ways = withContext(Dispatchers.Default) { weekWays(net, route, ends) }
     }
     var shown by remember(route) { mutableIntStateOf(route) }
