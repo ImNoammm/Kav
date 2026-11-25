@@ -2033,6 +2033,7 @@ object Prefs {
         KavLive.source = liveSource(ctx)
         KavPlan.source = planSource(ctx)
         KavPlan.everyPlanner = everyPlanner(ctx)
+        KavPlan.transitous = transitous(ctx)
         KavPlan.tabOrder = plannerTabs(ctx)
         KavPlan.hiddenTabs = hiddenTabs(ctx)
         KavPlan.settings = planSettings(ctx)
@@ -2051,6 +2052,8 @@ object Prefs {
     fun nearPage(ctx: Context): Int = store(ctx).getInt("nearPage", 0)
     fun setNearPage(ctx: Context, height: Int) = store(ctx).edit().putInt("nearPage", height).apply()
 
+    fun transitous(ctx: Context): Boolean = store(ctx).getBoolean("transitous", false)
+    fun setTransitous(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("transitous", on).apply()
     fun everyPlanner(ctx: Context): Boolean = store(ctx).getBoolean("everyPlanner", false)
     fun setEveryPlanner(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("everyPlanner", on).apply()
     // The tabs' order: the planners the rider moved first, then any they haven't placed, in Settings' order.
