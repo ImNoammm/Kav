@@ -819,7 +819,7 @@ private fun LiveScreenForSource(model: KavModel) {
                         .padding(bottom = LocalBottomBarInset.current),
                     contentAlignment = Alignment.Center,
                 ) { LoadingPulse(T("Finding vehicles", "מאתרים כלי רכב")) }
-                else -> KavPart("live.list", state, { org.json.JSONObject().put("vehicles", if (state == 2) 0 else listed.size) }) {
+                else -> KavPart("live.list", state, { org.json.JSONObject().put("vehicles", if (state == 2) 0 else listed.size) }, inset = K.gap2) {
                     LiveList(if (state == 2) emptyList() else listed, now, stopsAt, unreached, Modifier.fillMaxWidth()
                         .height(LIVE_LIST + LocalBottomBarInset.current).padding(K.gap2)) { openVehicle(it) }
                 }

@@ -1756,7 +1756,7 @@ private fun LinePage(
                     if (shown.isNotEmpty()) {
                         // The line's next departures and how busy it is lead, under its name; whether it's live goes under
                         // the map that shows it.
-                        KavPart("line.live", route to line, lineAbout) { LineLiveNote(live, next, busy, late = late) }
+                        KavPart("line.live", route to line, lineAbout, inset = K.gap4) { LineLiveNote(live, next, busy, late = late) }
                         // A bus, train or light rail of the line reported, on the form's questions for its kind
                         // (ReportFor.train): its stops in order, the rider picking where they got on, and a train's number
                         // on the form where the rider knows it.
@@ -1785,7 +1785,7 @@ private fun LinePage(
                                 ))
                             }.padding(vertical = K.gap2))
                         val chosen = keys.indexOf(open)
-                        if (calls.size >= 2) KavPart("line.map", route to line, lineAbout) { LineRouteMap(
+                        if (calls.size >= 2) KavPart("line.map", route to line, lineAbout, inset = K.gap4) { LineRouteMap(
                             calls, shape, rt, live.vehicles,
                             Modifier.padding(horizontal = K.gap4).padding(top = K.gap3).fillMaxWidth().height(210.dp).panel(K.rCard),
                             placed.indexOf(chosen),
