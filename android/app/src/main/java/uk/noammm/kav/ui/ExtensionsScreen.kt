@@ -907,7 +907,7 @@ private fun PowerCard(on: Boolean, theme: String? = null, onChange: (Boolean) ->
             if (theme != null) ToggleRow(theme, on, { Icon(Icons.Rounded.Palette, null, tint = toggleInk(on), modifier = Modifier.size(20.dp)) }, onChange = onChange)
             else ToggleRow(if (on) T("On", "פועל") else T("Off", "כבוי"), on,
                 { Icon(Icons.Rounded.PowerSettingsNew, null, tint = toggleInk(on), modifier = Modifier.size(20.dp)) },
-                subtitle = if (on) null else T("Turn it on to use it", "צריך להפעיל אותו כדי להשתמש בו"), onChange = onChange)
+                subtitle = if (on) null else T("Turn it on to use it", "הפעילו כדי להשתמש בו"), onChange = onChange)
         }
     }
 }

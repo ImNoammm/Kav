@@ -210,6 +210,7 @@ internal fun ExtTile(file: File?, bytes: ByteArray?, capabilities: List<String>,
 
 // The picture, the name under it and a small line under that, in the middle: the top of the add popup, the install
 // sheet and the pages. Room under the picture; the name and its line kept close, as one block.
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtitle: String?, kav: Boolean? = null, version: String? = null) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -227,11 +228,13 @@ internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtit
         // Who it comes from, in the same short line: its source, then a shield and whose it is (kav: Kav's own; false:
         // someone else's). The shield is the line's only colour.
         if (kav == null) subtitle?.let { Text(it, style = K.type.subhead, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-        else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
-            // An address wraps rather than being cut; the shield and whose it is stay beside it.
-            subtitle?.let { Text(T.iso(it) + "  ·", style = K.type.subhead, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false)) }
-            Icon(if (kav) Icons.Rounded.VerifiedUser else Icons.Rounded.GppMaybe, null, tint = if (kav) K.accent else K.problem, modifier = Modifier.size(16.dp))
-            Text(if (kav) T("Made by Kav", "נוצר על ידי Kav") else T("Third-party", "צד שלישי"), style = K.type.subhead, maxLines = 1)
+        // Never cut: when the source doesn't fit beside them, the shield and whose it is go to a line of their own under it.
+        else androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(K.gap1, Alignment.CenterHorizontally)) {
+            subtitle?.let { Text(T.iso(it) + "  ·", style = K.type.subhead, textAlign = TextAlign.Center) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
+                Icon(if (kav) Icons.Rounded.VerifiedUser else Icons.Rounded.GppMaybe, null, tint = if (kav) K.accent else K.problem, modifier = Modifier.size(16.dp))
+                Text(if (kav) T("Made by Kav", "נוצר על ידי Kav") else T("Third-party", "צד שלישי"), style = K.type.subhead, maxLines = 1)
+            }
         }
     }
 }
@@ -674,12 +677,14 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
     } + listOfNotNull(
         if (tab) T("Tab", "לשונית") else null,
     )
-    // As many as fit one line, with no count of the rest.
+    // As many as fit one line beside the row's switch on a 360 dp wide screen, in either language (27 characters, the
+    // dots between them counted), with no count of the rest.
     var shown = 0
     var length = 0
     for (w in all) {
-        if (shown >= 3 || (shown > 0 && length + w.length > 30)) break
-        shown++; length += w.length
+        val more = if (shown > 0) w.length + 3 else w.length
+        if (shown >= 3 || (shown > 0 && length + more > 27)) break
+        shown++; length += more
     }
     return all.take(shown).joinToString(" · ") { T.iso(it) }
 }
