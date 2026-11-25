@@ -65,7 +65,10 @@ object KavPlan {
     // The server that plans now, through any stops the rider added and for the last way there tonight too; null while it
     // isn't answering, or doesn't plan.
     // An extension's planner, once the rider chose one, in place of the server.
-    fun planner(): String? = Extensions.selectedPlanner?.let(Extensions::address) ?: kavPlanner()
+    // #113: plan with Transitous (data/TripPlanner.kt) instead, when the rider switched it on in Settings, Trips.
+    const val TRANSITOUS = "transitous:"
+    var transitous by mutableStateOf(false)
+    fun planner(): String? = if (transitous) TRANSITOUS else Extensions.selectedPlanner?.let(Extensions::address) ?: kavPlanner()
     private fun kavPlanner(): String? = server.takeIf { up && offered }
     fun wanted(): Boolean = planner() != null
 
