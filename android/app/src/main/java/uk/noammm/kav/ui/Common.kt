@@ -192,7 +192,8 @@ internal fun CrowdLevel(crowd: uk.noammm.kav.data.GoogleCrowd.Crowd) {
                     },
             )
         }
-        androidx.compose.animation.Crossfade(words, animationSpec = tween(220), label = "crowdWords") { w ->
+        // While it's asked, the bars' wave says so; the words come with the answer.
+        androidx.compose.animation.Crossfade(if (asking) "" else words, animationSpec = tween(220), label = "crowdWords") { w ->
             Text(w, style = K.type.subhead, color = if (crowd == uk.noammm.kav.data.GoogleCrowd.Crowd.Failed) K.textTertiary else K.dim,
                 modifier = Modifier.padding(start = K.gap1))
         }
@@ -963,7 +964,7 @@ fun BottomSheet(
                 Column(
                     Modifier.then(if (scrolls) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                         .padding(start = K.gap4, end = K.gap4, bottom = K.gap4)
-                        .animateContentSize(),
+                        .animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)),
                 ) { content(close) }
             }
         }

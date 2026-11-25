@@ -8,7 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.ConfirmationNumber
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -297,7 +297,7 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
         KavPart("ticket.header", t, about) { ScreenHeader(kindName(t.kind), back = onClose) }
         Column(
             Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = K.gap4)
-                .padding(top = K.gap2, bottom = K.gap4 + LocalBottomBarInset.current).animateContentSize(),
+                .padding(top = K.gap2, bottom = K.gap4 + LocalBottomBarInset.current).animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -341,7 +341,7 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
             }
             if (!uk.noammm.kav.ExtTickets.mine(t)) KavButton(T("Open in ${PayApp.current.label()}", "פתיחה ${PayApp.current.heIn}"), onClick = {
                 if (!uk.noammm.kav.ext.Actions.take(ctx, "ticket.ravpass.open") { about() }) openInRavPass(ctx, t)
-            }, style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
+            }, style = ButtonStyle.Secondary, icon = androidx.compose.material.icons.Icons.AutoMirrored.Rounded.OpenInNew, modifier = Modifier.fillMaxWidth())
         }
     }
 }

@@ -156,8 +156,8 @@ internal fun PaySetupHost() {
                     }
                 }
             }
-            AnimatedVisibility(page != Page.DONE && page != Page.READER, enter = fadeIn(tween(200)) + expandVertically(),
-                exit = fadeOut(tween(150)) + shrinkVertically()) {
+            AnimatedVisibility(page != Page.DONE && page != Page.READER, enter = fadeIn(tween(200, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+                exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f))) {
                 Column(Modifier.fillMaxWidth().padding(top = K.gap2)) {
                     KavButton(T("Not now", "לא עכשיו"), onClick = { close { PaySetup.hide(); PayMode.refresh(ctx) } },
                         style = ButtonStyle.Secondary, wide = true)

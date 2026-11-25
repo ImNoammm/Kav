@@ -147,7 +147,7 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                 TimeButton(T("From", "משעה"), from, editing == 0, Modifier.weight(1f)) { edit(0) }
                 TimeButton(T("Until", "עד שעה"), to, editing == 1, Modifier.weight(1f)) { edit(1) }
             }
-            AnimatedVisibility(editing != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            AnimatedVisibility(editing != null, enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
                 key(last) {
                     // Moving the start carries the end along, so the window keeps its length, as a calendar does.
                     TimeWheels(if (last == 0) from else to) { m ->

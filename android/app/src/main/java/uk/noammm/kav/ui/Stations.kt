@@ -973,7 +973,8 @@ private fun SavedStopRow(
         }
         Spacer(Modifier.height(K.gap2))
         // Until the provider's day comes the week's next departures stand in, the same ones keeping their place after.
-        if (asking && day == null && rows.isEmpty()) Text(T("Checking times…", "בודקים זמנים…"), style = K.type.subhead)
+        // Nothing known yet: a small ring turns in the line the times will take.
+        if (asking && day == null && rows.isEmpty()) Box(Modifier.height(20.dp), contentAlignment = Alignment.CenterStart) { Spinner(14.dp) }
         else if (rows.isEmpty()) Text(T("Nothing more today or tomorrow", "אין עוד יציאות היום או מחר"), style = K.type.subhead)
         else FlowRow(horizontalArrangement = Arrangement.spacedBy(K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap1)) {
             // Each departure keeps its place as the times change: its time rolls, and when one ahead of it goes, it

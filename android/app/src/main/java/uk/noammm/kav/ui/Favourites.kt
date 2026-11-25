@@ -13,6 +13,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
+import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.*
@@ -68,8 +71,8 @@ val FavouriteIcons: List<Pair<String, ImageVector>> = listOf(
     "ramen" to Icons.Rounded.RamenDining, "grocery" to Icons.Rounded.LocalGroceryStore, "cart" to Icons.Rounded.ShoppingCart,
     "bag" to Icons.Rounded.ShoppingBag, "mall" to Icons.Rounded.LocalMall, "store" to Icons.Rounded.Storefront,
     "hospital" to Icons.Rounded.LocalHospital, "pharmacy" to Icons.Rounded.LocalPharmacy, "medical" to Icons.Rounded.MedicalServices,
-    "gym" to Icons.Rounded.FitnessCenter, "pool" to Icons.Rounded.Pool, "run" to Icons.Rounded.DirectionsRun,
-    "bike" to Icons.Rounded.DirectionsBike, "soccer" to Icons.Rounded.SportsSoccer, "basketball" to Icons.Rounded.SportsBasketball,
+    "gym" to Icons.Rounded.FitnessCenter, "pool" to Icons.Rounded.Pool, "run" to Icons.AutoMirrored.Rounded.DirectionsRun,
+    "bike" to Icons.AutoMirrored.Rounded.DirectionsBike, "soccer" to Icons.Rounded.SportsSoccer, "basketball" to Icons.Rounded.SportsBasketball,
     "tennis" to Icons.Rounded.SportsTennis, "stadium" to Icons.Rounded.Stadium, "esports" to Icons.Rounded.SportsEsports,
     "park" to Icons.Rounded.Park, "forest" to Icons.Rounded.Forest, "terrain" to Icons.Rounded.Terrain,
     "beach" to Icons.Rounded.BeachAccess, "hiking" to Icons.Rounded.Hiking, "kayak" to Icons.Rounded.Kayaking,
@@ -79,7 +82,7 @@ val FavouriteIcons: List<Pair<String, ImageVector>> = listOf(
     "museum" to Icons.Rounded.Museum, "theater" to Icons.Rounded.TheaterComedy, "movie" to Icons.Rounded.Movie,
     "music" to Icons.Rounded.MusicNote, "piano" to Icons.Rounded.Piano, "headphones" to Icons.Rounded.Headphones,
     "nightlife" to Icons.Rounded.Nightlife, "celebration" to Icons.Rounded.Celebration, "festival" to Icons.Rounded.Festival,
-    "library" to Icons.Rounded.LocalLibrary, "book" to Icons.Rounded.MenuBook, "science" to Icons.Rounded.Science,
+    "library" to Icons.Rounded.LocalLibrary, "book" to Icons.AutoMirrored.Rounded.MenuBook, "science" to Icons.Rounded.Science,
     "computer" to Icons.Rounded.Computer, "engineering" to Icons.Rounded.Engineering, "build" to Icons.Rounded.Build,
     "handyman" to Icons.Rounded.Handyman, "factory" to Icons.Rounded.Factory, "warehouse" to Icons.Rounded.Warehouse,
     "agriculture" to Icons.Rounded.Agriculture, "garage" to Icons.Rounded.Garage, "gas" to Icons.Rounded.LocalGasStation,

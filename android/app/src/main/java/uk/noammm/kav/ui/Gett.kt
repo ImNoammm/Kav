@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import uk.noammm.kav.data.Transit
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
-import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import java.net.URLEncoder
@@ -74,7 +74,7 @@ internal fun OrderGett(link: String?, modifier: Modifier = Modifier) {
     KavButton(
         if (link == null) T("Taxi details unavailable", "פרטי המונית לא זמינים") else T("Order with Gett", "הזמנה ב-Gett"),
         onClick = { link?.let { openGett(context, it) } },
-        modifier = modifier, style = ButtonStyle.Secondary, icon = Icons.Rounded.OpenInNew, enabled = link != null,
+        modifier = modifier, style = ButtonStyle.Secondary, icon = Icons.AutoMirrored.Rounded.OpenInNew, enabled = link != null,
     )
 }
 
@@ -96,7 +96,7 @@ fun GettPill(leg: Transit.Leg) {
     ) {
         ModeGlyph(Mode.TAXI, Ink.textSecondary, 18.dp)
         Text("Gett", style = K.type.subhead, color = Ink.text, fontWeight = FontWeight.Medium)
-        if (link != null) Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = Ink.textTertiary, modifier = Modifier.size(14.dp))
+        if (link != null) Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = Ink.textTertiary, modifier = Modifier.size(14.dp))
     }
 }
 

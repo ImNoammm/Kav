@@ -378,12 +378,15 @@ fun PlacePicker(
                     .padding(horizontal = K.gap4, vertical = K.gap3),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3),
             ) {
-                Icon(Icons.Rounded.MyLocation, contentDescription = null, tint = if (ready) K.textSecondary else K.textTertiary,
-                    modifier = Modifier.size(20.dp))
+                // While you're being found, a ring turns where the mark is and the row keeps its words.
+                androidx.compose.animation.Crossfade(locating, Modifier.size(20.dp), animationSpec = androidx.compose.animation.core.tween(150), label = "locating") { busy ->
+                    if (busy) Spinner(20.dp)
+                    else Icon(Icons.Rounded.MyLocation, contentDescription = null, tint = if (ready) K.textSecondary else K.textTertiary,
+                        modifier = Modifier.size(20.dp))
+                }
                 // What the row says fades from one state of finding you to the next.
                 androidx.compose.animation.Crossfade(
-                    if (locating) T("Finding you…", "מאתרים אתכם…")
-                    else if (locateFailed) T("Couldn't get an accurate location. Tap to retry", "לא התקבל מיקום מדויק. לחצו לנסות שוב")
+                    if (locateFailed) T("Couldn't get an accurate location. Tap to retry", "לא התקבל מיקום מדויק. לחצו לנסות שוב")
                     else if (ready) T("My location", "המיקום שלי")
                     else T("Use my location", "השתמשו במיקום שלי"),
                     Modifier.weight(1f, fill = false), animationSpec = androidx.compose.animation.core.tween(220), label = "here",

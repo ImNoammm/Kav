@@ -472,7 +472,7 @@ private fun StreetWebView(page: String, ground: Int, onReady: () -> Unit) {
     )
     AnimatedVisibility(prepared, Modifier.align(Alignment.BottomEnd).padding(end = K.gap3, bottom = 48.dp),
         enter = fadeIn(tween(200)), exit = fadeOut(tween(150))) {
-        Column(Modifier.clip(RoundedCornerShape(22.dp)).background(K.surfaceRaised).padding(4.dp)) {
+        Column(Modifier.clip(RoundedCornerShape(K.rCard)).background(K.surfaceRaised).padding(4.dp)) {
             Row {
                 IconButton({ command("zoomOut") }) { Icon(Icons.Rounded.Remove, T("Zoom out", "הקטנה"), tint = K.text) }
                 IconButton({ command("zoomIn") }) { Icon(Icons.Rounded.Add, T("Zoom in", "הגדלה"), tint = K.text) }

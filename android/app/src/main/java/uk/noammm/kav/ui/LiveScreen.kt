@@ -1386,8 +1386,8 @@ private fun LiveVehicleCard(
         // Only once it's known where the bus is, so the rail opens on it.
         androidx.compose.animation.AnimatedVisibility(
             stops.size > 1 && progress >= 0f,
-            enter = androidx.compose.animation.expandVertically() + fadeIn(),
-            exit = androidx.compose.animation.shrinkVertically() + fadeOut(),
+            enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120)),
         ) { BusRail(stops, progress) }
     }
 }

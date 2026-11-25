@@ -277,7 +277,7 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
             verticalAlignment = Alignment.Top,
             beyondViewportPageCount = 1,
         ) { page ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = K.gap4).onSizeChanged { pageHeights[page] = it.height }.animateContentSize()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = K.gap4).onSizeChanged { pageHeights[page] = it.height }.animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
                 StepCard(steps[page], journey.resolved, active = page == current, now = now, chosen = journey.chosen,
                     fix = model.fix,
                     onChoose = { leg, option ->

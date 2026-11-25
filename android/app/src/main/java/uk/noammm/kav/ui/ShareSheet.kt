@@ -289,7 +289,7 @@ private fun ShareCard(
             }
             if (picture) {
                 if (map) MapBox(Modifier.fillMaxWidth().weight(1f).onSizeChanged { onMapSize?.invoke(it) })
-            } else AnimatedVisibility(map, enter = fadeIn(tween(200)) + expandVertically(), exit = fadeOut(tween(150)) + shrinkVertically()) {
+            } else AnimatedVisibility(map, enter = fadeIn(tween(200, delayMillis = 60)) + expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)), exit = fadeOut(tween(150)) + shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
                 MapBox(Modifier.fillMaxWidth().aspectRatio(mapAspect))
             }
             Column(

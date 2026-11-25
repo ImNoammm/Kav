@@ -802,11 +802,11 @@ private fun Paying(d: Draft) {
     Heading(T("How you paid", "איך שילמתם"))
     Dropdown(T("Paid with", "שילמתם עם"), meansName(d.means), T("Choose how you paid", "בחרו איך שילמתם"),
         listOf("1", "2", "3").map { it to meansName(it).orEmpty() }, d.errors["means"]) { d.means = it }
-    AnimatedVisibility(d.means == "1", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(d.means == "1", enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
         Field(T("Rav-Kav number", "מספר הרב-קו"), d.ravKav, { d.ravKav = it.filter(Char::isDigit).take(10) },
             helper = T("On the back of the card", "בגב הכרטיס"), error = d.errors["ravKav"], keyboard = KeyboardType.Number)
     }
-    AnimatedVisibility(d.means == "2", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(d.means == "2", enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
         Column(verticalArrangement = Arrangement.spacedBy(K.gap3)) {
             Dropdown(T("App", "יישומון"), appName(d.app), T("Choose the app", "בחרו יישומון"),
                 listOf("3", "4").map { it to appName(it).orEmpty() }, d.errors["app"]) { d.app = it }
@@ -815,7 +815,7 @@ private fun Paying(d: Draft) {
                 error = d.errors["appPhone"], keyboard = KeyboardType.Phone)
         }
     }
-    AnimatedVisibility(d.means == "1" || d.means == "3", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(d.means == "1" || d.means == "3", enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
         Field(T("Name on the card", "שם בעל הכרטיס"), d.cardholder, { d.cardholder = it.take(25) },
             helper = T("Optional, in Hebrew", "לא חובה, בעברית"), error = d.errors["cardholder"])
     }
@@ -978,7 +978,7 @@ private fun StepPage(
             Modifier.fillMaxWidth().background(K.bg).padding(horizontal = K.gap4).padding(top = K.gap2, bottom = inset + K.gap3),
             verticalArrangement = Arrangement.spacedBy(K.gap2),
         ) {
-            AnimatedVisibility(errors.isNotEmpty(), enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            AnimatedVisibility(errors.isNotEmpty(), enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
                 Text(T("Fix what's marked above.", "תקנו את מה שמסומן למעלה."), style = K.type.subhead, color = K.critical)
             }
             KavButton(action, onAction, wide = true)
@@ -1178,7 +1178,7 @@ private fun YesNo(question: String, value: String, error: String?, onPick: (Stri
 
 @Composable
 private fun Hint(shown: Boolean, text: String) {
-    AnimatedVisibility(shown, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(shown, enter = expandVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(androidx.compose.animation.core.tween(200, delayMillis = 60)), exit = shrinkVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(androidx.compose.animation.core.tween(120))) {
         NoteCard(text)
     }
 }
@@ -1527,7 +1527,7 @@ private fun MinistryForm(filling: Filling, onBack: () -> Unit, onDone: () -> Uni
                         Text(text, style = K.type.subhead, color = colour)
                     }
                 }
-                AnimatedVisibility(failed, enter = fadeIn(), exit = fadeOut()) {
+                AnimatedVisibility(failed, enter = fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)), exit = fadeOut(androidx.compose.animation.core.tween(150))) {
                     Text(T("Try again", "ניסיון חוזר"), style = K.type.body, color = K.accentInk,
                         modifier = Modifier.clickable(role = Role.Button) {
                             failed = false

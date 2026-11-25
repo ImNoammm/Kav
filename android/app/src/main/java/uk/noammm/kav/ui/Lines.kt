@@ -1732,7 +1732,7 @@ private fun LinePage(
                 1 -> NoteCard(T("This line has no trips in the coming days.", "אין לקו הזה נסיעות בימים הקרובים."), Modifier.padding(K.gap4))
                 2 -> NoteCard(unreachable(source, T("Try again in a moment.", "נסו שוב בעוד רגע.")), Modifier.padding(K.gap4))
                 3 -> LoadingBlock(
-                    if (route >= 0) T("Loading stops", "טוען תחנות…")
+                    if (route >= 0) T("Loading stops", "טוענים תחנות")
                     else T("Loading the line from ${sourceName(source)}", "טוענים את הקו מ${sourceName(source)}"),
                 )
                 else -> Column(Modifier.fillMaxSize()) {
