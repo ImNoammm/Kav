@@ -7,10 +7,10 @@ body:
     attributes:
       value: |
         Thanks for reporting it. Write in English or Hebrew, whichever you like.
-        Opened from Kav, the version, Android, phone and setup at the bottom are already filled in.
+        Opened from Kav, the version, Android, phone and setup at the bottom are filled in if you chose to add them.
 
         תודה על הדיווח. אפשר לכתוב באנגלית או בעברית, מה שנוח לכם.
-        אם פתחתם את הטופס מתוך Kav, הגרסה, ה-Android, הטלפון וההגדרות למטה כבר מולאו.
+        אם פתחתם את הטופס מתוך Kav ובחרתם להוסיף את הפרטים, הגרסה, ה-Android, הטלפון וההגדרות למטה כבר מולאו.
   - type: textarea
     id: what
     attributes:

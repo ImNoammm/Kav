@@ -416,24 +416,52 @@ private fun PartGroup(parts: List<SettingsPart>, onOpen: (String) -> Unit) {
 @Composable
 private fun Sub(title: String) = SectionHeader(title)
 
-// Kav's GitHub forms, prefilled (Feedback.kt), the code, and the coffee.
+// Kav's GitHub forms (Feedback.kt), the code, and the coffee.
 @Composable
 private fun HelpSection() {
     val ctx = LocalContext.current
+    var reporting by remember { mutableStateOf(false) }
     @Composable
-    fun link(title: String, subtitle: String, url: () -> String) = ListRow(
-        title, subtitle = subtitle, onClick = { openLink(ctx, url()) }, chevron = false,
+    fun link(title: String, subtitle: String, onClick: () -> Unit) = ListRow(
+        title, subtitle = subtitle, onClick = onClick, chevron = false,
         trailing = { Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp)) },
     )
     InfoHeader(T("Help and feedback", "עזרה ומשוב"), T(
-            "The forms open with Kav's version and your phone's model filled in, for you to check. Nothing is sent without you.",
-            "הטפסים נפתחים כשגרסת Kav ודגם הטלפון כבר ממולאים, כדי שתבדקו. שום דבר לא נשלח בלעדיכם.",
+            "The forms open blank. For a bug, Kav shows what it can add about itself and your phone, and adds it only if you choose to.",
+            "הטפסים נפתחים ריקים. בדיווח על באג, Kav מראה מה היא יכולה להוסיף עליה ועל הטלפון, ומוסיפה אותם רק אם תבחרו בכך.",
         ))
     ListGroup {
-        row { link(T("Report a bug", "דיווח על באג"), T("On GitHub", "ב-GitHub")) { feedbackLink(ctx, bug = true) } }
-        row { link(T("Ask for a feature", "בקשה לפיצ'ר"), T("On GitHub", "ב-GitHub")) { feedbackLink(ctx, bug = false) } }
-        row { link(T("Kav's code", "הקוד של Kav"), T("And its server's", "ושל השרת שלה")) { REPO_URL } }
-        row { link(T("Buy me a coffee", "קנו לי קפה"), T("If you like Kav", "אם Kav עוזרת לכם")) { COFFEE_URL } }
+        row { link(T("Report a bug", "דיווח על באג"), T("On GitHub", "ב-GitHub")) { reporting = true } }
+        row { link(T("Ask for a feature", "בקשה לפיצ'ר"), T("On GitHub", "ב-GitHub")) { openLink(ctx, featureLink()) } }
+        row { link(T("Kav's code", "הקוד של Kav"), T("And its server's", "ושל השרת שלה")) { openLink(ctx, REPO_URL) } }
+        row { link(T("Buy me a coffee", "קנו לי קפה"), T("If you like Kav", "אם Kav עוזרת לכם")) { openLink(ctx, COFFEE_URL) } }
+    }
+    if (reporting) BugReportSheet { reporting = false }
+}
+
+// Before GitHub's bug form opens: the details Kav can add, as they would go, and one switch to add them, off each time.
+// Off, the form opens blank.
+@Composable
+private fun BugReportSheet(onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val details = remember { bugDetails(ctx) }
+    var add by remember { mutableStateOf(false) }
+    val (version, android, device, setup) = details.map { it.second }
+    Sheet(onClose) { close ->
+        Column(verticalArrangement = Arrangement.spacedBy(K.gap3)) {
+            SheetHeader(T("Report a bug", "דיווח על באג"), { close(onClose) })
+            ListGroup {
+                row { SwitchRow(T("Add these details", "להוסיף את הפרטים האלה"), add) { add = it } }
+                row {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        for (line in listOf("Kav $version", "Android $android", device, setup).filter { it.isNotBlank() }) {
+                            Text(T.ltr(line), style = K.type.subhead)
+                        }
+                    }
+                }
+            }
+            KavButton(T("Open GitHub", "פתיחת GitHub"), { close { onClose(); openLink(ctx, bugLink(details, add)) } }, Modifier.fillMaxWidth())
+        }
     }
 }
 

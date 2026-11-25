@@ -9,20 +9,24 @@ import uk.noammm.kav.data.Source
 import uk.noammm.kav.data.StopNames
 import uk.noammm.kav.data.Updates
 
-// "Found a bug?" and "Request a feature?" open GitHub's forms (.github/ISSUE_TEMPLATE) with what Kav knows about itself
-// already filled in. GitHub takes a form's text fields from the address, by their ids; the labels come from the form,
-// whoever opens it. Never a server's address or anything about the rider.
-internal fun feedbackLink(ctx: Context, bug: Boolean): String =
-    if (bug) issueLink(
-        "bug_report.yml",
-        listOf(
-            "version" to Updates.installedVersion(ctx),
-            "android" to "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
-            "device" to deviceName(Build.MANUFACTURER.orEmpty(), Build.MODEL.orEmpty()),
-            "setup" to setupLine(KavLive.source, KavPlan.source, T.lang, StopNames.english, uk.noammm.kav.data.Schedules.source),
-        ),
-    )
-    else issueLink("feature_request.yml", listOf("version" to Updates.installedVersion(ctx)))
+// "Report a bug" and "Ask for a feature" open GitHub's forms (.github/ISSUE_TEMPLATE). GitHub takes a form's text
+// fields from the address, by their ids, so whatever the address carries reaches GitHub as the form opens, sent or not:
+// it carries nothing about the phone unless the rider added it (BugReportSheet). Never a server's address or anything
+// about the rider.
+
+// What Kav can add to a bug report, by the form's field ids: its version, Android's, the phone and Kav's setup.
+internal fun bugDetails(ctx: Context): List<Pair<String, String>> = listOf(
+    "version" to Updates.installedVersion(ctx),
+    "android" to "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+    "device" to deviceName(Build.MANUFACTURER.orEmpty(), Build.MODEL.orEmpty()),
+    "setup" to setupLine(KavLive.source, KavPlan.source, T.lang, StopNames.english, uk.noammm.kav.data.Schedules.source),
+)
+
+// The bug form, with the details only when the rider chose to add them.
+internal fun bugLink(details: List<Pair<String, String>>, add: Boolean): String =
+    issueLink("bug_report.yml", if (add) details else emptyList())
+
+internal fun featureLink(): String = issueLink("feature_request.yml", emptyList())
 
 internal fun issueLink(form: String, fields: List<Pair<String, String>>): String =
     "$REPO_URL/issues/new?template=$form" + fields.filter { it.second.isNotBlank() }.joinToString("") { (id, value) ->

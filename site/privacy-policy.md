@@ -86,6 +86,9 @@ signed search recipe Vela Maps publishes on GitHub. GitHub sees your IP address 
 Until the offline map is downloaded, the preview of it in setup and in Settings is read from GitHub for one spot in Tel
 Aviv.
 
+Report a bug and Ask for a feature in Settings open GitHub's forms blank. For a bug, Kav first shows what it can add
+(its version, Android's, your phone's model and Kav's setup) and adds them only if you choose to.
+
 ## Rav-Pass
 
 You can't pay inside Kav. Paying with Rav-Pass is one setting, Pay with Rav-Pass on the Paying page in Settings, off
