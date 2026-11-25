@@ -173,14 +173,14 @@ internal fun PaySetupHost() {
 }
 
 // The chosen payment app's mark as a launcher shows it: Rav-Pass's own launcher icon (its foreground on its white
-// background, cropped to the middle 72 of its 108 dp; scaled at any other size), and egg's icon as it is on the phone.
-// A QR mark in Kav's accent stands in for egg while it isn't installed.
+// background, cropped to the middle 72 of its 108 dp; scaled at any other size), and egg's icon from the phone, filling
+// the square the same way (squareIcon()). A QR mark in Kav's accent stands in for egg while it isn't installed.
 @Composable
 internal fun RavPassLogo(installed: Boolean, size: androidx.compose.ui.unit.Dp = 72.dp) {
     val ctx = LocalContext.current
     val app = PayApp.current
     val icon = remember(app, installed) {
-        if (app == PayApp.EGG && installed) runCatching { ctx.packageManager.getApplicationIcon(app.pkg).toBitmap(192, 192).asImageBitmap() }.getOrNull()
+        if (app == PayApp.EGG && installed) runCatching { squareIcon(ctx.packageManager.getApplicationIcon(app.pkg), 192) }.getOrNull()
         else null
     }
     val shape = RoundedCornerShape(size / 4)
@@ -191,6 +191,20 @@ internal fun RavPassLogo(installed: Boolean, size: androidx.compose.ui.unit.Dp =
             else -> Icon(Icons.Rounded.QrCodeScanner, contentDescription = app.label(), tint = K.accentInk, modifier = Modifier.size(size * 0.6f))
         }
     }
+}
+
+// An app's icon filling a square of px: an adaptive icon's own layers, the middle 72 of their 108 dp, without the phone's
+// icon shape (a circle on some phones, which would leave the square's corners bare); any other icon as it is.
+private fun squareIcon(icon: android.graphics.drawable.Drawable, px: Int): androidx.compose.ui.graphics.ImageBitmap {
+    if (icon !is android.graphics.drawable.AdaptiveIconDrawable) return icon.toBitmap(px, px).asImageBitmap()
+    val bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val edge = px / 4
+    for (layer in listOfNotNull(icon.background, icon.foreground)) {
+        layer.setBounds(-edge, -edge, px + edge, px + edge)
+        layer.draw(canvas)
+    }
+    return bitmap.asImageBitmap()
 }
 
 @Composable
