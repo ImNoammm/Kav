@@ -115,3 +115,15 @@ private fun EveryPlannerRows() {
         }
     }
 }
+
+// #113: Settings, Trips: plan with Transitous (open data, no live times) instead of Kav's server.
+@Composable
+internal fun TransitousChoice() {
+    val ctx = LocalContext.current
+    Column(Modifier.fillMaxWidth().panel(K.rCard)) {
+        ToggleRow(
+            T("Plan trips with Transitous", "תכנון מסלולים עם Transitous"), KavPlan.transitous,
+            { Icon(Icons.Rounded.Tab, null, tint = toggleInk(KavPlan.transitous), modifier = Modifier.size(22.dp)) },
+        ) { on -> KavPlan.transitous = on; Prefs.setTransitous(ctx, on) }
+    }
+}
