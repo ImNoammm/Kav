@@ -155,6 +155,9 @@ class Registry(val dir: File) {
         File(File(dir, "net"), stateKey(gone.identity) + ".json").delete()
         Slots.Picks.drop(dir, gone.identity)
         TripAccess.drop(dir, gone.identity)
+        // Its widgets keep their place and say it's gone; what they showed goes with it.
+        Widgets.dropKept(dir, gone.identity)
+        Widgets.refresh(gone.identity, ask = false)
         Screens.drop(dir, gone.identity)
         Selections.drop(dir, gone.namespace)
     }
@@ -164,6 +167,9 @@ class Registry(val dir: File) {
         val new = how(old)
         if (new != old) commit(list.map { if (it.identity == identity) new else it })
         if (!new.enabled || new.problem.isNotEmpty()) Native.retire(identity)
+        // Its widgets on the home screen follow its switch: off at once, and on with what they last showed until its code
+        // answers (Native asks once it has loaded).
+        if (new.enabled != old.enabled || new.problem != old.problem) Widgets.refresh(identity, ask = false)
     }
 
     private fun commit(next: List<Installed>) {

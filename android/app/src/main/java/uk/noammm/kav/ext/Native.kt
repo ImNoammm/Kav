@@ -53,6 +53,8 @@ object Native {
         @Volatile var settingsScreen: Kav.Screen? = null
         // API 5: told about the trip the rider follows (TripEvents), while the rider allows it.
         @Volatile var onTrip: Kav.TripListener? = null
+        // API 5: its home screen widgets' content, by widget id (Widgets).
+        val widgets = ConcurrentHashMap<String, Kav.Widget>()
     }
 
     private val loaded = ConcurrentHashMap<String, Loaded>()
@@ -96,6 +98,8 @@ object Native {
         if (gone != null || pending != null) {
             NativeMap.drop(identity)
             listOfNotNull(gone, pending).forEach(::release)
+            // Its widgets on the home screen say it's off.
+            Widgets.refresh(identity, ask = false)
         }
     }
 
@@ -111,6 +115,30 @@ object Native {
     fun hook(identity: String, hook: String, input: String, deadlineMs: Long): Result<String>? {
         val h = loaded[identity]?.hooks?.get(hook) ?: return null
         val f = hooks.submit<String?> { NativeGuard.call(identity, "hook $hook") { h.call(input) ?: "null" } }
+        return try {
+            f.get(deadlineMs.coerceAtLeast(1), java.util.concurrent.TimeUnit.MILLISECONDS)?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException("crashed"))
+        } catch (e: java.util.concurrent.TimeoutException) {
+            Result.failure(IllegalStateException("late"))
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("interrupted"))
+        }
+    }
+
+    // A widget's content (Kav.Widget.content), or a tap told to it (tapped), the same way as a hook: null when it has no
+    // such widget, else its answer ("" for a tap), or a failure.
+    fun widget(identity: String, widget: String, args: String, deadlineMs: Long): Result<String>? {
+        val w = loaded[identity]?.widgets?.get(widget) ?: return null
+        return ask(identity, "widget $widget", deadlineMs) { w.content(args) ?: "null" }
+    }
+
+    fun widgetTap(identity: String, widget: String, tap: String, deadlineMs: Long): Result<String>? {
+        val w = loaded[identity]?.widgets?.get(widget) ?: return null
+        return ask(identity, "widget $widget tap", deadlineMs) { w.tapped(tap); "" }
+    }
+
+    private fun ask(identity: String, what: String, deadlineMs: Long, call: () -> String): Result<String> {
+        val f = hooks.submit<String?> { NativeGuard.call(identity, what, call) }
         return try {
             f.get(deadlineMs.coerceAtLeast(1), java.util.concurrent.TimeUnit.MILLISECONDS)?.let { Result.success(it) }
                 ?: Result.failure(IllegalStateException("crashed"))
@@ -209,6 +237,8 @@ object Native {
             if (l.actions.isNotEmpty()) Actions.notifyChanged()
             // Listening to trips from its start: told the trip under way, if there is one.
             if (l.onTrip != null) runCatching { TripEvents.catchUp(i.identity) }
+            // Its widgets on the home screen asked for their content now it's here.
+            if (l.widgets.isNotEmpty()) Widgets.refresh(i.identity)
             Log.i(TAG, "${i.identity}: started, ${l.cards.size} cards, ${l.screens.size} screens")
         } finally {
             synchronized(loaded) {
@@ -255,6 +285,20 @@ object Native {
             l.onTrip = listener
             // Set after its start (from start() itself, Native tells it once started): told the trip under way at once.
             if (listener != null && loaded[i.identity] === l) runCatching { TripEvents.catchUp(i.identity) }
+        }
+
+        // API 5: a home screen widget it declares (Widgets).
+        override fun widget(id: String, widget: Kav.Widget?) {
+            declares("widget", Widgets.CAPABILITY)
+            require(Widgets.of(i.manifest).any { it.id == id }) { "$id isn't a widget its manifest declares" }
+            if (widget == null) l.widgets.remove(id) else l.widgets[id] = widget
+            // Set after its start: its widgets show it at once.
+            if (loaded[i.identity] === l) Widgets.refresh(i.identity, id)
+        }
+
+        override fun refreshWidget(id: String) {
+            declares("refreshWidget", Widgets.CAPABILITY)
+            if (loaded[i.identity] === l) Widgets.refresh(i.identity, id)
         }
 
         private fun declares(what: String, capability: String) {

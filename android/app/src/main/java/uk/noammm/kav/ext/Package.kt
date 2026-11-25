@@ -61,9 +61,10 @@ class Manifest(val json: JSONObject) {
         if (explanations.any { (_, v) -> v.first.length > 140 || v.second.length > 140 }) throw TrustError("bad reasons")
         if (tags.size > 32 || tags.any { (k, v) -> !CONTRIBUTION.matches(k) || v.first.isBlank() || v.first.length > 40 || v.second.length > 40 })
             throw TrustError("bad tags")
-        // Its pages, settings and theme (ext/Pages.kt, ext/Looks.kt).
+        // Its pages, settings, theme and widgets (ext/Pages.kt, ext/Looks.kt, ext/Widgets.kt).
         PageSpecs.check(this)
         Looks.check(this)
+        Widgets.check(this)
     }
 
     companion object {

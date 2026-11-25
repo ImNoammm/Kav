@@ -50,6 +50,7 @@ object ExtApp {
 
     // Kav starting with the extensions folder there (KavApp checks, so a Kav without extensions loads none of this).
     fun start(ctx: Context) {
+        began = true
         val d = dir(ctx)
         SafeMode.start(d)
         SafeMode.watch(d)
@@ -60,6 +61,8 @@ object ExtApp {
         Screens.open(d)
         Slots.Picks.open(d)
         TripAccess.open(d)
+        Widgets.Placed.open(d)
+        uk.noammm.kav.ExtWidgets.attach(ctx)
         uk.noammm.kav.ui.ExtShown.start(ctx)
         // Native extensions' crashes are counted from the first moment (NativeGuard).
         NativeGuard.open(d)
@@ -67,9 +70,20 @@ object ExtApp {
         if (!SafeMode.active) Thread({
             runCatching { SafeStart.sync(ctx.applicationContext, hub(ctx).registry.installed.isNotEmpty()) }
             runCatching { startNative(ctx) }.onFailure { Log.w(TAG, "native: ${it.message}") }
+            started.countDown()
             runCatching { Hooks.refresh() }
-        }, "kav-ext-start").start()
+        }, "kav-ext-start").start() else started.countDown()
     }
+
+    // Counted down once this run's native extensions have started (or none will): a home screen widget's update in a Kav
+    // Android just started for it waits for this before asking their code (ExtWidgets).
+    private val started = java.util.concurrent.CountDownLatch(1)
+
+    @Volatile private var began = false
+
+    // Whether they started within ms; at once when this run never started extensions (nothing was added when Kav
+    // started: one added since loads by loadNative).
+    fun awaitStarted(ms: Long): Boolean = !began || started.await(ms, java.util.concurrent.TimeUnit.MILLISECONDS)
 
     // An extension that crashed Kav twice is switched off before anything of it loads, and Kav says which one; then the
     // others load and start (Native).

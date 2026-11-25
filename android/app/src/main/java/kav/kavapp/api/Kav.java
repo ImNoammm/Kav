@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget. */
     int API = 5;
 
     int apiVersion();
@@ -38,6 +38,15 @@ public interface Kav {
      *  at once, as "start". Only while the rider allows it on the extension's page; on a thread of Kav's, never the main
      *  one. null stops it. Needs a contribution with capability "trips.follow"; without it, it throws. */
     default void onTrip(TripListener listener) {}
+
+    /** API 5. A home screen widget's content, for a widget the manifest declares in "widgets" (with a contribution with
+     *  capability "widget.provide"; without it, it throws). Kav owns the widgets on the home screen; the rider places one
+     *  and chooses this one for it. Kav asks for its content when it shows, refreshes or the rider opens Kav, on a thread
+     *  of Kav's, never the main one, and draws it in its own look. null stops it. */
+    default void widget(String id, Widget widget) {}
+
+    /** API 5. Asks Kav to ask a widget of this extension for its content again now (its data changed). From any thread. */
+    default void refreshWidget(String id) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -146,6 +155,16 @@ public interface Kav {
     /** API 5. A trip event (onTrip), as JSON text. */
     interface TripListener {
         void trip(String event);
+    }
+
+    /** API 5. A home screen widget. content: its content as JSON text (docs/native.md has its fields), asked with args,
+     *  {"widget", "rows", "width", "height"}: rows is how many fit, width and height its size in dp. Answer within 3
+     *  seconds; Kav shows the last content it showed until then, and when it fails. tapped: a tap on a part whose action
+     *  is {"call": "<name>"}, told {"widget", "call", "row"}; Kav asks for the content again after it. */
+    interface Widget {
+        String content(String args) throws Exception;
+
+        default void tapped(String tap) throws Exception {}
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */

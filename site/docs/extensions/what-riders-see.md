@@ -47,6 +47,7 @@ These are all the lines there are, in the order Kav lists them. The exact words,
 | **It can add a line to trip results** | it has a `slot.results` contribution | `slot.results` |
 | **It can add a part to a trip's page** | it has a `slot.trip` contribution | `slot.trip` |
 | **It can add a row to stop boards** | it has a `slot.stop` contribution | `slot.stop` |
+| **It adds widgets to the home screen** | it has a `widget.provide` contribution (API 5) | `widget.provide` |
 | **It takes over**, naming the actions: paying, opening stops, trip searches... | it has an `action.<name>` contribution (API 4) | `actions` |
 | **It changes parts of Kav's screens**, naming them: Home's pay card, a trip's rides... | it has a `part.<name>` contribution (API 4) | `parts` |
 | **It changes how Kav itself works** | it has a `hooks` contribution (API 4) | `hooks` |

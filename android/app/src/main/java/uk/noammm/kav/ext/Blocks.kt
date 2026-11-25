@@ -64,7 +64,7 @@ object Blocks {
     // skipped: blocks of a type this Kav doesn't know, left out.
     data class Page(val title: String, val sections: List<Section>, val skipped: Int)
 
-    private val NUMBER = Regex("[A-Za-z0-9\u0590-\u05FF-]{1,8}")
+    internal val NUMBER = Regex("[A-Za-z0-9\u0590-\u05FF-]{1,8}")
 
     fun read(bytes: ByteArray): Page {
         val o = try { StrictJson.obj(bytes, MAX_BYTES) } catch (e: TrustError) { throw Bad(e.message ?: "bad JSON") }
@@ -72,6 +72,10 @@ object Blocks {
     }
 
     fun read(text: String): Page = read(text.toByteArray())
+
+    // The "action" of o as a page reads it (settings, plan, link or open), or null when it has none Kav knows: for a
+    // widget's taps (Widgets), which add their own.
+    internal fun action(o: JSONObject): Action? = Reader().action(o, false)
 
     private class Reader {
         var skipped = 0

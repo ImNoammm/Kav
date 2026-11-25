@@ -243,6 +243,7 @@ class MainActivity : ComponentActivity() {
         if (fresh) intent?.getStringExtra(LineAlerts.EXTRA_STOP)?.let { PendingStop.key = it }
         if (fresh) intent?.getStringExtra(TicketReader.EXTRA_TICKET)?.let { TicketStore.opened = it }
         if (fresh) PayEntry.take(this, intent)
+        if (fresh) ExtWidgets.take(this, intent)
         // A force stop drops the line alerts' alarm.
         LineAlerts.reschedule(this)
         // Updates in the background, which must know when Kav is in front so as not to run then.
@@ -299,6 +300,14 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         PayEntry.sync(this)
+        // Extensions' home screen widgets drawn again, in the look the rider may have changed.
+        ExtWidgets.left(this)
+    }
+
+    // Kav opened: extensions' home screen widgets asked for their content again.
+    override fun onStart() {
+        super.onStart()
+        ExtWidgets.opened(this)
     }
 
     // Back to the front from another app: an opening too (Home's "Where to?" types itself once per opening).
@@ -335,6 +344,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         if (uk.noammm.kav.ext.SafeStart.take(this, intent)) return
         if (PayEntry.take(this, intent)) return
+        if (ExtWidgets.take(this, intent)) return
         intent.getStringExtra(TicketReader.EXTRA_TICKET)?.let { TicketStore.opened = it; return }
         intent.getStringExtra(LineAlerts.EXTRA_STOP)?.let { PendingStop.key = it; return }
         if (uk.noammm.kav.ui.PendingExtension.offer(intent)) return
@@ -944,6 +954,33 @@ private fun Shell(model: KavModel) {
                     else null
                     json?.let { uk.noammm.kav.ext.Native.tripEvent(it.toString()) }
                 }
+            }
+        }
+    }
+
+    // A tap on an extension's home screen widget (ExtWidgets): Kav at a stop or a line, the extension's own page or Kav's
+    // planner, as the widget's action says; its page in Settings › Extensions, with its settings and switches, for its
+    // settings and for one that's off. A stop and a line open the way a service alert's do.
+    LaunchedEffect(model) {
+        snapshotFlow { ExtWidgets.pending }.collect { o ->
+            if (o == null) return@collect
+            ExtWidgets.pending = null
+            if (o.page || (o.tap as? uk.noammm.kav.ext.Widgets.Tap.Page)?.action == uk.noammm.kav.ext.Blocks.Action.Settings) {
+                model.settingsOpen = true
+                SettingsNav.wanted = "extensions"
+                if (o.identity.isNotEmpty()) ExtUi.wanted = "e:${o.identity}"
+                return@collect
+            }
+            when (val t = o.tap) {
+                is uk.noammm.kav.ext.Widgets.Tap.Stop -> AlertLink.stop = t.code
+                is uk.noammm.kav.ext.Widgets.Tap.Line -> AlertLink.line = t.number
+                is uk.noammm.kav.ext.Widgets.Tap.Screen -> ExtPageNav.open(ExtEntry(o.identity, t.page, t.args))
+                is uk.noammm.kav.ext.Widgets.Tap.Page -> when (val a = t.action) {
+                    uk.noammm.kav.ext.Blocks.Action.Settings -> {}
+                    is uk.noammm.kav.ext.Blocks.Action.Plan -> planTo(model, a)
+                    is uk.noammm.kav.ext.Blocks.Action.Link -> openLink(ctx, a.url)
+                }
+                is uk.noammm.kav.ext.Widgets.Tap.Call, null -> {}
             }
         }
     }
@@ -2002,7 +2039,7 @@ object Prefs {
     fun setTwelveHour(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("twelveHour", on).apply()
 
     // Settings' System look, kept as "system": it follows the phone's dark theme.
-    private const val SYSTEM_LOOK = "system"
+    internal const val SYSTEM_LOOK = "system"
     private val looks = Look.entries.map { it.name.lowercase() } + SYSTEM_LOOK
 
     // The look a stored choice gives: System's is OLED while the phone is dark and Light while it isn't; none stored, OLED.

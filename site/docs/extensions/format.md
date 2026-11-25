@@ -102,6 +102,7 @@ At most 64 KB.
 | `contributions` | What it offers. Each: `id` (same rule as `name`, unique in the manifest), `capability` (a plain word; one from the table below does something, any other installs and does nothing), and optionally its own `permissions`. An old `domain` field is ignored. |
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](/docs/extensions/screens). |
+| `widgets` | Its home screen widgets, for a `widget.provide` contribution (API 5). See [screens.md](/docs/extensions/screens#home-screen-widgets). |
 | `theme` | Colors, for a `theme` contribution. See [screens.md](/docs/extensions/screens). |
 | `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
@@ -122,6 +123,7 @@ At most 64 KB.
 | `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](/docs/extensions/native#actions) lists them) |
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](/docs/extensions/native#screen-parts)) |
 | `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
+| `widget.provide` (API 5) | home screen widgets, each listed under the manifest's `"widgets"` ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](/docs/extensions/native) has the table).

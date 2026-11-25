@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A Kav widget that shows an extension's widget, the rider's choice as it's placed (ExtWidgets.kt). Resizable both ways;
+     Android asks for an update every half hour at most, and Kav refreshes it besides when it opens and when the extension
+     asks. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="uk.noammm.kav.ExtWidgetSetup"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/widget_ext_preview"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="50dp"
+    android:previewLayout="@layout/widget_ext_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable" />

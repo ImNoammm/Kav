@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Navigation
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -397,6 +398,7 @@ internal fun listingIcon(capabilities: List<String>): ImageVector = when {
     Capabilities.BOARD in capabilities -> Icons.Rounded.DepartureBoard
     "slot.home" in capabilities || PageSpecs.HOME in capabilities -> Icons.Rounded.Home
     Looks.CAPABILITY in capabilities -> Icons.Rounded.Palette
+    uk.noammm.kav.ext.Widgets.CAPABILITY in capabilities -> Icons.Rounded.Widgets
     PageSpecs.PAGE in capabilities -> Icons.Rounded.Dashboard
     "slot.results" in capabilities -> Icons.AutoMirrored.Rounded.List
     "slot.trip" in capabilities -> Icons.Rounded.Timeline
@@ -456,6 +458,7 @@ private fun lineIcon(l: ExtUses.Line): ImageVector = when (l.what) {
     ExtUses.What.SLOT_RESULTS -> Icons.AutoMirrored.Rounded.List
     ExtUses.What.SLOT_TRIP -> Icons.Rounded.Timeline
     ExtUses.What.SLOT_STOP -> Icons.Rounded.Place
+    ExtUses.What.WIDGETS -> Icons.Rounded.Widgets
     ExtUses.What.ADDS -> addIcon(l.detail.first())
     ExtUses.What.ACTIONS -> Icons.Rounded.TouchApp
     ExtUses.What.PARTS -> Icons.Rounded.Dashboard
@@ -603,6 +606,7 @@ internal fun lineWords(l: ExtUses.Line): String {
         ExtUses.What.SLOT_RESULTS -> T("Can add a line to your trip results", "יכול להוסיף שורה לתוצאות החיפוש שלכם")
         ExtUses.What.SLOT_TRIP -> T("Can add a part to a trip's page", "יכול להוסיף חלק לעמוד של נסיעה")
         ExtUses.What.SLOT_STOP -> T("Can add a row to stop boards", "יכול להוסיף שורה ללוחות תחנה")
+        ExtUses.What.WIDGETS -> T("Adds widgets to your home screen", "מוסיף ווידג׳טים למסך הבית שלכם")
         ExtUses.What.ADDS -> when (l.detail.first()) {
             "map" -> T("Draws on Kav's maps", "מצייר על המפות של Kav")
             "notifications" -> T("Sends notifications", "שולח התראות")
@@ -645,6 +649,7 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
             "slot.results" -> T("Results line", "שורה בתוצאות")
             "slot.trip" -> T("Trip page", "עמוד נסיעה")
             "slot.stop" -> T("Stop boards", "לוחות תחנה")
+            uk.noammm.kav.ext.Widgets.CAPABILITY -> T("Widgets", "ווידג׳טים")
             "action.pay" -> T("Paying", "תשלום")
             uk.noammm.kav.ext.MethodHooks.CAPABILITY -> T("Changes Kav", "משנה את Kav")
             Capabilities.BOARD -> T("Timetables", "לוחות זמנים")
@@ -683,6 +688,7 @@ internal fun lineLabel(l: ExtUses.Line): String {
         ExtUses.What.SLOT_RESULTS -> T("Line on trip results", "שורה בתוצאות החיפוש")
         ExtUses.What.SLOT_TRIP -> T("Part on a trip's page", "חלק בעמוד של נסיעה")
         ExtUses.What.SLOT_STOP -> T("Row on stop boards", "שורה בלוחות תחנה")
+        ExtUses.What.WIDGETS -> T("Home screen widgets", "ווידג׳טים למסך הבית")
         ExtUses.What.ADDS -> addWord(l.detail.first())
         ExtUses.What.ACTIONS -> T("Takes over actions", "לוקח על עצמו פעולות")
         ExtUses.What.PARTS -> T("Changes screen parts", "משנה חלקי מסכים")

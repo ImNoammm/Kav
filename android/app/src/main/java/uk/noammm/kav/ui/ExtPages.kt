@@ -551,6 +551,8 @@ internal fun extScreenRows(hub: Hub, i: Registry.Installed): ListGroupScope.() -
     val app = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val decl = remember(i.sha256) { runCatching { PageSpecs.of(i.manifest) }.getOrNull() } ?: return {}
+    val widgets = remember(i.sha256) { uk.noammm.kav.ext.Widgets.of(i.manifest) }
+    val pin = remember { android.os.Build.VERSION.SDK_INT >= 26 && android.appwidget.AppWidgetManager.getInstance(app).isRequestPinAppWidgetSupported }
     val theme = remember(i.sha256) { Screens.themeOf(i) }
     val on = hub.active(i) && !SafeMode.active
     fun choose(block: () -> Unit) = scope.launch { io { block() }; ExtShown.publish(); ExtUi.changed() }
@@ -574,6 +576,11 @@ internal fun extScreenRows(hub: Hub, i: Registry.Installed): ListGroupScope.() -
         // A page that isn't its tab or Home opens from here.
         for (p in decl.pages.filter { it.id != PageSpecs.HOME_PAGE && it.entry && !it.tab }) row {
             ListRow(T("Open ", "פתיחת ") + "\u2068${words(p.title)}\u2069", onClick = if (on) ({ ExtPageNav.open(ExtEntry(i.identity, p.id)) }) else null)
+        }
+        // Its home screen widgets, each placed from here at the size it looks best at, where the launcher can.
+        if (pin) for (w in widgets) row {
+            ListRow(T("Add ", "הוספת ") + "\u2068${words(w.title)}\u2069" + T(" to the home screen", " למסך הבית"),
+                onClick = if (on) ({ uk.noammm.kav.ExtWidgets.pin(app, i.identity, w) }) else null, chevron = false)
         }
     }
 }

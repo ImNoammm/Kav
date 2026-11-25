@@ -127,7 +127,7 @@ loads your code, so they never go into your dex.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
   with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
-  `kav.prefs()`, `kav.trips()` and `kav.onTrip()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
   code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
@@ -152,6 +152,7 @@ declares it too:
 | `kav.prefs()` | `"api": 5` |
 | `kav.trips()` | `"api": 5` and a contribution `trips.history` ([hooks.md](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
 | `kav.onTrip(...)` | `"api": 5` and a contribution `trips.follow` (the same) |
+| `kav.widget("next", ...)`, `kav.refreshWidget("next")` | `"api": 5`, a contribution `widget.provide` and the widget `{"id": "next", ...}` under `widgets` ([screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets)) |
 | `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](https://kavapp.link/docs/extensions/screens)) |
 | `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
 
@@ -165,8 +166,8 @@ types only: text, numbers, JSON as text, and Android's own `Context`, `View` and
 or an update of it arrives: no restart is needed. Never in safe mode.
 
 **Threads.** `start` runs on a background thread. Kav asks a card or screen for its view on the main thread, each
-time the screen shows it. Every `KavUi` method must be called on the main thread. Hooks and `onSettings` are called
-on a thread of Kav's, never the main one. `KavMap` may be called from any thread; its tap and stop-look calls come on
+time the screen shows it. Every `KavUi` method must be called on the main thread. Hooks, `onSettings` and a widget's
+`content` and `tapped` are called on a thread of Kav's, never the main one. `KavMap` may be called from any thread; its tap and stop-look calls come on
 the main thread.
 
 #### KavExtension
@@ -193,6 +194,8 @@ class Hello : KavExtension {
 | `prefs()` | API 5: the rider's display settings as JSON text, `{"stopNames": "en", "clock": 24, "locale": "en"}` ([hooks.md](https://kavapp.link/docs/extensions/hooks#planner-tabs-and-display-settings)) |
 | `trips()` | API 5: the rider's recent trips as JSON text, `null` until the rider allows it ([hooks.md](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
 | `onTrip(listener)` | API 5: told as the trip the rider follows starts, moves from step to step and ends, once the rider allows it (the same) |
+| `widget(id, widget)` | API 5: a home screen widget's content, as JSON text Kav draws, and its taps ([screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets)) |
+| `refreshWidget(id)` | API 5: asks Kav to ask that widget for its content again now |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -659,6 +662,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
 | `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, adds a line to the wait and ride cards, and a banner under navigation's step dots |
+| `shuttle-widgets` | API 5: two home screen widgets, the next departures of an invented shuttle from the stop chosen in its settings, and the rider's recent trips, a tap from planning one again |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 
@@ -681,7 +685,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget. */
     int API = 5;
 
     int apiVersion();
@@ -710,6 +714,15 @@ public interface Kav {
      *  at once, as "start". Only while the rider allows it on the extension's page; on a thread of Kav's, never the main
      *  one. null stops it. Needs a contribution with capability "trips.follow"; without it, it throws. */
     default void onTrip(TripListener listener) {}
+
+    /** API 5. A home screen widget's content, for a widget the manifest declares in "widgets" (with a contribution with
+     *  capability "widget.provide"; without it, it throws). Kav owns the widgets on the home screen; the rider places one
+     *  and chooses this one for it. Kav asks for its content when it shows, refreshes or the rider opens Kav, on a thread
+     *  of Kav's, never the main one, and draws it in its own look. null stops it. */
+    default void widget(String id, Widget widget) {}
+
+    /** API 5. Asks Kav to ask a widget of this extension for its content again now (its data changed). From any thread. */
+    default void refreshWidget(String id) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -818,6 +831,16 @@ public interface Kav {
     /** API 5. A trip event (onTrip), as JSON text. */
     interface TripListener {
         void trip(String event);
+    }
+
+    /** API 5. A home screen widget. content: its content as JSON text (docs/native.md has its fields), asked with args,
+     *  {"widget", "rows", "width", "height"}: rows is how many fit, width and height its size in dp. Answer within 3
+     *  seconds; Kav shows the last content it showed until then, and when it fails. tapped: a tap on a part whose action
+     *  is {"call": "<name>"}, told {"widget", "call", "row"}; Kav asks for the content again after it. */
+    interface Widget {
+        String content(String args) throws Exception;
+
+        default void tapped(String tap) throws Exception {}
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */
@@ -1564,10 +1587,10 @@ Both need `"api": 5` in the manifest (an older Kav has neither method). A Kav wi
 extension and never calls you.
 
 
-## Screens: cards, pages, settings, the Home body and themes
+## Screens: cards, pages, settings, the Home body, themes and home screen widgets
 
 What an extension can show on Kav's screens. Taken from Kav 5's code: `ext/Slots.kt`, `ext/Pages.kt`,
-`ext/Blocks.kt`, `ext/Looks.kt` (paths under `android/app/src/main/java/uk/noammm/kav/`). If this page and the code
+`ext/Blocks.kt`, `ext/Looks.kt`, `ext/Widgets.kt` (paths under `android/app/src/main/java/uk/noammm/kav/`). If this page and the code
 disagree, the code is right; please report it.
 
 Every card and screen is an Android view your code makes ([native.md](https://kavapp.link/docs/extensions/native)). To look like the rest of Kav, build
@@ -1581,6 +1604,7 @@ it from Kav's own components (`kav.ui()`), or hand Kav a block tree and let it d
 | Offer a Home screen of your own | `home.body` and a page called `home` | `kav.home(...)` |
 | Let the rider set things | `settings` | `kav.settings()`, `kav.onSettings(...)` |
 | Change Kav's colors | `theme` | nothing |
+| Put a widget on the phone's home screen (API 5) | `widget.provide` and `widgets` | `kav.widget(...)` |
 
 ### Cards on Kav's screens
 
@@ -1793,6 +1817,90 @@ theme sets both colors. Look at it in Kav, in each look you set, before you publ
 Kav keeps its own colors on its protected screens: Settings (with extension management, sources and safe mode), its
 notices, the report form and navigation.
 
+### Home screen widgets
+
+API 5. Android only knows the widgets an app declares in its own manifest, and your code loads while Kav runs, so
+Kav owns the widgets: two of its own in the launcher's list, "Kav extension" (2 × 2) and "Kav extension, wide"
+(4 × 2), both resizable. As the rider places one, Kav asks which extension's widget it shows, and lists every widget
+of the extensions that are on. Your page in Settings › Extensions also has "Add &lt;title> to the home screen" for each,
+which places the one of your `size`. Riders see "Adds widgets to your home screen" under "It can".
+
+```json
+"contributions": [{ "id": "widgets", "capability": "widget.provide" }],
+"widgets": [
+  { "id": "next", "size": "wide",
+    "title": { "en": "Next shuttles", "he": "ההסעות הבאות" },
+    "description": { "en": "The next shuttles from the stop you choose", "he": "ההסעות הבאות מהתחנה שבחרתם" } }
+]
+```
+
+| Field | Rule |
+|---|---|
+| `id` | the same rule as a page's, unique; at most 16 widgets |
+| `title` | needs `en`; shown in Kav's list of widgets and on the Add row |
+| `description` | optional, under the title in Kav's list |
+| `size` | `"small"` (default) or `"wide"`: the one it looks best at, which Add to home screen places. The rider can resize it or place the other one |
+
+Your code gives its content, as JSON text, and Kav draws it in its own look: the rider's light or dark look (both,
+following the phone, for Settings' System look on Android 12 and newer), their accent color, Kav's corners and the
+direction of Kav's language. No views of yours: a home screen can only show a few kinds of Android's views.
+
+```kotlin
+kav.widget("next", object : Kav.Widget {
+    // args: {"widget", "rows", "width", "height"}: how many rows fit, and the widget's size in dp.
+    override fun content(args: String): String {
+        val rows = JSONObject(args).getInt("rows")
+        return JSONObject()
+            .put("title", "Shuttles from Harbor")
+            .put("rows", JSONArray(next(rows).map { d ->
+                JSONObject().put("line", d.line).put("title", "To ${d.to}").put("subtitle", "In ${d.wait} min").put("value", d.clock)
+                    .put("action", JSONObject().put("page", "line").put("args", JSONObject().put("line", d.line)))
+            }))
+            .put("note", "From the shuttle's timetable")
+            .put("empty", "No more shuttles today")
+            .put("action", JSONObject().put("call", "next-stop"))
+            .put("next", 600)
+            .toString()
+    }
+
+    // A tap on a part whose action is {"call": ...}: {"widget", "call", "row"} (row -1: the widget itself).
+    override fun tapped(tap: String) { stop = nextStop() }
+})
+
+// Your data changed: Kav asks content() again now.
+kav.onSettings { kav.refreshWidget("next") }
+```
+
+| Content field | What it is |
+|---|---|
+| `title` | its first line, in bold; none with `""` |
+| `rows` | a list of rows, as a page's rows ([Blocks](#blocks)): `title` (needed), `subtitle`, `value` (at the end, in the accent color: a time, minutes), `icon` (a page's icon names) or `line` (a line number on a plate in the accent color, instead of an icon), and `action`. Kav shows as many as fit, from the first |
+| `note` | a short line at the bottom |
+| `empty` | what it says when `rows` is empty |
+| `action` | what a tap on the widget, outside a row with an action of its own, does. Without one, it opens Kav |
+| `next` | in how many seconds the content changes by itself (the first shuttle leaves): Kav asks again then, at the soonest in 5 minutes, and only while the phone is awake |
+
+| Action | What a tap does |
+|---|---|
+| `{"stop": "il.mot/gtfs/stop/<code>"}` | opens Kav at that stop's board |
+| `{"line": "480"}` | opens Kav's Lines with that line searched |
+| `{"plan": {"lat", "lon", "name"}}` | opens Kav's planner with that destination, as on a page |
+| `{"page": "<id>", "args": {"key": "text"}}` | opens one of your pages, told the args |
+| `{"settings": true}` | opens your page in Settings › Extensions, with your settings and the switches the rider gives you |
+| `{"link": "https://..."}` (or `open`) | opens the link, straight from the home screen |
+| `{"call": "<name>"}` | tells your `tapped` (Kav starts for it if it isn't running, within a few seconds), then asks `content()` again |
+
+**When Kav asks.** When the rider places it or resizes it, when Kav opens, when you call `refreshWidget` (at most
+every ten seconds; asks in between are done once, after), at the time `next` says, and when Android updates it, every
+half hour at most. Your code runs only while Kav does: when Android asks and Kav isn't running, Android starts it, your
+extension starts as it always does, and Kav asks then. Answer within 3 seconds. When you don't (or throw, or answer
+something Kav can't read), the widget keeps what it last showed, and Kav writes why in your log; a throw also counts
+as a crash.
+
+**What it shows instead.** "This extension is off." with Open in Kav, while it's switched off, blocked or turned off
+by Kav; "Kav started without extensions" in safe mode; that it was removed, with Choose another, once it's
+uninstalled (what it showed goes with it); "Open Kav to load it." until your code first answers.
+
 ### When your code fails
 
 A card or screen whose `create` throws or hangs shows nothing, and counts as a crash: 2 crashes in 5 minutes switch
@@ -1897,6 +2005,7 @@ At most 64 KB.
 | `contributions` | What it offers. Each: `id` (same rule as `name`, unique in the manifest), `capability` (a plain word; one from the table below does something, any other installs and does nothing), and optionally its own `permissions`. An old `domain` field is ignored. |
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](https://kavapp.link/docs/extensions/screens). |
+| `widgets` | Its home screen widgets, for a `widget.provide` contribution (API 5). See [screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets). |
 | `theme` | Colors, for a `theme` contribution. See [screens.md](https://kavapp.link/docs/extensions/screens). |
 | `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
@@ -1917,6 +2026,7 @@ At most 64 KB.
 | `action.<name>` (API 4) | takes over one of Kav's actions, `action.pay` for paying ([native.md](https://kavapp.link/docs/extensions/native#actions) lists them) |
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](https://kavapp.link/docs/extensions/native#screen-parts)) |
 | `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](https://kavapp.link/docs/extensions/native#hooks-into-kav-itself)) |
+| `widget.provide` (API 5) | home screen widgets, each listed under the manifest's `"widgets"` ([screens.md](https://kavapp.link/docs/extensions/screens#home-screen-widgets)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](https://kavapp.link/docs/extensions/native) has the table).
@@ -2069,6 +2179,7 @@ These are all the lines there are, in the order Kav lists them. The exact words,
 | **It can add a line to trip results** | it has a `slot.results` contribution | `slot.results` |
 | **It can add a part to a trip's page** | it has a `slot.trip` contribution | `slot.trip` |
 | **It can add a row to stop boards** | it has a `slot.stop` contribution | `slot.stop` |
+| **It adds widgets to the home screen** | it has a `widget.provide` contribution (API 5) | `widget.provide` |
 | **It takes over**, naming the actions: paying, opening stops, trip searches... | it has an `action.<name>` contribution (API 4) | `actions` |
 | **It changes parts of Kav's screens**, naming them: Home's pay card, a trip's rides... | it has a `part.<name>` contribution (API 4) | `parts` |
 | **It changes how Kav itself works** | it has a `hooks` contribution (API 4) | `hooks` |
@@ -2217,6 +2328,7 @@ adds the permissions or what is changed.
 | Can add a line to your trip results | יכול להוסיף שורה לתוצאות החיפוש שלכם | key `slot.results` |
 | Can add a part to a trip's page | יכול להוסיף חלק לעמוד של נסיעה | key `slot.trip` |
 | Can add a row to stop boards | יכול להוסיף שורה ללוחות תחנה | key `slot.stop` |
+| Adds widgets to your home screen | מוסיף ווידג׳טים למסך הבית שלכם | key `widget.provide` |
 | Takes over: | לוקח על עצמו: | key `actions`, followed by the actions (paying: תשלום, opening stops: פתיחת תחנות...) |
 | Changes parts of Kav's screens: | משנה חלקים במסכים של Kav: | key `parts`, followed by the parts (Home's pay card: כרטיס התשלום במסך הבית...) |
 | Changes how Kav itself works | משנה את האופן שבו Kav עצמה פועלת | key `hooks` |
@@ -2232,7 +2344,7 @@ After "Changes your results:" Kav lists what changes: "walk times" (זמני ה�
 
 Kav also has shorter forms of some lines: "Its own screens" (מסכים משלו), "A tab you can pin" (לשונית שאפשר להצמיד),
 "Home card" (כרטיס במסך הבית), "Line on trip results" (שורה בתוצאות החיפוש), "Part on a trip's page" (חלק בעמוד של
-נסיעה), "Row on stop boards" (שורה בלוחות תחנה), "Timetables and stop boards" (לוחות זמנים ולוחות תחנה), "Keeps data
+נסיעה), "Row on stop boards" (שורה בלוחות תחנה), "Home screen widgets" (ווידג׳טים למסך הבית), "Timetables and stop boards" (לוחות זמנים ולוחות תחנה), "Keeps data
 on this phone" (שומר מידע בטלפון הזה).
 
 Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by

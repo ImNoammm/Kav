@@ -84,6 +84,7 @@ adds the permissions or what is changed.
 | Can add a line to your trip results | יכול להוסיף שורה לתוצאות החיפוש שלכם | key `slot.results` |
 | Can add a part to a trip's page | יכול להוסיף חלק לעמוד של נסיעה | key `slot.trip` |
 | Can add a row to stop boards | יכול להוסיף שורה ללוחות תחנה | key `slot.stop` |
+| Adds widgets to your home screen | מוסיף ווידג׳טים למסך הבית שלכם | key `widget.provide` |
 | Takes over: | לוקח על עצמו: | key `actions`, followed by the actions (paying: תשלום, opening stops: פתיחת תחנות...) |
 | Changes parts of Kav's screens: | משנה חלקים במסכים של Kav: | key `parts`, followed by the parts (Home's pay card: כרטיס התשלום במסך הבית...) |
 | Changes how Kav itself works | משנה את האופן שבו Kav עצמה פועלת | key `hooks` |
@@ -99,7 +100,7 @@ After "Changes your results:" Kav lists what changes: "walk times" (זמני ה�
 
 Kav also has shorter forms of some lines: "Its own screens" (מסכים משלו), "A tab you can pin" (לשונית שאפשר להצמיד),
 "Home card" (כרטיס במסך הבית), "Line on trip results" (שורה בתוצאות החיפוש), "Part on a trip's page" (חלק בעמוד של
-נסיעה), "Row on stop boards" (שורה בלוחות תחנה), "Timetables and stop boards" (לוחות זמנים ולוחות תחנה), "Keeps data
+נסיעה), "Row on stop boards" (שורה בלוחות תחנה), "Home screen widgets" (ווידג׳טים למסך הבית), "Timetables and stop boards" (לוחות זמנים ולוחות תחנה), "Keeps data
 on this phone" (שומר מידע בטלפון הזה).
 
 Beside the lines: "Third-party. Not made or reviewed by Kav." ("צד שלישי. Kav לא יצרה ולא בחנה אותו."), or "Made by

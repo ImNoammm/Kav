@@ -203,6 +203,38 @@
             </intent-filter>
         </activity>
 
+        <!-- Home screen widgets that show an extension's (ExtWidgets.kt): a small one and a wide one, both resizable, and
+             the screen where the rider chooses which extension's widget one shows. Exported, as the launcher asks them;
+             each checks the widget is Kav's own. -->
+        <receiver
+            android:name=".ExtWidgetSmall"
+            android:exported="true"
+            android:label="@string/widget_small">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_small" />
+        </receiver>
+        <receiver
+            android:name=".ExtWidgetWide"
+            android:exported="true"
+            android:label="@string/widget_wide">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_wide" />
+        </receiver>
+        <activity
+            android:name=".ExtWidgetSetup"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Kav">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- the ongoing trip notification's anchor -->
         <service
             android:name=".TripService"

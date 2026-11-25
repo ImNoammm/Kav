@@ -34,6 +34,8 @@ object TripAccess {
         val key = "$identity|$capability"
         allowed = if (on) allowed + key else allowed - key
         save(dir)
+        // Its home screen widgets may show what it reads.
+        Widgets.refresh(identity)
     }
 
     // Everything allowed to one extension, forgotten (it was uninstalled). Nothing written when it had nothing.

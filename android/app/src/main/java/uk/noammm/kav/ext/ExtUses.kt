@@ -10,7 +10,7 @@ package uk.noammm.kav.ext
 //
 // Each later kind or use is added here with a key, and gets explanations with no other change.
 object ExtUses {
-    enum class What { KIND, SEES_SEARCHES, CHANGES_RESULTS, KEEPS_DATA, PERMISSIONS, SCREENS, TAB, HOME, LOOK, SLOT_HOME, SLOT_RESULTS, SLOT_TRIP, SLOT_STOP, NATIVE, ADDS, ACTIONS, PARTS, HOOKS }
+    enum class What { KIND, SEES_SEARCHES, CHANGES_RESULTS, KEEPS_DATA, PERMISSIONS, SCREENS, TAB, HOME, LOOK, SLOT_HOME, SLOT_RESULTS, SLOT_TRIP, SLOT_STOP, WIDGETS, NATIVE, ADDS, ACTIONS, PARTS, HOOKS }
 
     // key: what an explanation names it by. detail: the kind's capability, what it changes (as capabilities) or the
     // permissions. note: the publisher's explanation (English, Hebrew), when it gave one.
@@ -25,8 +25,9 @@ object ExtUses {
     val CHANGES = listOf(Pipeline.WALK, Pipeline.TRANSFER, Pipeline.FILTER, Pipeline.RANK, Pipeline.ANNOTATE)
     // Every key an explanation can name, for the developer kit: a kind's capability, or one of these.
     val KEYS = KINDS + listOf("searches", "results", "data", "native", "permissions", "actions", "parts", MethodHooks.CAPABILITY) + SCREEN_KEYS + Manifest.ADDS
-    // Its own screens, a page the rider can pin as a tab, a Home body and a theme (ext/Pages.kt, ext/Looks.kt).
-    private val SCREEN_KEYS get() = listOf(PageSpecs.PAGE, "tab", PageSpecs.HOME, Looks.CAPABILITY) + Slots.CAPABILITIES
+    // Its own screens, a page the rider can pin as a tab, a Home body, a theme and home screen widgets (ext/Pages.kt,
+    // ext/Looks.kt, ext/Widgets.kt).
+    private val SCREEN_KEYS get() = listOf(PageSpecs.PAGE, "tab", PageSpecs.HOME, Looks.CAPABILITY, Widgets.CAPABILITY) + Slots.CAPABILITIES
 
     fun of(m: Manifest): List<Line> {
         val caps = m.contributions.map { it.capability }.toSet()
@@ -43,6 +44,8 @@ object ExtUses {
             // Its cards on Kav's own screens (ext/Slots.kt), on from when it's switched on.
             for ((k, what) in listOf(Slots.Kind.HOME to What.SLOT_HOME, Slots.Kind.RESULTS to What.SLOT_RESULTS, Slots.Kind.TRIP to What.SLOT_TRIP, Slots.Kind.STOP to What.SLOT_STOP))
                 if (k.capability in caps) line(k.capability, what)
+            // Its widgets on the home screen (ext/Widgets.kt), which show what its code gives them there.
+            if (Widgets.CAPABILITY in caps) line(Widgets.CAPABILITY, What.WIDGETS)
             // API 4: the actions it takes over, the parts of Kav's screens it changes, and hooks into Kav's own code.
             val actions = Actions.NAMES.filter { Actions.CAPABILITY + it in caps }
             if (actions.isNotEmpty()) line("actions", What.ACTIONS, actions)

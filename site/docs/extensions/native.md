@@ -99,7 +99,7 @@ loads your code, so they never go into your dex.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
   with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
-  `kav.prefs()`, `kav.trips()` and `kav.onTrip()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
   code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
@@ -124,6 +124,7 @@ declares it too:
 | `kav.prefs()` | `"api": 5` |
 | `kav.trips()` | `"api": 5` and a contribution `trips.history` ([hooks.md](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
 | `kav.onTrip(...)` | `"api": 5` and a contribution `trips.follow` (the same) |
+| `kav.widget("next", ...)`, `kav.refreshWidget("next")` | `"api": 5`, a contribution `widget.provide` and the widget `{"id": "next", ...}` under `widgets` ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
 | `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](/docs/extensions/screens)) |
 | `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
 
@@ -137,8 +138,8 @@ types only: text, numbers, JSON as text, and Android's own `Context`, `View` and
 or an update of it arrives: no restart is needed. Never in safe mode.
 
 **Threads.** `start` runs on a background thread. Kav asks a card or screen for its view on the main thread, each
-time the screen shows it. Every `KavUi` method must be called on the main thread. Hooks and `onSettings` are called
-on a thread of Kav's, never the main one. `KavMap` may be called from any thread; its tap and stop-look calls come on
+time the screen shows it. Every `KavUi` method must be called on the main thread. Hooks, `onSettings` and a widget's
+`content` and `tapped` are called on a thread of Kav's, never the main one. `KavMap` may be called from any thread; its tap and stop-look calls come on
 the main thread.
 
 ### KavExtension
@@ -165,6 +166,8 @@ class Hello : KavExtension {
 | `prefs()` | API 5: the rider's display settings as JSON text, `{"stopNames": "en", "clock": 24, "locale": "en"}` ([hooks.md](/docs/extensions/hooks#planner-tabs-and-display-settings)) |
 | `trips()` | API 5: the rider's recent trips as JSON text, `null` until the rider allows it ([hooks.md](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
 | `onTrip(listener)` | API 5: told as the trip the rider follows starts, moves from step to step and ends, once the rider allows it (the same) |
+| `widget(id, widget)` | API 5: a home screen widget's content, as JSON text Kav draws, and its taps ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
+| `refreshWidget(id)` | API 5: asks Kav to ask that widget for its content again now |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -631,6 +634,7 @@ In `samples/native/`, each built with `kavx bundle samples/native/<name>`:
 | `hook-sample` | API 4: a hook on one of Kav's own methods, found by name |
 | `planner-tab` | API 5: a planner in a results tab of its own, with live times, a bus to follow, a ride's alert, stop photos and the rider's display settings |
 | `trip-companion` | API 5: follows your trips and reads your trip history once you allow each, adds a line to the wait and ride cards, and a banner under navigation's step dots |
+| `shuttle-widgets` | API 5: two home screen widgets, the next departures of an invented shuttle from the stop chosen in its settings, and the rider's recent trips, a tap from planning one again |
 
 The starter, `starter-kotlin/`, is a Home card with a button and a dialog, and a screen of its own.
 

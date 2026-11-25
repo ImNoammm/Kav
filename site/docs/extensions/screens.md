@@ -1,14 +1,14 @@
 ---
-title: "Screens: cards, pages, settings, the Home body and themes"
+title: "Screens: cards, pages, settings, the Home body, themes and home screen widgets"
 editLink: false
 ---
 
 <div v-pre>
 
-# Screens: cards, pages, settings, the Home body and themes
+# Screens: cards, pages, settings, the Home body, themes and home screen widgets
 
 What an extension can show on Kav's screens. Taken from Kav 5's code: `ext/Slots.kt`, `ext/Pages.kt`,
-`ext/Blocks.kt`, `ext/Looks.kt` (paths under `android/app/src/main/java/uk/noammm/kav/`). If this page and the code
+`ext/Blocks.kt`, `ext/Looks.kt`, `ext/Widgets.kt` (paths under `android/app/src/main/java/uk/noammm/kav/`). If this page and the code
 disagree, the code is right; please report it.
 
 Every card and screen is an Android view your code makes ([native.md](/docs/extensions/native)). To look like the rest of Kav, build
@@ -22,6 +22,7 @@ it from Kav's own components (`kav.ui()`), or hand Kav a block tree and let it d
 | Offer a Home screen of your own | `home.body` and a page called `home` | `kav.home(...)` |
 | Let the rider set things | `settings` | `kav.settings()`, `kav.onSettings(...)` |
 | Change Kav's colors | `theme` | nothing |
+| Put a widget on the phone's home screen (API 5) | `widget.provide` and `widgets` | `kav.widget(...)` |
 
 ## Cards on Kav's screens
 
@@ -233,6 +234,90 @@ theme sets both colors. Look at it in Kav, in each look you set, before you publ
 
 Kav keeps its own colors on its protected screens: Settings (with extension management, sources and safe mode), its
 notices, the report form and navigation.
+
+## Home screen widgets
+
+API 5. Android only knows the widgets an app declares in its own manifest, and your code loads while Kav runs, so
+Kav owns the widgets: two of its own in the launcher's list, "Kav extension" (2 × 2) and "Kav extension, wide"
+(4 × 2), both resizable. As the rider places one, Kav asks which extension's widget it shows, and lists every widget
+of the extensions that are on. Your page in Settings › Extensions also has "Add &lt;title> to the home screen" for each,
+which places the one of your `size`. Riders see "Adds widgets to your home screen" under "It can".
+
+```json
+"contributions": [{ "id": "widgets", "capability": "widget.provide" }],
+"widgets": [
+  { "id": "next", "size": "wide",
+    "title": { "en": "Next shuttles", "he": "ההסעות הבאות" },
+    "description": { "en": "The next shuttles from the stop you choose", "he": "ההסעות הבאות מהתחנה שבחרתם" } }
+]
+```
+
+| Field | Rule |
+|---|---|
+| `id` | the same rule as a page's, unique; at most 16 widgets |
+| `title` | needs `en`; shown in Kav's list of widgets and on the Add row |
+| `description` | optional, under the title in Kav's list |
+| `size` | `"small"` (default) or `"wide"`: the one it looks best at, which Add to home screen places. The rider can resize it or place the other one |
+
+Your code gives its content, as JSON text, and Kav draws it in its own look: the rider's light or dark look (both,
+following the phone, for Settings' System look on Android 12 and newer), their accent color, Kav's corners and the
+direction of Kav's language. No views of yours: a home screen can only show a few kinds of Android's views.
+
+```kotlin
+kav.widget("next", object : Kav.Widget {
+    // args: {"widget", "rows", "width", "height"}: how many rows fit, and the widget's size in dp.
+    override fun content(args: String): String {
+        val rows = JSONObject(args).getInt("rows")
+        return JSONObject()
+            .put("title", "Shuttles from Harbor")
+            .put("rows", JSONArray(next(rows).map { d ->
+                JSONObject().put("line", d.line).put("title", "To ${d.to}").put("subtitle", "In ${d.wait} min").put("value", d.clock)
+                    .put("action", JSONObject().put("page", "line").put("args", JSONObject().put("line", d.line)))
+            }))
+            .put("note", "From the shuttle's timetable")
+            .put("empty", "No more shuttles today")
+            .put("action", JSONObject().put("call", "next-stop"))
+            .put("next", 600)
+            .toString()
+    }
+
+    // A tap on a part whose action is {"call": ...}: {"widget", "call", "row"} (row -1: the widget itself).
+    override fun tapped(tap: String) { stop = nextStop() }
+})
+
+// Your data changed: Kav asks content() again now.
+kav.onSettings { kav.refreshWidget("next") }
+```
+
+| Content field | What it is |
+|---|---|
+| `title` | its first line, in bold; none with `""` |
+| `rows` | a list of rows, as a page's rows ([Blocks](#blocks)): `title` (needed), `subtitle`, `value` (at the end, in the accent color: a time, minutes), `icon` (a page's icon names) or `line` (a line number on a plate in the accent color, instead of an icon), and `action`. Kav shows as many as fit, from the first |
+| `note` | a short line at the bottom |
+| `empty` | what it says when `rows` is empty |
+| `action` | what a tap on the widget, outside a row with an action of its own, does. Without one, it opens Kav |
+| `next` | in how many seconds the content changes by itself (the first shuttle leaves): Kav asks again then, at the soonest in 5 minutes, and only while the phone is awake |
+
+| Action | What a tap does |
+|---|---|
+| `{"stop": "il.mot/gtfs/stop/<code>"}` | opens Kav at that stop's board |
+| `{"line": "480"}` | opens Kav's Lines with that line searched |
+| `{"plan": {"lat", "lon", "name"}}` | opens Kav's planner with that destination, as on a page |
+| `{"page": "<id>", "args": {"key": "text"}}` | opens one of your pages, told the args |
+| `{"settings": true}` | opens your page in Settings › Extensions, with your settings and the switches the rider gives you |
+| `{"link": "https://..."}` (or `open`) | opens the link, straight from the home screen |
+| `{"call": "<name>"}` | tells your `tapped` (Kav starts for it if it isn't running, within a few seconds), then asks `content()` again |
+
+**When Kav asks.** When the rider places it or resizes it, when Kav opens, when you call `refreshWidget` (at most
+every ten seconds; asks in between are done once, after), at the time `next` says, and when Android updates it, every
+half hour at most. Your code runs only while Kav does: when Android asks and Kav isn't running, Android starts it, your
+extension starts as it always does, and Kav asks then. Answer within 3 seconds. When you don't (or throw, or answer
+something Kav can't read), the widget keeps what it last showed, and Kav writes why in your log; a throw also counts
+as a crash.
+
+**What it shows instead.** "This extension is off." with Open in Kav, while it's switched off, blocked or turned off
+by Kav; "Kav started without extensions" in safe mode; that it was removed, with Choose another, once it's
+uninstalled (what it showed goes with it); "Open Kav to load it." until your code first answers.
 
 ## When your code fails
 
