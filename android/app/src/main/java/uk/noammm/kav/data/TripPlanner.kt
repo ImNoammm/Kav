@@ -195,8 +195,8 @@ class TransitousPlanner : TripPlanner {
             PlanSettings.Pace.FAST -> "&pedestrianSpeed=1.6"
             else -> ""
         }
-        val url = String.format(java.util.Locale.US, "%s/api/v5/plan?fromPlace=%.6f,%.6f&toPlace=%.6f,%.6f&time=%s&arriveBy=%s&numItineraries=6%s%s",
-            BASE, r.from.first, r.from.second, r.to.first, r.to.second, at, r.timeType == Transit.TIME_ARRIVAL, speed,
+        val url = String.format(java.util.Locale.US, "%s/api/v5/plan?fromPlace=%.6f,%.6f&toPlace=%.6f,%.6f&time=%s&arriveBy=%s&numItineraries=8&maxTransfers=%d%s%s",
+            BASE, r.from.first, r.from.second, r.to.first, r.to.second, at, r.timeType == Transit.TIME_ARRIVAL, if (r.settings.changes == PlanSettings.Changes.FEWER) 1 else 2, speed,
             if (modes.isEmpty()) "" else "&transitModes=" + modes.joinToString(","))
         val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         c.connectTimeout = 10_000; c.readTimeout = 25_000
@@ -214,6 +214,21 @@ class TransitousPlanner : TripPlanner {
         // GTFS route types to MOTIS modes.
         private val MODES = mapOf(0 to "TRAM", 1 to "SUBWAY", 2 to "RAIL", 3 to "BUS", 4 to "FERRY", 5 to "CABLE_CAR", 6 to "AERIAL_LIFT", 7 to "FUNICULAR")
 
+        // Changes that buy nothing are left out: more than one change beyond the fewest, or a route with changes that gets
+        // there less than 5 minutes sooner than one with fewer, leaving about then. Fewer changes first among departures close
+        // together, at most 6 kept.
+        internal fun tidy(list: List<JSONObject>): List<JSONObject> {
+            fun changes(x: JSONObject) = x.optInt("transfers", 0)
+            fun dep(x: JSONObject) = epoch(x.optString("startTime"))
+            fun arr(x: JSONObject) = epoch(x.optString("endTime"))
+            val fewest = list.minOfOrNull { changes(it) } ?: return list
+            val kept = list.filter { x ->
+                changes(x) <= fewest + 1 &&
+                    list.none { f -> changes(f) < changes(x) && dep(f) >= dep(x) - 600 && arr(f) <= arr(x) + 300 }
+            }
+            return kept.sortedWith(compareBy({ dep(it) / 300 }, { changes(it) }, { dep(it) })).take(6)
+        }
+
         private fun epoch(s: String): Long = try { java.time.Instant.parse(s).epochSecond } catch (e: Exception) { 0L }
 
         // MOTIS's answer as a plan in the shape of server/API.md. An itinerary with a ride Kav can't name in the ministry's
@@ -229,7 +244,11 @@ class TransitousPlanner : TripPlanner {
                 return code
             }
             val found = ArrayList<JSONObject>()
-            o.optJSONArray("itineraries")?.let { a -> for (i in 0 until a.length()) found += a.getJSONObject(i) }
+            o.optJSONArray("itineraries")?.let { a ->
+                val all = ArrayList<JSONObject>()
+                for (i in 0 until a.length()) all += a.getJSONObject(i)
+                found += tidy(all)
+            }
             o.optJSONArray("direct")?.let { a -> for (i in 0 until minOf(a.length(), 1)) found += a.getJSONObject(i) }
             for (it in found) {
                 val legs = JSONArray()
