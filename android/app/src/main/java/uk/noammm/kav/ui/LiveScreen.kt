@@ -482,8 +482,10 @@ private fun LiveScreenForSource(model: KavModel) {
     // A vehicle tapped on the map opens once its road and stops are in and placed (0.7 s at most), so its card, the
     // map's frame and the fades start together from what they end on; another one while a card is open, or a stop, at once.
     var waited by remember(focus) { mutableStateOf(focus !is LiveFocus.Vehicle) }
-    LaunchedEffect(focus) { if (!waited) { delay(700); waited = true } }
     var open by remember { mutableStateOf(focus) }
+    // Opened by then, there's nothing left to wait for: said all the same, it made this whole screen again 700 ms after
+    // the tap, in the middle of the camera's move when the card had opened late.
+    LaunchedEffect(focus) { if (!waited) { delay(700); if (open != focus) waited = true } }
     // Its bus's details (the Bus row, BusKind), asked for at the tap so they're in the card as it opens: come a moment
     // later, the row grew the card after the camera had framed the bus above it, and hid it, so the camera moved again.
     var fleetIn by remember(tripKey) { mutableStateOf(false) }
