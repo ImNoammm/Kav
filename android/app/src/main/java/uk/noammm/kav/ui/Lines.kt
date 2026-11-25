@@ -380,21 +380,15 @@ private fun foldRoutes(
     return rows.values
 }
 
-// Rows of one line (its operator, kind and number) that would show the same start or the same end, and the ends that
-// tell them apart, by line, end name and town: true for an end of that name in another town too, shown with its town
-// (one in the same town has its whole name); false for the far end of a one-way row out of, or into, the same place as
-// another row, such as two routes out of one stop to two places, shown with its whole name, unless what its whole name
-// adds is only a part of the same place (a station's drop-off or platforms: another stop of that name within 150 m).
-// Rows that differ otherwise and loops aren't in it.
+// Rows of one line (its operator, kind and number) that would show the same start or the same end though the stops
+// differ, and the ends that tell them apart, by line, end name and town: true for an end of that name in another town
+// too, shown with its town; false for another stop of that name in the same town, shown with its whole name. Rows out
+// of, or into, the very same stop already differ at their other end and stay as they are, as do loops.
 internal fun twinEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boolean> {
     if (ends.isEmpty()) return emptyMap()
     val out = HashMap<String, Boolean>()
     val rows = foldRoutes(net, 0 until net.nRoutes, ends, namesakeEnds(net, ends))
         .filter { it.a >= 0 && terminusName(net, it.a) != terminusName(net, it.b) }
-    val named by lazy { (0 until net.nStops).groupBy { terminusName(net, it) } }
-    fun partOfPlace(s: Int) = named[terminusName(net, s)].orEmpty().any { o ->
-        net.name[o] != net.name[s] && metres(net.lat[s], net.lon[s], net.lat[o], net.lon[o]) < 150.0
-    }
     for ((line, rs) in rows.groupBy { twinLine(net, it.route) }) {
         if (rs.size < 2) continue
         fun mark(s: Int, town: Boolean) { val k = twinKey(net, line, s); out[k] = town || out[k] == true }
@@ -402,12 +396,9 @@ internal fun twinEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, Boo
             val (r1, r2) = rs[i] to rs[j]
             val s1 = if (start) r1.a else r1.b; val s2 = if (start) r2.a else r2.b
             if (terminusName(net, s1) != terminusName(net, s2)) continue
-            if (net.name[s1] == net.name[s2] && net.cityOf[s1] == net.cityOf[s2]) {
-                for (r in listOf(r1, r2)) if (!r.both) (if (start) r.b else r.a).let { if (!partOfPlace(it)) mark(it, false) }
-            } else {
-                val town = net.cityOf[s1] != net.cityOf[s2]
-                mark(s1, town); mark(s2, town)
-            }
+            if (net.name[s1] == net.name[s2] && net.cityOf[s1] == net.cityOf[s2]) continue
+            val town = net.cityOf[s1] != net.cityOf[s2]
+            mark(s1, town); mark(s2, town)
         }
     }
     return out
