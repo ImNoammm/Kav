@@ -228,7 +228,8 @@ internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtit
         // someone else's). The shield is the line's only colour.
         if (kav == null) subtitle?.let { Text(it, style = K.type.subhead, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis) }
         else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
-            subtitle?.let { Text(T.iso(it) + "  ·", style = K.type.subhead, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)) }
+            // An address wraps rather than being cut; the shield and whose it is stay beside it.
+            subtitle?.let { Text(T.iso(it) + "  ·", style = K.type.subhead, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false)) }
             Icon(if (kav) Icons.Rounded.VerifiedUser else Icons.Rounded.GppMaybe, null, tint = if (kav) K.accent else K.problem, modifier = Modifier.size(16.dp))
             Text(if (kav) T("Made by Kav", "נוצר על ידי Kav") else T("Third-party", "צד שלישי"), style = K.type.subhead, maxLines = 1)
         }

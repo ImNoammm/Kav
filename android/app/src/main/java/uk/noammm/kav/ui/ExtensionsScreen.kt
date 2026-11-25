@@ -399,7 +399,7 @@ private fun appliedName(hub: Hub): String = Themes.applied(hub.registry.installe
 
 // A theme in a list: its mark, name and a line, Apply at its end (a tick once applied); the row opens its page.
 @Composable
-private fun ThemeRow(hub: Hub, i: Registry.Installed, line: String, onOpen: () -> Unit) {
+private fun ThemeRow(hub: Hub, i: Registry.Installed, line: String?, onOpen: () -> Unit) {
     val ctx = LocalContext.current
     val applied = hub.active(i) && Themes.applied(hub.registry.installed)?.identity == i.identity
     ThemeChoiceRow(i.displayName, line, { ExtTile(hub.registry.iconFile(i.identity), null, listOf(uk.noammm.kav.ext.Looks.CAPABILITY), 40.dp) },
@@ -410,10 +410,13 @@ private fun ThemeRow(hub: Hub, i: Registry.Installed, line: String, onOpen: () -
 private fun ThemeChoiceRow(name: String, line: String?, tile: @Composable () -> Unit, applied: Boolean, can: Boolean, onApply: () -> Unit, onOpen: (() -> Unit)?) {
     ListRow(name, subtitle = line, subtitleMaxLines = 2, leading = tile, onClick = onOpen ?: { if (!applied) onApply() }, chevron = false, trailing = {
         androidx.compose.animation.AnimatedContent(applied,
-            transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)))
+                    .using(androidx.compose.animation.SizeTransform { _, _ -> androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f) })
+            },
             label = "applied") { on ->
             if (on) Box(Modifier.heightIn(min = 36.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.Check, T("Applied", "בשימוש"), tint = K.accentInk, modifier = Modifier.padding(horizontal = K.gap3).size(22.dp))
+                Icon(Icons.Rounded.Check, T("Applied", "בשימוש"), tint = K.accentInk, modifier = Modifier.padding(horizontal = K.gap3).size(20.dp))
             }
             else if (can) SmallButton(T("Apply", "החלה"), false, onApply)
         }
@@ -566,8 +569,9 @@ private fun ExtSwitches(hub: Hub, s: Hub.Source, onExtension: (String) -> Unit, 
                 hub.active(i), false, { onExtension(i.identity) }, hasSettings(i)) { switchOn(ctx, hub, i.identity, it) }
         }
     }
+    // Under the source page's own Themes header (no extensions beside them) a theme's row needn't say it's one.
     if (themes) for (i in all.filter { it.manifest.isTheme }) key(i.identity) {
-        ThemeRow(hub, i, troubleOf(hub, i) ?: T("Theme", "ערכת נושא")) { onExtension(i.identity) }
+        ThemeRow(hub, i, troubleOf(hub, i) ?: if (extensions) T("Theme", "ערכת נושא") else null) { onExtension(i.identity) }
     }
 }
 
@@ -585,8 +589,9 @@ private fun ExtCard(
         ) {
             picture()
             Column(Modifier.weight(1f)) {
-                Text(title, style = K.type.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                status?.let { Text(it, style = K.type.subhead, color = if (problem) K.problem else K.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                // A source's name is its publisher's: it wraps rather than being cut.
+                Text(title, style = K.type.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                status?.let { Text(it, style = K.type.subhead, color = if (problem) K.problem else K.textSecondary) }
             }
             menu?.invoke()
         }
@@ -620,15 +625,15 @@ private fun hasSettings(i: Registry.Installed): Boolean {
         (ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.settingsScreen(i.identity) != null)
 }
 
-// A row of the cards: an extension's mark, name and what it adds (two lines, so a description or a problem isn't cut to a
-// few words; the whole description is on its page), a settings button while it's on and has settings (it opens the
+// A row of the cards: an extension's mark, name and what it adds (wrapped, so a description or a problem is never cut),
+// a settings button while it's on and has settings (it opens the
 // extension's page, as the row does), and its switch (a spinner while it's being put on).
 @Composable
 private fun ExtSwitchRow(
     name: String, line: String, problem: Boolean, tile: @Composable () -> Unit, on: Boolean, busy: Boolean,
     onOpen: (() -> Unit)?, settings: Boolean, onSwitch: (Boolean) -> Unit,
 ) {
-    ListRow(name, subtitle = line, subtitleMaxLines = 2, subtitleColor = if (problem) K.problem else null, leading = tile, onClick = onOpen ?: { onSwitch(!on) }, chevron = false,
+    ListRow(name, subtitle = line, subtitleMaxLines = Int.MAX_VALUE, subtitleColor = if (problem) K.problem else null, leading = tile, onClick = onOpen ?: { onSwitch(!on) }, chevron = false,
         trailing = {
             androidx.compose.animation.AnimatedVisibility(settings && on && onOpen != null,
                 enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) + androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)),
@@ -1109,10 +1114,10 @@ private fun AddSourceSheet(hub: Hub, onFile: () -> Unit, onClose: () -> Unit) {
                     ListGroup(Modifier.animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)), inset = K.gap4 + 40.dp + K.gap3) {
                         for (x in suggested) row {
                             key(x.key) {
-                                ListRow(x.name, subtitle = T.ltr("github.com/${x.repo}"), subtitleMaxLines = 2,
+                                ListRow(x.name, subtitle = T.ltr("github.com/${x.repo}"), subtitleMaxLines = Int.MAX_VALUE,
                                     leading = { SourceAvatar(uk.noammm.kav.ext.Community.picture(hub.dir, x), x.name, 40.dp, kav = ExtApp.kavMade(x.key)) },
                                     onClick = { if (queue.isEmpty()) queue = listOf(x.repo) }, chevron = false,
-                                    trailing = { Icon(Icons.Rounded.Add, T("Add", "הוספה"), tint = K.accentInk, modifier = Modifier.size(22.dp)) })
+                                    trailing = { Icon(Icons.Rounded.Add, T("Add", "הוספה"), tint = K.accentInk, modifier = Modifier.size(20.dp)) })
                             }
                         }
                     }
