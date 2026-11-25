@@ -348,14 +348,42 @@ private class MapPace(private val view: MapView) {
     }
 }
 
-private fun Style.fadeLayers(a: Float, vararg ids: String) {
-    stirred()
-    for (id in ids) when (val layer = getLayer(id)) {
-        is CircleLayer -> layer.setProperties(PropertyFactory.circleOpacity(a), PropertyFactory.circleStrokeOpacity(a))
-        is SymbolLayer -> layer.setProperties(
-            PropertyFactory.iconOpacity(Expression.product(Expression.toNumber(Expression.get("alpha")), Expression.literal(a))),
-        )
-        else -> {}
+// The source each live layer that fades as a layer draws from.
+private val LIVE_SOURCE = mapOf(
+    HALO_OUT to SRC_LIVE_HALOS, GLIDE_HALO_OUT to SRC_GLIDE_HALOS,
+    MARK_OUT to SRC_LIVE_MARKS, TURN_OUT to SRC_LIVE_MARKS, "kav-live-mark" to SRC_LIVE_MARKS, "kav-live-turn" to SRC_LIVE_MARKS,
+    GLIDE_MARK_OUT to SRC_GLIDE_MARKS, GLIDE_TURN_OUT to SRC_GLIDE_MARKS, GLIDE_MARK to SRC_GLIDE_MARKS, GLIDE_TURN to SRC_GLIDE_MARKS,
+    "kav-mark" to SRC_MARKS,
+)
+
+// The opacity of the live layers that fade as layers (a focus coming in, All, Vehicles and Stops, their first showing).
+// A layer's is a plain number while no feature of its source has an alpha of its own, and each feature's alpha times
+// that number while one does (a vehicle fading into its group). An opacity that reads the features has the map lay
+// out its source's tiles again whenever it changes, at every frame of a fade; with a plain number it only draws.
+private class LiveAlpha(private val style: Style) {
+    // Each layer's number as last asked for, each source's features (whether they have alphas of their own; until a
+    // source says, they may), and what each layer was last given.
+    private val asked = HashMap<String, Float>()
+    private val own = HashMap<String, Boolean>()
+    private val given = HashMap<String, Pair<Float, Boolean>>()
+
+    fun layer(id: String, a: Float) { asked[id] = a; give(id) }
+
+    fun source(source: String, hasOwn: Boolean) {
+        if (own.put(source, hasOwn) == hasOwn) return
+        for ((id, from) in LIVE_SOURCE) if (from == source) give(id)
+    }
+
+    private fun give(id: String) {
+        val a = asked[id] ?: return
+        val hasOwn = own[LIVE_SOURCE[id]] ?: true
+        if (given[id] == a to hasOwn || !style.isFullyLoaded) return
+        when (val layer = style.getLayer(id)) {
+            is CircleLayer -> layer.setProperties(if (hasOwn) PropertyFactory.circleOpacity(featureAlpha(a)) else PropertyFactory.circleOpacity(a))
+            is SymbolLayer -> layer.setProperties(if (hasOwn) PropertyFactory.iconOpacity(featureAlpha(a)) else PropertyFactory.iconOpacity(a))
+            else -> return
+        }
+        given[id] = a to hasOwn
     }
 }
 
@@ -487,6 +515,11 @@ internal class LiveFeatures(g: MapGeometry, private val fades: Map<String, Pair<
     private val markKeys = markList.map { it.id }
     val dots: FeatureCollection = FeatureCollection.fromFeatures(dotFeatures(g.dots))
     val count = halos.size + marks.size
+    // Whether a halo or a mark has an alpha of its own (LiveAlpha): while it fades, and after.
+    val ownHalos = haloList.any { it.alpha != 1f || it.id in fades }
+    val ownMarks = markList.any { it.alpha != 1f || it.id in fades }
+    val ownHalosAfter = haloList.any { (fades[it.id]?.second ?: it.alpha) != 1f }
+    val ownMarksAfter = markList.any { (fades[it.id]?.second ?: it.alpha) != 1f }
 
     // The halos and marks of all but the vehicles gliding, where they are.
     fun still(moving: Set<String>): Pair<FeatureCollection, FeatureCollection> {
@@ -1966,8 +1999,10 @@ fun TileMap(
     val outVehiclesNow by rememberUpdatedState(outVehicles)
     // The vehicles fading in when they first come (below), which the ones going with a focus take too.
     val liveFade = remember { Animatable(0f) }
+    val liveAlpha = remember(style) { style?.let { LiveAlpha(it) } }
     LaunchedEffect(style) {
         val s = style?.takeIf { it.isFullyLoaded } ?: return@LaunchedEffect
+        val alpha = liveAlpha ?: return@LaunchedEffect
         s.ensureKavLayers()
         var sent: List<Float>? = null
         snapshotFlow {
@@ -1982,11 +2017,10 @@ fun TileMap(
             }
             val out = (1f - f) * stopsA
             s.getLayer(DOT_OUT)?.setProperties(PropertyFactory.circleOpacity(out), PropertyFactory.circleStrokeOpacity(out))
-            for (id in listOf(HALO_OUT, GLIDE_HALO_OUT)) s.getLayer(id)?.setProperties(PropertyFactory.circleOpacity(featureAlpha((1f - f) * vehiclesA * liveA)))
+            for (id in listOf(HALO_OUT, GLIDE_HALO_OUT)) alpha.layer(id, (1f - f) * vehiclesA * liveA)
             // Never quite 0: a symbol layer at 0 isn't drawn, and coming back its marks would be placed anew and fade in
             // on the map's own 300 ms, after their halos.
-            for (id in listOf(MARK_OUT, TURN_OUT, GLIDE_MARK_OUT, GLIDE_TURN_OUT))
-                s.getLayer(id)?.setProperties(PropertyFactory.iconOpacity(featureAlpha(((1f - f) * liveA * vehiclesA).coerceAtLeast(0.002f))))
+            for (id in listOf(MARK_OUT, TURN_OUT, GLIDE_MARK_OUT, GLIDE_TURN_OUT)) alpha.layer(id, ((1f - f) * liveA * vehiclesA).coerceAtLeast(0.002f))
             sent = now
         }
     }
@@ -2018,6 +2052,7 @@ fun TileMap(
                 lines?.let(::lineFeatures) to marks?.let { FeatureCollection.fromFeatures(markFeatures(it)) }
             }
             if (s.isFullyLoaded) {
+                if (marks != null) liveAlpha?.source(SRC_MARKS, marks.any { it.alpha != 1f })
                 s.setKavGeometry(lineSet, markSet)
                 sentGeometry[0] = geometry.lines; sentGeometry[1] = geometry.markers
             }
@@ -2308,7 +2343,13 @@ fun TileMap(
                 }
                 asked = stillTaken + 1
                 haloAsked = stillHalosTaken + 1
-                times.send { s.setKavLiveHalos(halos, f.features.dots); s.setKavLiveMarks(marks); s.placeRider(drawn["me"]) }
+                // Fading, its features have alphas of their own; with its last step, only those that end on one.
+                liveAlpha?.source(SRC_LIVE_HALOS, if (t >= 1f) f.features.ownHalosAfter else f.features.ownHalos)
+                liveAlpha?.source(SRC_LIVE_MARKS, if (t >= 1f) f.features.ownMarksAfter else f.features.ownMarks)
+                // Its dots only when they changed: sent with every step, the map laid their tiles out again at each one.
+                val dots = f.features.dots.takeIf { f.g.dots != liveSentDots }
+                liveSentDots = f.g.dots
+                times.send { s.setKavLiveHalos(halos, dots); s.setKavLiveMarks(marks); s.placeRider(drawn["me"]) }
                 for ((id, a) in f.fades) shownAlpha[id] = a.first + (a.second - a.first) * eased
                 f.t = t
                 sent = at
@@ -2392,7 +2433,10 @@ fun TileMap(
                 val update = if (farIds.isEmpty()) all else all.copy(markers = all.markers.filterNot { it.isFar() }, halos = all.halos.filterNot { it.isFar() })
                 if (g.together && (farIds.isNotEmpty() || farSent)) {
                     val away = all.copy(markers = all.markers.filter { it.isFar() }, halos = all.halos.filter { it.isFar() }, dots = emptyList())
-                    val (halos, marks) = withContext(Dispatchers.Default) { LiveFeatures(away).together(1f, emptyMap()) }
+                    val far = LiveFeatures(away)
+                    val (halos, marks) = withContext(Dispatchers.Default) { far.together(1f, emptyMap()) }
+                    liveAlpha?.source(SRC_GLIDE_HALOS, far.ownHalos)
+                    liveAlpha?.source(SRC_GLIDE_MARKS, far.ownMarks)
                     s.setKavGlide(halos, marks)
                     farSent = farIds.isNotEmpty()
                 }
@@ -2448,6 +2492,8 @@ fun TileMap(
                     times.end(features.count, glides.size)
                     return@collectLatest
                 }
+                for (source in listOf(SRC_LIVE_HALOS, SRC_GLIDE_HALOS)) liveAlpha?.source(source, features.ownHalos)
+                for (source in listOf(SRC_LIVE_MARKS, SRC_GLIDE_MARKS)) liveAlpha?.source(source, features.ownMarks)
                 // Ones gliding before and not now stay in the gliding source, where they are, until the rest has them:
                 // their halos (stayHalos) until it's taken them in, their marks (stayMarks) two frames longer.
                 var stayHalos = gliding - now
@@ -2555,8 +2601,10 @@ fun TileMap(
         // Marks drawn as a screen's stops (an extension's stop look on Live) go with the stops too (outStops).
         snapshotFlow { marksFade.value * (outStopsNow?.invoke() ?: 1f) to liveFade.value }.collect { (marksA, liveA) ->
             if (!s.isFullyLoaded) return@collect
-            s.fadeLayers(marksA, "kav-mark")
-            s.fadeLayers(liveA, "kav-live-dot", "kav-live-mark", "kav-live-turn", GLIDE_MARK, GLIDE_TURN)
+            stirred()
+            liveAlpha?.layer("kav-mark", marksA)
+            (s.getLayer("kav-live-dot") as? CircleLayer)?.setProperties(PropertyFactory.circleOpacity(liveA), PropertyFactory.circleStrokeOpacity(liveA))
+            for (id in listOf("kav-live-mark", "kav-live-turn", GLIDE_MARK, GLIDE_TURN)) liveAlpha?.layer(id, liveA)
             // The rider's halo is a layer of its own (RIDER_HALO), so this is one plain number.
             for (id in listOf(HALO_LAYER, GLIDE_HALO)) s.getLayer(id)?.setProperties(PropertyFactory.circleOpacity(liveA))
         }
