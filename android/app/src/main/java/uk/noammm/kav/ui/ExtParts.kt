@@ -47,11 +47,13 @@ internal class PartViews(
 @Composable
 internal fun rememberPart(name: String, of: Any?, about: () -> JSONObject): PartViews? {
     // ExtNative.ready rises when an extension's code has started, ExtUi.tick when one is switched off or removed.
+    // Parts.remade rises when an extension calls Kav.part for this part again, to say its views changed.
+    val remade = Parts.remade(name)
     val pieces = if (SafeMode.active || ExtNative.ready < 0 || ExtUi.tick < 0) emptyList() else Native.partsOf(name)
     if (pieces.isEmpty()) return null
     val ctx = LocalContext.current
     // Each view made once for what the part shows; a replacement that makes none gives way to the next, then Kav's own.
-    return remember(pieces, of) {
+    return remember(pieces, of, remade) {
         val text = runCatching { about().toString() }.getOrDefault("{}")
         val made = pieces.associateWith { p -> Native.view(p.identity, "part $name ${p.where}") { p.card.create(ctx, text) } }
         fun views(list: List<Parts.Piece>) = list.mapNotNull { p -> made[p]?.let { p to it } }

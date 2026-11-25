@@ -349,6 +349,7 @@ object Native {
             require(name in Parts.NAMES) { "$name isn't one of Kav's screen parts" }
             require(where in Parts.WHERE) { "where is \"before\", \"after\" or \"replace\"" }
             if (card == null) l.parts.remove("$name|$where") else l.parts["$name|$where"] = card
+            Parts.changed(name)
         }
 
         override fun addTicket(ticket: String) {

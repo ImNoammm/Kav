@@ -566,6 +566,7 @@ private fun partWords(name: String) = when (name) {
     "nav.wait.details" -> T("each line on a trip's waiting card", "כל קו בכרטיס ההמתנה של נסיעה")
     "nav.ride.details" -> T("the line on a trip's riding card", "הקו בכרטיס הנסיעה")
     "nav.banner" -> T("under a trip's step dots", "מתחת לנקודות השלבים של נסיעה")
+    "ride.pay" -> T("paying for each ride of a trip", "התשלום על כל נסיעה במסלול")
     "share.targets" -> T("ways to share a trip", "דרכים לשתף נסיעה")
     "ticket.codes" -> T("ticket codes", "קודי כרטיסים")
     "pay.setup" -> T("setting up paying", "הגדרת התשלום")

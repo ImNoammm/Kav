@@ -470,7 +470,7 @@ private fun Timeline(
                                 streetView = (board?.point ?: l.shape.firstOrNull())?.let { lookAt(it, l, r, board) },
                             )
                             Spacer(Modifier.height(K.gap2))
-                            KavPart("trip.ride", l, { leg(trip, r, i) }) { BoardCard(l, wait, r, onTrack, onReport, asked) { RideSummary(l, r, fares[i]) } }
+                            KavPart("trip.ride", l, { leg(trip, r, i) }) { BoardCard(l, wait, r, onTrack, onReport, asked) { RideSummary(l, r, fares[i]) { leg(trip, r, i) } } }
                         }
                     }
                     val alight = r.stop(l.toStop)
@@ -496,7 +496,7 @@ private fun Timeline(
                                 ChangeBlock(it)
                             }
                             Spacer(Modifier.height(K.gap2))
-                            KavPart("trip.ride", next, { leg(trip, r, n) }) { BoardCard(next, nextWait, r, onTrack, onReport, asked) { RideSummary(next, r, fares[n]) } }
+                            KavPart("trip.ride", next, { leg(trip, r, n) }) { BoardCard(next, nextWait, r, onTrack, onReport, asked) { RideSummary(next, r, fares[n]) { leg(trip, r, n) } } }
                         }
                         boarded = n
                     } else {
@@ -529,9 +529,10 @@ private fun leg(trip: Transit.Itinerary, r: Transit.Resolved, i: Int): JSONObjec
     JSONObject().put("trip", Slots.trip(trip, r)).put("leg", uk.noammm.kav.ext.Pipeline.legJson(trip.legs[i], r)).put("index", i)
 
 // Under a ride's line: how many stops and minutes it rides, its own fare (rideFares), and paying for it with Rav-Pass.
+// about: what its pay row's part (ride.pay) is told.
 @Composable
 private fun RideSummary(
-    l: Transit.Leg, r: Transit.Resolved, fare: Int?,
+    l: Transit.Leg, r: Transit.Resolved, fare: Int?, about: () -> JSONObject,
 ) {
     Separator(0.dp)
     Box(Modifier.padding(vertical = K.gap1)) {
@@ -539,7 +540,7 @@ private fun RideSummary(
         if (l.options.size == 1) RideStops(l, r) { Step(rideLabel(l), price) }
         else if (price != null) Step(T("Fare", "מחיר"), price)
     }
-    if (Shown.payments) Box(Modifier.padding(bottom = K.gap2)) { RidePay(l, r) }
+    if (Shown.payments) Box(Modifier.padding(bottom = K.gap2)) { RidePay(l, r, about) }
 }
 
 // Each ride's own fare, by leg index. A plan gives every ride of a stretch one ticket covers the whole ticket's price

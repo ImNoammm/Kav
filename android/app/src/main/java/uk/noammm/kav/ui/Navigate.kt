@@ -732,7 +732,8 @@ internal fun StepCard(
             Text(T("Leave at ${hm.format(Date(step.time * 1000))}", "יציאה בשעה ${hm.format(Date(step.time * 1000))}"), fontSize = 12.sp, color = K.dim)
             // A trip starting at its station: the train is paid at the gates, before its waiting card.
             if (pay && board != null && step.boardLeg >= 0 && RavPass.section(board, r) == RavPass.Section.TRAIN) {
-                RidePay(boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).first, r)
+                val ride = boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).first
+                RidePay(ride, r, tripArgs?.let { args -> { args().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.boardLeg) } })
             }
         }
 
@@ -776,7 +777,8 @@ internal fun StepCard(
                 // A train is paid at the station's gates, reached on the way to it: its paying is on this card too.
                 val ride = step.toRide
                 if (pay && ride != null && step.toLeg >= 0 && RavPass.section(ride, r) == RavPass.Section.TRAIN) {
-                    RidePay(boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0).first, r)
+                    val chosenRide = boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0).first
+                    RidePay(chosenRide, r, tripArgs?.let { args -> { args().put("leg", uk.noammm.kav.ext.Pipeline.legJson(chosenRide, r)).put("index", step.toLeg) } })
                 }
             }
         }
@@ -915,7 +917,7 @@ internal fun StepCard(
                         style = K.type.subhead, color = K.textSecondary, modifier = Modifier.padding(top = K.gap2))
                 }
                 // Above the stops, so a long ride's paying is in sight without scrolling.
-                if (pay) RidePay(ride, r)
+                if (pay) RidePay(ride, r, tripArgs?.let { args -> { args().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.legIndex) } })
                 if (stops.size > 1) {
                     // The rail draws its first stop 5 dp into its row, hence the 5 dp less above it.
                     if (pay) {

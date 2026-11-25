@@ -29,12 +29,18 @@ object Parts {
         "ticket.header", "ticket.validity", "ticket.ride",
         "pay.history.header", "pay.history.summary", "pay.history.empty", "pay.history.month", "pay.history.ride",
         "nav.header", "nav.problem", "nav.card", "share.targets", "ticket.codes", "pay.setup",
-        "nav.wait.details", "nav.ride.details", "nav.banner",
+        "nav.wait.details", "nav.ride.details", "nav.banner", "ride.pay",
     ) + SETTINGS_PAGES.map { "settings.page.$it" }
 
     const val CAPABILITY = "part."
     val CAPABILITIES get() = NAMES.map { CAPABILITY + it }
     val WHERE = listOf("before", "after", "replace")
+
+    // An extension calling Kav.part again for a part (its content changed): the part's views are made again wherever it
+    // shows. Counted by name, read by ui/ExtParts.kt.
+    private val remakes = androidx.compose.runtime.mutableStateMapOf<String, Int>()
+    fun remade(name: String) = remakes[name] ?: 0
+    fun changed(name: String) { remakes[name] = remade(name) + 1 }
 
     data class Piece(val identity: String, val onAt: Long, val where: String, val card: Kav.Card)
 

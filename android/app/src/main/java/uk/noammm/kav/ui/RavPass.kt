@@ -326,41 +326,49 @@ internal fun PayCard(modifier: Modifier, showPay: Boolean) {
 // way its mode is paid (the code on board a bus; at the station for train, light rail and the Carmelit), now opening
 // Rav-Pass at that section.
 @Composable
-internal fun RidePay(section: RavPass.Section, carmelit: Boolean, board: String?, line: String?, depMs: Long, off: String? = null, ride: String? = null) {
+internal fun RidePay(section: RavPass.Section, carmelit: Boolean, board: String?, line: String?, depMs: Long, off: String? = null, ride: String? = null,
+    of: Any? = null, about: (() -> org.json.JSONObject)? = null) {
     if (!Shown.payments) return
     val ctx = LocalContext.current
     Spacer(Modifier.height(K.gap3))
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.fill)) {
         if (RideTicketRow(section, line, depMs)) return@Column
-        Row(
-            Modifier.fillMaxWidth()
-                .clickable(role = Role.Button, onClickLabel = T("Open the ${PayApp.current.label()} app", "מעבר לאפליקציית ${PayApp.current.he}")) { RavPass.open(ctx, section, PayFor(line, off, ride)) }
-                // The title's font keeps room above its capitals, so half a dp less on top centres the text you see.
-                .padding(start = K.gap3, end = K.gap3, top = 11.5.dp, bottom = 12.5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(K.gap3),
-        ) {
-            Canvas(Modifier.size(20.dp)) { drawQr() }
-            Column(Modifier.weight(1f)) {
-                Text(when {
-                    section == RavPass.Section.TRAIN -> T("Pay at the train station", "תשלום בתחנת הרכבת")
-                    carmelit -> T("Pay at the Carmelit station", "תשלום בתחנת הכרמלית")
-                    section == RavPass.Section.LIGHT_RAIL -> T("Pay at the light rail station", "תשלום בתחנת הרכבת הקלה")
-                    else -> T("Pay for this ride", "תשלום על הנסיעה")
-                }, style = K.type.bodyStrong)
-                Text(if (section == RavPass.Section.BUS || section == RavPass.Section.ANY) T("Scan the QR code on the bus", "סורקים את קוד ה-QR באוטובוס")
-                    else board ?: T("At the station", "בתחנה"), style = K.type.subhead)
-            }
+        // The pay row itself, which extensions may add to or replace (ride.pay), told the trip, the leg and its index.
+        if (about != null) KavPart("ride.pay", of, about) { PayRow(ctx, section, carmelit, board, line, off, ride) }
+        else PayRow(ctx, section, carmelit, board, line, off, ride)
+    }
+}
+
+@Composable
+private fun PayRow(ctx: Context, section: RavPass.Section, carmelit: Boolean, board: String?, line: String?, off: String?, ride: String?) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(role = Role.Button, onClickLabel = T("Open the ${PayApp.current.label()} app", "מעבר לאפליקציית ${PayApp.current.he}")) { RavPass.open(ctx, section, PayFor(line, off, ride)) }
+            // The title's font keeps room above its capitals, so half a dp less on top centres the text you see.
+            .padding(start = K.gap3, end = K.gap3, top = 11.5.dp, bottom = 12.5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(K.gap3),
+    ) {
+        Canvas(Modifier.size(20.dp)) { drawQr() }
+        Column(Modifier.weight(1f)) {
+            Text(when {
+                section == RavPass.Section.TRAIN -> T("Pay at the train station", "תשלום בתחנת הרכבת")
+                carmelit -> T("Pay at the Carmelit station", "תשלום בתחנת הכרמלית")
+                section == RavPass.Section.LIGHT_RAIL -> T("Pay at the light rail station", "תשלום בתחנת הרכבת הקלה")
+                else -> T("Pay for this ride", "תשלום על הנסיעה")
+            }, style = K.type.bodyStrong)
+            Text(if (section == RavPass.Section.BUS || section == RavPass.Section.ANY) T("Scan the QR code on the bus", "סורקים את קוד ה-QR באוטובוס")
+                else board ?: T("At the station", "בתחנה"), style = K.type.subhead)
         }
     }
 }
 
 // A ride of a trip, by its own section, boarding stop, line and departure, and the stop it gets off at (for the button back
-// to Kav).
+// to Kav). about: what its pay row's part (ride.pay) is told, the trip, the leg and its index; none, no part.
 @Composable
-internal fun RidePay(ride: Transit.Leg, r: Transit.Resolved) =
+internal fun RidePay(ride: Transit.Leg, r: Transit.Resolved, about: (() -> org.json.JSONObject)? = null) =
     RidePay(RavPass.section(ride, r), RavPass.carmelit(ride, r), r.stop(ride.fromStop)?.shown(), r.line(ride.lineId)?.number, ride.dep * 1000,
-        r.stopName(ride.toStop), remember(ride) { RavPass.ride(ride, r).toString() })
+        r.stopName(ride.toStop), remember(ride) { RavPass.ride(ride, r).toString() }, ride, about)
 
 // "Pay with Rav-Pass": one switch for paying with Rav-Pass and everything it needs, all or nothing (Noam, 19 Nov 2026):
 // Rav-Pass itself on the phone, showing over other apps, for the button back to Kav while paying (PayOverlay), and the ticket reader
