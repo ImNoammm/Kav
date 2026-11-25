@@ -62,7 +62,7 @@ Fails:
 - A section header above a single row or card whose own title names the same thing ("Photos" over the one switch
   "Photos of stops and places").
 - A page whose first section header repeats the page's title (a page titled Paying that opens with a "Paying" header).
-- A sheet, popup or card whose first line repeats its title, or the row that opened it.
+- A sheet, popup or card whose first line of content repeats its own title.
 - A group header over children that each have a header of their own.
 - A subtitle that restates its title in more words, or says what the control's state already shows.
 - The same fact in two places on one screen: the same list under two headings, the same name on two cards, the same
@@ -94,7 +94,8 @@ Say it in the fewest words that are still clear. Never a paragraph on a screen.
 | An empty state, an error | One sentence, about 60 characters, and one action. |
 
 Whatever is longer than its limit is cut, not moved: if the rider needs the long version, it lives on Kav's site and
-the screen has a "Full details" link to it (as the ticket setup does).
+the screen has a "Full details" link to it (as the ticket setup does). Text a license requires in full (map credits)
+is on a sheet of its own, behind one row.
 
 How to cut: drop how it works inside, drop the history, drop numbers the rider can't act on, drop what the control
 already shows, drop "Kav" as the subject when it is obvious. Keep what changes the rider's choice.
@@ -196,8 +197,9 @@ extra padding.
 
 ### 3.3 A title names the thing shown
 
-A page that shows one item is titled with that item's name (the source's name, the stop's name), never with the kind
-of thing it is. A title never flashes: it is right in the first frame, or the screen waits for it.
+A page that shows one item names that item at its top, in its header or in its first card (the source's name, the
+stop's name), never only the kind of thing it is. A title never flashes: it is right in the first frame, or the
+screen waits for it.
 
 ## 4. Motion
 
@@ -500,12 +502,13 @@ A part with fewer than three controls doesn't get a row of its own: it joins the
 - In every list of options the default comes first, and the same options keep the same order on every page.
 - A setting that depends on another sits right under it and shows only while the other is on, opening with 4.1.
 - A setting that can't apply right now is hidden, not shown disabled. One that is disabled says why beside it.
-- A preview sits under the options it previews and changes with them, animated.
+- A preview is on screen together with the options it previews, right next to them, and changes with them,
+  animated. A preview of one control sits directly under that control.
 - A change takes effect at once. A Save button only where something must be tried first (a server, a proxy).
 - Text follows section 2: no "Off: …", no paragraph, explanations behind the (i).
 
 **The test.** For each page: any header that fails 3.1; any switch whose subtitle describes the switch; any option
-shown that can't be used; any preview above its options; any explanation visible without a tap.
+shown that can't be used; any preview that scrolls away from its options; any explanation visible without a tap.
 
 ## 11. Hebrew and right-to-left
 
@@ -573,8 +576,9 @@ everything and never left to stutter.
 - The rider is the same arrow on every map.
 - No tile shows black or blank while the map is on screen (`MapWarmUp`, `MapStills`).
 - Names stay readable: nothing Kav draws hides a street's name, and buildings don't cover names or vehicles.
-- Colors on the map come from `MapInk`. Panels over it are glass (8.3). No credit text on the map; credits are in
-  Settings.
+- Colors on the map come from `MapInk`. Panels over it are glass (8.3).
+- The only words Kav writes on a map are its credit line (`MapAttribution`): Kav's own map's fades a few seconds after
+  the map shows, and one a provider's license keeps stays. The full credits are in Settings.
 
 ## 13. Sheets, popups and messages
 
