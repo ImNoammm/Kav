@@ -74,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -158,16 +159,18 @@ private fun initial(name: String): String {
     return "?"
 }
 
-// A source's picture in a circle: the picture its bundle brings (bytes, while it's offered and not added yet), else the
-// file SourceImages keeps (null for none, as for a file import); its name's first letter on a quiet tile until there is
-// one, and whenever it can't be read.
+// A source's picture on a rounded square with the corners of Kav's own icon in the app (a quarter of its side, as
+// Update's AppIcon): the picture its bundle brings (bytes, while it's offered and not added yet), else the file
+// SourceImages keeps (null for none, as for a file import); its name's first letter on a quiet tile until there is one,
+// and whenever it can't be read.
 @Composable
 internal fun SourceAvatar(file: File?, name: String, size: Dp, modifier: Modifier = Modifier, kav: Boolean = false, bytes: ByteArray? = null) {
-    // Kav's own sources wear Kav's icon.
+    val shape = RoundedCornerShape(size / 4)
+    // Kav's own sources wear Kav's icon, drawn as Kav draws it elsewhere.
     if (kav) {
-        Box(modifier.size(size).clip(CircleShape)) {
-            Image(androidx.compose.ui.res.painterResource(uk.noammm.kav.R.drawable.ic_launcher_background), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Image(androidx.compose.ui.res.painterResource(uk.noammm.kav.R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(modifier.size(size).clip(shape)) {
+            Image(androidx.compose.ui.res.painterResource(uk.noammm.kav.R.drawable.ic_launcher_background), null, Modifier.fillMaxSize().scale(1.5f))
+            Image(androidx.compose.ui.res.painterResource(uk.noammm.kav.R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize().scale(1.5f))
         }
         return
     }
@@ -178,7 +181,7 @@ internal fun SourceAvatar(file: File?, name: String, size: Dp, modifier: Modifie
         if (stamp != null && value == null) value = withContext(Dispatchers.IO) { if (bytes != null) Avatars.decode(bytes, stamp, px) else file?.let { Avatars.decode(it, stamp, px) } }
         if (stamp == null) value = null
     }
-    Box(modifier.size(size).clip(CircleShape).background(K.surface3), contentAlignment = Alignment.Center) {
+    Box(modifier.size(size).clip(shape).background(K.surface3), contentAlignment = Alignment.Center) {
         val img = image
         if (img != null) Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Text(initial(name), style = K.type.headline.copy(fontSize = (size.value * .4f).sp, lineHeight = (size.value * .5f).sp), color = K.textSecondary)
@@ -186,7 +189,7 @@ internal fun SourceAvatar(file: File?, name: String, size: Dp, modifier: Modifie
 }
 
 // An extension's own picture (Manifest.icon) on a rounded square, as an app's is, from the installed package (file) or
-// from the package being offered (bytes); without one, the mark of what it adds on a quiet tile. A source's is round.
+// from the package being offered (bytes); without one, the mark of what it adds on a quiet tile.
 @Composable
 internal fun ExtTile(file: File?, bytes: ByteArray?, capabilities: List<String>, size: Dp, modifier: Modifier = Modifier) {
     ExtUi.tick
@@ -208,10 +211,19 @@ internal fun ExtTile(file: File?, bytes: ByteArray?, capabilities: List<String>,
 // The picture, the name under it and a small line under that, in the middle: the top of the add popup, the install
 // sheet and the pages. Room under the picture; the name and its line kept close, as one block.
 @Composable
-internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtitle: String?, kav: Boolean? = null) {
+internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtitle: String?, kav: Boolean? = null, version: String? = null) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         avatar()
-        Text(title, style = K.type.title, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = K.gap4))
+        // An extension's version follows its name, small and quiet, in the same line of text so it wraps with it.
+        Text(
+            buildAnnotatedString {
+                val v = version?.takeIf { it.isNotEmpty() }
+                // Kept to itself beside the version, so in Hebrew the version still comes after the name.
+                append(if (v != null) T.iso(title) else title)
+                if (v != null) withStyle(SpanStyle(fontSize = K.type.subhead.fontSize, fontWeight = FontWeight.Normal, color = K.textTertiary)) { append("  " + T.ltr(v)) }
+            },
+            style = K.type.title, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = K.gap4),
+        )
         // Who it comes from, in the same short line: its source, then a shield and whose it is (kav: Kav's own; false:
         // someone else's). The shield is the line's only colour.
         if (kav == null) subtitle?.let { Text(it, style = K.type.subhead, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis) }
@@ -222,10 +234,6 @@ internal fun CentredHeader(avatar: @Composable () -> Unit, title: String, subtit
         }
     }
 }
-
-// The long sentence behind "Third-party", for Details: whose it is, said once in full.
-@Composable
-internal fun ThirdPartyFact() = Text(T("Not made or reviewed by Kav.", "לא נוצר ולא נבדק על ידי Kav."), style = K.type.subhead, color = K.textSecondary)
 
 // The last row of a header card, under a hairline: it opens what most riders don't need (keys, addresses, the version).
 // The same height and padding as the rows of Kav's grouped cards.
@@ -638,7 +646,7 @@ internal fun rowWords(m: uk.noammm.kav.ext.Manifest): String {
     val tab = decl?.tabs?.isNotEmpty() == true
     // Its own screens go without saying once one of them is a tab.
     val caps = m.contributions.map { it.capability }.filter { !(tab && it == PageSpecs.PAGE) }
-    return listingWords(caps, m.adds.filter { it != "settings" }, tab).ifEmpty { T.iso(m.description.substringBefore(". ").take(60)) }
+    return listingWords(caps, m.adds.filter { it != "settings" }, tab).ifEmpty { T.iso(m.description.substringBefore(". ")) }
 }
 
 internal fun listingWords(capabilities: List<String>, adds: List<String> = emptyList(), tab: Boolean = false): String {

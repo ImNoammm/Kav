@@ -278,14 +278,16 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     }
                 }
             } else {
-                // Inside Extensions, the step the rider is on (a source, Sources), and on Sources its plus.
+                // Inside Extensions, the step the rider is on (a source, Sources), and on Sources its refresh and plus.
                 val headTitle = (if (open.id == "extensions") ExtUi.title else null) ?: open.title
                 val headBack = { backs?.onBackPressed() ?: run { page = null } }
                 val headAdd = if (open.id == "extensions") ExtUi.headerAdd else null
+                val headCheck = if (open.id == "extensions") ExtUi.headerCheck else null
                 val about = { org.json.JSONObject().put("page", open.id).put("title", headTitle) }
                 KavPart("settings.page.header", open.id to headTitle, about) {
-                    if (headAdd != null) ScreenHeader(headTitle, back = headBack) {
-                        KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), headAdd)
+                    if (headAdd != null || headCheck != null) ScreenHeader(headTitle, back = headBack) {
+                        headCheck?.let { ExtCheckButton(it) }
+                        headAdd?.let { KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), it) }
                     } else ScreenHeader(headTitle, "", back = headBack)
                 }
                 Column(Modifier.padding(horizontal = K.gap1)) {

@@ -15,7 +15,8 @@
 //   node scripts/community.mjs --kit <kit> --bundles <folder>    save listed bundles for the APK hook check
 //
 // Writes extensions/listing.json (the page's data), extensions/community.log, and the sources' pictures into
-// public/community/, so the page asks no other host for anything.
+// public/community/, so the page asks no other host for anything. Beside the pictures goes sources.json, the same list
+// cut to what Kav's Add a source suggests from it (Community.kt): each source's address, name and picture.
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
@@ -298,6 +299,10 @@ async function main() {
   // The one order: by name, A to Z, letters compared without case or accents; the address breaks a tie.
   listed.sort((x, y) => x.name.localeCompare(y.name, 'en', { sensitivity: 'base' }) || x.key.localeCompare(y.key))
   writeFileSync(OUT, JSON.stringify({ generated: new Date(now).toISOString(), order: 'name', sources: listed }, null, 2) + '\n')
+  mkdirSync(IMAGES, { recursive: true })
+  writeFileSync(join(IMAGES, 'sources.json'), JSON.stringify({
+    format: 1, generated: new Date(now).toISOString(), sources: listed.map(({ path, name, image }) => ({ path, name, image })),
+  }) + '\n')
   say(`${listed.length} listed of ${candidates.size} candidates`)
 }
 

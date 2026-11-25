@@ -178,7 +178,9 @@ owner. Nothing about you or your trips goes with these requests. GitHub sees you
 asked for, as with any web request. Kav doesn't check a bundle file you added from your phone for updates. Kav reads its
 own source from GitHub the same way. In the same check, and when you tap Check now, Kav asks GitHub for its security
 block list, as it does for its own updates; nothing about you goes with it. With the list's switch off, Kav doesn't ask
-for it or apply it. Today the list is empty.
+for it or apply it. Today the list is empty. While Add a source is open, Kav asks this website, at most once a day, for
+the [community list](/community) and its sources' pictures, to suggest a few sources there; nothing about you goes with
+it, and this website keeps no access logs.
 
 **What an extension can reach.** Every extension comes in off. Its page lists, under Details, what its publisher
 declares it does. Once you switch one on, it runs at once, inside Kav, with full access, whatever its page says:

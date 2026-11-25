@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.BugReport
@@ -75,8 +76,11 @@ internal object ExtUi {
     var tick by mutableIntStateOf(0)
     // The step inside Extensions Settings' header names (a source, Sources), or null for Extensions itself.
     var title by mutableStateOf<String?>(null)
-    // The header's plus on Sources (Settings draws it), and a step inside Extensions to open (the crash popup's Open).
+    // The header's plus and refresh on Sources and a source's page (Settings draws them; refresh turns into a spinner
+    // while checking), and a step inside Extensions to open (the crash popup's Open).
     var headerAdd by mutableStateOf<(() -> Unit)?>(null)
+    var headerCheck by mutableStateOf<(() -> Unit)?>(null)
+    var checking by mutableStateOf(false)
     var wanted by mutableStateOf<String?>(null)
     // The source cards open on the main page, by key, while Kav runs (null: the first one).
     var opened by mutableStateOf<String?>(null)
@@ -235,6 +239,12 @@ private fun ExtensionsMain() {
     var adding by remember { mutableStateOf(false) }
     // A bundle file the rider picked (its name and bytes), shown before it's added.
     var file by remember { mutableStateOf<Pair<String, ByteArray>?>(null) }
+    val scope = rememberCoroutineScope()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            io { fileName(ctx, uri) to readFile(ctx, uri) }.onSuccess { file = it }.onFailure { toast(ctx, failure(it)) }
+        }
+    }
     // Settings' header names the step the rider is on; a screen showing one thing is titled with its name.
     val top = steps.lastOrNull()
     val title = when {
@@ -243,13 +253,20 @@ private fun ExtensionsMain() {
         top.startsWith("s:") -> hub.source(top.removePrefix("s:"))?.name
         else -> hub.registry.get(top.removePrefix("e:"))?.displayName
     }
-    // On Sources, the header's plus adds one.
+    // On Sources, the header's plus adds one and its refresh checks them all; on a GitHub source's page, refresh checks it.
     val add: (() -> Unit)? = if (top == "sources") ({ adding = true }) else null
-    SideEffect { ExtUi.title = title; ExtUi.headerAdd = add }
+    val checked = top?.removePrefix("s:")?.takeIf { top.startsWith("s:") }?.let(hub::source)?.takeIf { it.kind == Hub.Kind.GITHUB }
+    val check: (() -> Unit)? = when {
+        top == "sources" && hub.sources.isNotEmpty() -> ({ checkAll(ctx, scope) })
+        checked != null -> ({ checkOne(ctx, scope, hub, checked) })
+        else -> null
+    }
+    SideEffect { ExtUi.title = title; ExtUi.headerAdd = add; ExtUi.headerCheck = check }
     // "Start in safe mode" on Kav's icon only while something is installed (SafeStart).
     val count = hub.registry.installed.size
     LaunchedEffect(count) { io { uk.noammm.kav.ext.SafeStart.sync(ctx.applicationContext, count > 0) } }
-    DisposableEffect(Unit) { onDispose { ExtUi.title = null; ExtUi.headerAdd = null } }
+    // Leaving Extensions closes the source cards the rider opened: the next visit starts as the first did.
+    DisposableEffect(Unit) { onDispose { ExtUi.title = null; ExtUi.headerAdd = null; ExtUi.headerCheck = null; ExtUi.opened = null } }
     androidx.compose.animation.AnimatedContent(
         path,
         transitionSpec = { if (depth(targetState) >= depth(initialState)) forward() else backward() },
@@ -258,7 +275,7 @@ private fun ExtensionsMain() {
         val step = at.substringAfterLast('\n').ifEmpty { null }
         when {
             step == null -> MainExtensions(hub, ::open) { adding = true }
-            step == "sources" -> SourcesScreen(hub, ::open) { name, bytes -> file = name to bytes }
+            step == "sources" -> SourcesScreen(hub, ::open)
             step.startsWith("s:") -> hub.source(step.removePrefix("s:"))
                 ?.let { SourcePage(hub, it, ::open, ::back) } ?: LaunchedEffect(step) { back() }
             else -> hub.registry.get(step.removePrefix("e:"))
@@ -266,7 +283,44 @@ private fun ExtensionsMain() {
         }
     }
     file?.let { f -> key(f) { AddSourcePopup(hub, null, f) { file = null } } }
-    if (adding) AddSourceSheet(hub) { adding = false }
+    if (adding) AddSourceSheet(hub, { pick.launch(arrayOf("*/*")) }) { adding = false }
+}
+
+// Check now, for every source: what changed or failed, said in a toast.
+private fun checkAll(ctx: Context, scope: kotlinx.coroutines.CoroutineScope) {
+    if (ExtUi.checking) return
+    ExtUi.checking = true
+    scope.launch {
+        io { ExtApp.check(ctx) }.onSuccess { r ->
+            if (r != null) toast(ctx, listOfNotNull(
+                if (r.updated.isNotEmpty()) T("Updated: ", "עודכנו: ") + r.updated.joinToString(", ") else null,
+                if (r.failed.isNotEmpty()) T("Failed: ", "נכשלו: ") + r.failed.joinToString(", ") else null,
+            ).joinToString("\n").ifEmpty { T("Everything is up to date", "הכול מעודכן") })
+        }.onFailure { toast(ctx, failure(it)) }
+        ExtUi.checking = false
+        ExtUi.changed()
+    }
+}
+
+// Check now, for one source, from its page.
+private fun checkOne(ctx: Context, scope: kotlinx.coroutines.CoroutineScope, hub: Hub, s: Hub.Source) {
+    if (ExtUi.checking) return
+    ExtUi.checking = true
+    scope.launch {
+        io { hub.refresh(s.key) }.onSuccess { if (it.updatedAt != s.updatedAt) ExtApp.loadNative(ctx) }.onFailure { toast(ctx, failure(it)) }
+        ExtUi.checking = false; ExtUi.changed()
+    }
+}
+
+// The header's refresh (Check now): Kav's spinner in its place while checking.
+@Composable
+internal fun ExtCheckButton(onCheck: () -> Unit) {
+    androidx.compose.animation.AnimatedContent(ExtUi.checking,
+        transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
+        label = "checking") { busy ->
+        if (busy) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Spinner(20.dp, track = K.fill, arc = K.textSecondary) }
+        else KavIconButton(Icons.Rounded.Refresh, T("Check now", "בדיקה עכשיו"), onCheck)
+    }
 }
 
 private fun depth(path: String) = if (path.isEmpty()) 0 else path.count { it == '\n' } + 1
@@ -469,14 +523,15 @@ private fun hasSettings(i: Registry.Installed): Boolean {
         (ExtNative.ready >= 0 && uk.noammm.kav.ext.Native.settingsScreen(i.identity) != null)
 }
 
-// A row of the cards: an extension's mark, name and what it adds, a settings button while it's on and has settings (it
-// opens the extension's page, as the row does), and its switch (a spinner while it's being put on).
+// A row of the cards: an extension's mark, name and what it adds (two lines, so a description or a problem isn't cut to a
+// few words; the whole description is on its page), a settings button while it's on and has settings (it opens the
+// extension's page, as the row does), and its switch (a spinner while it's being put on).
 @Composable
 private fun ExtSwitchRow(
     name: String, line: String, problem: Boolean, tile: @Composable () -> Unit, on: Boolean, busy: Boolean,
     onOpen: (() -> Unit)?, settings: Boolean, onSwitch: (Boolean) -> Unit,
 ) {
-    ListRow(name, subtitle = line, subtitleColor = if (problem) K.problem else null, leading = tile, onClick = onOpen ?: { onSwitch(!on) }, chevron = false,
+    ListRow(name, subtitle = line, subtitleMaxLines = 2, subtitleColor = if (problem) K.problem else null, leading = tile, onClick = onOpen ?: { onSwitch(!on) }, chevron = false,
         trailing = {
             androidx.compose.animation.AnimatedVisibility(settings && on && onOpen != null,
                 enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) + androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)),
@@ -514,18 +569,11 @@ internal fun restartKav(ctx: Context) {
     Runtime.getRuntime().exit(0)
 }
 
-// The sources, a screen of their own: one row each (its own screen a tap away), a check of them all, and a bundle file.
+// The sources, a screen of their own: one row each (its own screen a tap away). Adding one (a repository, a suggestion
+// or a bundle file) and checking them all are the header's plus and refresh.
 @Composable
-private fun SourcesScreen(hub: Hub, open: (String) -> Unit, onFile: (String, ByteArray) -> Unit) {
+private fun SourcesScreen(hub: Hub, open: (String) -> Unit) {
     ExtUi.tick
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var checking by remember { mutableStateOf(false) }
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            io { fileName(ctx, uri) to readFile(ctx, uri) }.onSuccess { (n, b) -> onFile(n, b) }.onFailure { toast(ctx, failure(it)) }
-        }
-    }
     val first = remember { hub.sources.map { it.key }.toSet() }
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
         if (hub.sources.isEmpty()) NoteCard(T("Add a source with the plus above.", "אפשר להוסיף מקור עם הפלוס למעלה."), Modifier.padding(top = K.gap3))
@@ -545,29 +593,6 @@ private fun SourcesScreen(hub: Hub, open: (String) -> Unit, onFile: (String, Byt
                         }
                     }
                 }
-            }
-        }
-        ListGroup {
-            if (hub.sources.isNotEmpty()) row {
-                ListRow(T("Check now", "בדיקה עכשיו"), leading = { Icon(Icons.Rounded.Refresh, null, tint = K.dim) }, chevron = false,
-                    trailing = { androidx.compose.animation.AnimatedVisibility(checking, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) { Spinner(18.dp, track = K.fill, arc = K.textSecondary) } },
-                    onClick = {
-                        checking = true
-                        scope.launch {
-                            io { ExtApp.check(ctx) }.onSuccess { r ->
-                                if (r != null) toast(ctx, listOfNotNull(
-                                    if (r.updated.isNotEmpty()) T("Updated: ", "עודכנו: ") + r.updated.joinToString(", ") else null,
-                                    if (r.failed.isNotEmpty()) T("Failed: ", "נכשלו: ") + r.failed.joinToString(", ") else null,
-                                ).joinToString("\n").ifEmpty { T("Everything is up to date", "הכול מעודכן") })
-                            }.onFailure { toast(ctx, failure(it)) }
-                            checking = false
-                            ExtUi.changed()
-                        }
-                    })
-            }
-            row {
-                ListRow(T("Add a bundle file", "הוספת קובץ חבילה"), leading = { Icon(Icons.Rounded.FolderOpen, null, tint = K.dim) },
-                    onClick = { pick.launch(arrayOf("*/*")) }, chevron = false)
             }
         }
     }
@@ -645,7 +670,6 @@ private fun SourcePage(hub: Hub, s: Hub.Source, open: (String) -> Unit, back: ()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var removing by remember { mutableStateOf(false) }
-    var checking by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
         HeaderCard({
             CentredHeader({ SourceAvatar(imageOf(hub, s.key), s.name, 72.dp, kav = ExtApp.kavMade(s.key)) }, s.name, sourceStatus(hub, s).first, kav = ExtApp.kavMade(s.key))
@@ -654,7 +678,6 @@ private fun SourcePage(hub: Hub, s: Hub.Source, open: (String) -> Unit, back: ()
         }) {
             // Its address and release, folded away.
             Details {
-                if (!ExtApp.kavMade(s.key)) ThirdPartyFact()
                 if (s.kind == Hub.Kind.GITHUB) DetailFact(T("Address", "כתובת"), T.ltr(s.address))
                 s.tag.takeIf { it.isNotEmpty() }?.let { DetailFact(T("Release", "גרסה"), T.ltr(it)) }
                 s.updatedAt.takeIf { it > 0 }?.let { DetailFact(T("Last updated", "עודכן לאחרונה"), date(it)) }
@@ -664,15 +687,6 @@ private fun SourcePage(hub: Hub, s: Hub.Source, open: (String) -> Unit, back: ()
         SectionHeader(T("Extensions", "תוספים"))
         Column(Modifier.fillMaxWidth().panel(K.rCard)) { ExtSwitches(hub, s) { open("e:$it") } }
         ListGroup(Modifier.padding(top = K.gap3)) {
-            if (s.kind == Hub.Kind.GITHUB) row {
-                ListRow(T("Check now", "בדיקה עכשיו"), leading = { Icon(Icons.Rounded.Refresh, null, tint = K.dim) }, onClick = {
-                    checking = true
-                    scope.launch {
-                        io { hub.refresh(s.key) }.onSuccess { if (it.updatedAt != s.updatedAt) ExtApp.loadNative(ctx) }.onFailure { toast(ctx, failure(it)) }
-                        checking = false; ExtUi.changed()
-                    }
-                }, chevron = false, trailing = { androidx.compose.animation.AnimatedVisibility(checking, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) { Spinner(18.dp, track = K.fill, arc = K.textSecondary) } })
-            }
             s.page?.let { page ->
                 row { ListRow(T("Open in browser", "פתיחה בדפדפן"), leading = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, tint = K.dim) }, onClick = { openLink(ctx, page) }, chevron = false) }
             }
@@ -729,24 +743,23 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
         HeaderCard({
             CentredHeader({ ExtTile(hub.registry.iconFile(i.identity), null, m.contributions.map { it.capability } + m.adds, 72.dp) }, i.displayName, fromWords(hub, i).ifEmpty { null },
-                kav = ExtApp.kavMade(i.source))
-            // Its publisher's own words for what it is, a clear gap under the name.
-            if (m.description.isNotEmpty()) Text(iso(m.description.take(2000)), style = K.type.subhead, color = K.textTertiary,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(top = K.gap4))
+                kav = ExtApp.kavMade(i.source), version = m.version)
+            // Its publisher's own words for what it is, a clear gap under the name; a long one opens in full on a tap.
+            if (m.description.isNotEmpty()) Description(iso(m.description.take(2000)), Modifier.padding(top = K.gap4))
             // What's wrong with it, a line each.
             hub.blocked(i)?.let { FlagLine(T("Blocked: ", "חסום: ") + reasonWords(it.reason), Modifier.padding(top = K.gap2), tint = K.critical) }
             if (i.problem.isNotEmpty() && i.problem != NativeGuard.CRASHED) FlagLine(engineWords(i.problem).replaceFirstChar { it.uppercase() }, Modifier.padding(top = K.gap2))
         }) {
-            // The technical part, folded away: whose it is in full, its version, what its manifest says it can do, its files.
+            // The technical part, folded away: what its manifest says it can do, its files.
             Details {
-                if (!ExtApp.kavMade(i.source)) ThirdPartyFact()
-                DetailFact(T("Version", "גרסה"), T.ltr(m.version))
                 CanDo(ExtUses.of(m))
                 DetailFact(T("Installed", "הותקן"), date(i.installedAt))
                 KeyFact(T("Files, SHA-256", "הקבצים, SHA-256"), i.sha256)
             }
         }
+        // Its switch, right under the header, so an extension that's off says so and turns on here. Not for one that
+        // can't run whatever the switch says (blocked, or something wrong with it, which the header names).
+        if (hub.blocked(i) == null && i.problem.isEmpty()) PowerCard(i.enabled) { switchOn(ctx, hub, i.identity, it) }
         // Kav turned it off itself, after its code made Kav close twice (NativeGuard): said here, with the way back.
         if (i.problem == NativeGuard.CRASHED) Box(Modifier.padding(top = K.gap3)) {
             Notice(Icons.Rounded.PauseCircle, T("Turned off by Kav", "‏Kav כיבתה את התוסף"),
@@ -767,6 +780,32 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
             if (issues.isNotEmpty()) row { ListRow(T("Report an issue", "דיווח על בעיה"), onClick = { openLink(ctx, issues) }, chevron = false) }
         }
     }
+}
+
+// An extension's own switch on its page, a card of its own: the power mark, whether it's on, and the switch, which the
+// whole card flips. Off, a line under it says to turn it on, so a page with nothing else on it doesn't look broken.
+@Composable
+private fun PowerCard(on: Boolean, onChange: (Boolean) -> Unit) {
+    ListGroup(Modifier.padding(top = K.gap3).animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
+        row {
+            ToggleRow(if (on) T("On", "פועל") else T("Off", "כבוי"), on,
+                { Icon(Icons.Rounded.PowerSettingsNew, null, tint = toggleInk(on), modifier = Modifier.size(20.dp)) },
+                subtitle = if (on) null else T("Turn it on to use it", "צריך להפעיל אותו כדי להשתמש בו"), onChange = onChange)
+        }
+    }
+}
+
+// A publisher's description, in the middle: three lines, and a tap opens the rest in place (and closes it again).
+@Composable
+private fun Description(text: String, modifier: Modifier = Modifier) {
+    var open by rememberSaveable(text) { mutableStateOf(false) }
+    var cut by remember(text) { mutableStateOf(false) }
+    Text(text, style = K.type.subhead, color = K.textTertiary,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = if (open) Int.MAX_VALUE else 3,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, onTextLayout = { if (!open) cut = it.hasVisualOverflow },
+        modifier = modifier.fillMaxWidth().animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))
+            .then(if (cut || open) Modifier.clip(RoundedCornerShape(K.rTile)).clickable(role = androidx.compose.ui.semantics.Role.Button,
+                onClickLabel = if (open) T("Show less", "הצגת פחות") else T("Show more", "הצגת עוד")) { open = !open } else Modifier))
 }
 
 // What it adds to Kav, a switch each in plain words, as rows of its page's Settings card: its parts on Kav's screens,
@@ -915,15 +954,24 @@ internal fun Sheet(onDismiss: () -> Unit, scrolls: Boolean = true, content: @Com
     }
 }
 
-// Add a source: one or more GitHub repositories pasted or typed; each is read and shown before it's added.
+// Add a source: one or more GitHub repositories pasted or typed, one of the community list's first few (Community), or a
+// bundle file from the phone. Each is read and shown before it's added.
 @Composable
-private fun AddSourceSheet(hub: Hub, onClose: () -> Unit) {
+private fun AddSourceSheet(hub: Hub, onFile: () -> Unit, onClose: () -> Unit) {
     var text by remember { mutableStateOf("") }
     // The repositories whose add popup is still to come, the first one showing.
     var queue by remember { mutableStateOf<List<String>>(emptyList()) }
     val parts = text.split(Regex("[\\s,]+")).filter { it.isNotBlank() }
     val parsed = parts.map { it to GitHub.repoOf(it) }
     val bad = parsed.firstOrNull { it.second == null }?.first
+    // The kept list at once, then a fresh one when the kept copy is a day old; nothing at all when there's none.
+    var listed by remember { mutableStateOf<List<uk.noammm.kav.ext.Community.Suggestion>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        listed = io { uk.noammm.kav.ext.Community.cached(hub.dir) }.getOrDefault(emptyList())
+        io { uk.noammm.kav.ext.Community.refresh(hub.dir, ExtApp.Http) }.onSuccess { listed = it }
+    }
+    ExtUi.tick
+    val suggested = uk.noammm.kav.ext.Community.suggest(listed, hub.sources.map { it.key }.toSet())
     Sheet(onClose) { close ->
         Column(Modifier.fillMaxWidth().padding(K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
             SheetHeader(T("Add a source", "הוספת מקור"), { close(onClose) })
@@ -933,13 +981,37 @@ private fun AddSourceSheet(hub: Hub, onClose: () -> Unit) {
             KavButton(T("Add", "הוספה"), {
                 queue = parsed.mapNotNull { it.second }
             }, Modifier.fillMaxWidth(), enabled = parts.isNotEmpty() && bad == null && queue.isEmpty())
+            // Sources from the community list, the first few not added yet, each a tap from its add popup. They unfold
+            // when the list arrives, and fold away once added.
+            androidx.compose.animation.AnimatedVisibility(suggested.isNotEmpty(), enter = unfold, exit = fold) {
+                Column(Modifier.fillMaxWidth()) {
+                    SectionHeader(T("From the community list", "מרשימת הקהילה"))
+                    ListGroup(Modifier.animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)), inset = K.gap4 + 40.dp + K.gap3) {
+                        for (x in suggested) row {
+                            key(x.key) {
+                                ListRow(x.name, subtitle = T.ltr("github.com/${x.repo}"),
+                                    leading = { SourceAvatar(uk.noammm.kav.ext.Community.picture(hub.dir, x), x.name, 40.dp, kav = ExtApp.kavMade(x.key)) },
+                                    onClick = { if (queue.isEmpty()) queue = listOf(x.repo) }, chevron = false,
+                                    trailing = { Icon(Icons.Rounded.Add, T("Add", "הוספה"), tint = K.accentInk, modifier = Modifier.size(22.dp)) })
+                            }
+                        }
+                    }
+                }
+            }
+            ListGroup(Modifier.padding(top = K.gap3)) {
+                row {
+                    ListRow(T("Add a bundle file", "הוספת קובץ חבילה"), leading = { Icon(Icons.Rounded.FolderOpen, null, tint = K.dim) },
+                        onClick = { close { onClose(); onFile() } }, chevron = false)
+                }
+            }
         }
     }
     queue.firstOrNull()?.let { repo ->
         key(repo) {
             AddSourcePopup(hub, repo, null) { added ->
                 queue = queue.drop(1)
-                if (added && queue.isEmpty()) onClose()
+                // Added from the field, the sheet's work is done; a suggestion added leaves the others to pick from.
+                if (added && queue.isEmpty() && text.isNotBlank()) onClose()
             }
         }
     }
