@@ -40,6 +40,8 @@ MODEL = os.environ.get("MODEL", "/models/live3_all.npz")
 # control, fine-tuned beside it on the same days without the motion inputs. None: the motion model's own times.
 MODEL_FALLBACK = os.environ.get("MODEL_FALLBACK", "")
 RAIL = os.environ.get("RAIL", "/models/rail")  # the train and light-rail models, gbdt-<operator>.txt and theirs
+# A second look at the buses' times before they go out (Nudge): the folder of its model, or none.
+NUDGE = os.environ.get("NUDGE", "")
 REALTIME = os.environ.get("REALTIME", "/realtime")
 OUT = os.environ.get("OUT", "/eta")
 KAV_LIVE = os.environ.get("KAV_LIVE", "http://kav-live:8080")
@@ -688,16 +690,79 @@ def in_order_ahead(stops, now):
         stop[2] = eta
 
 
-def hand_over(made, buses, now):
+class Nudge:
+    """A second look at each time of a bus on the road before it goes to live.py: a LightGBM model (nudge.txt, with
+    nudge.json beside it) of how far the recorded passing came from the time handed over, learnt from this
+    predictor's own logs joined to the passings, from what the hand-over itself knows of the time. The network learnt
+    from an archive that hears of a stop up to a minute late, so its times for buses due soon run some twenty seconds
+    behind the passings Kav's own recorder keeps; this takes that out, and what else the hour, the place on the trip
+    and the model's own steps tell. Added in full to a time due within `full` seconds, fading to nothing at `none`:
+    further ahead it brought more buses in before their time."""
+
+    FEATURES = ["source", "ahead", "pooling", "blend", "base", "push", "sched_left", "elapsed", "stops_ahead", "order_j",
+                "since_first", "hour", "weekday"]
+
+    def __init__(self, folder):
+        import lightgbm as lgb
+        with open(os.path.join(folder, "nudge.json")) as f:
+            saved = json.load(f)
+        if saved.get("features") != self.FEATURES:
+            raise ValueError("a nudge model for other inputs: %s" % saved.get("features"))
+        self.full, self.none, self.name = saved["full"], saved["none"], saved.get("name", "nudge")
+        self.booster = lgb.Booster(model_file=os.path.join(folder, "nudge.txt"))
+
+    @classmethod
+    def inputs(cls, x):
+        """The model's inputs for the rows handed over (handing() with inputs: source, first, order_j, t, eta, pooled:
+        the time as it would go out, and the network's base, eta_model, ahead_sched, elapsed, order and stops_ahead)."""
+        f = lambda c: x[c].cast(pl.Float64).to_numpy() if c in x.columns else np.full(x.height, np.nan)
+        t, eta, pooled = f("t"), f("eta"), f("pooled")
+        local = pl.from_epoch(x["t"], time_unit="s").dt.replace_time_zone("UTC").dt.convert_time_zone("Asia/Jerusalem")
+        stops_ahead = f("stops_ahead")
+        cols = {"source": np.zeros(x.height), "ahead": pooled - t, "pooling": pooled - eta, "blend": eta - f("eta_model"),
+                "base": f("base"), "push": eta - t - f("base"), "sched_left": f("ahead_sched") - f("elapsed"),
+                "elapsed": f("elapsed"), "stops_ahead": np.where(np.isnan(stops_ahead), f("order_j") - f("order"), stops_ahead),
+                "order_j": f("order_j"), "since_first": t - f("first"),
+                "hour": (local.dt.hour() + local.dt.minute() / 60).cast(pl.Float64).to_numpy(),
+                "weekday": local.dt.weekday().cast(pl.Float64).to_numpy()}
+        return np.column_stack([cols[c] for c in cls.FEATURES]).astype(np.float64)
+
+    def moved(self, x):
+        """The seconds to add to each row's time (pooled): the model's for the network's times of buses on the road
+        (source "bus"), by how soon they're due; nothing for the rest (buses just set out, trains, the light rail).
+        Never to before a second after the moment asked."""
+        ahead = (x["pooled"] - x["t"]).cast(pl.Float64).to_numpy()
+        share = np.clip((self.none - ahead) / (self.none - self.full), 0, 1) * (x["source"] == "bus").to_numpy()
+        out, on = np.zeros(x.height), share > 0
+        if on.any():
+            out[on] = np.maximum(np.round(share[on] * self.booster.predict(self.inputs(x.filter(pl.Series(on))))), 1 - ahead[on])
+        return out.astype(np.int64)
+
+
+def hand_over(made, buses, now, nudge=None):
     """The buses' predictions for live.py, which gives them to the planner and to the app instead of the ministry's
     expected times: each journey's stops ahead by route and first departure, as [place on the trip, stop code, when],
-    the nearest in order along the trip (in_order_ahead())."""
+    the nearest in order along the trip (in_order_ahead()). With a nudge (Nudge; made then with its inputs, handing()),
+    the times of buses due soon after its second look, put in order again."""
+    rows = made.filter(pl.col("route").is_in(sorted(buses))).sort("route", "first", "order_j")
     runs = {}
-    for route, first, order, code, eta in (made.filter(pl.col("route").is_in(sorted(buses))).sort("route", "first", "order_j")
-                                           .select("route", "first", "order_j", "code_j", "eta").iter_rows()):
+    for route, first, order, code, eta in rows.select("route", "first", "order_j", "code_j", "eta").iter_rows():
         runs.setdefault("%s_%d" % (route, first), []).append([order, code, eta])
     for stops in runs.values():
         in_order_ahead(stops, now)
+    if nudge is not None:
+        try:
+            # A run's rows are together in rows and in the order runs has them, so the times line up one to one.
+            pooled = pl.Series("pooled", [stop[2] for stops in runs.values() for stop in stops], dtype=pl.Int64)
+            moved = iter(nudge.moved(rows.with_columns(pooled)).tolist())
+            for stops in runs.values():
+                was = [stop[2] for stop in stops]
+                for stop in stops:
+                    stop[2] += next(moved)
+                if [stop[2] for stop in stops] != was:
+                    in_order_ahead(stops, now)
+        except Exception:  # the times go out as they were
+            log("nudge failing:", traceback.format_exc())
     path = os.path.join(OUT, "now.json")
     with open(path + ".part", "w") as f:
         # The predictions file, version 1 (server/PREDICTOR.md): what live.py reads, and any predictor of one's own writes.
@@ -706,19 +771,25 @@ def hand_over(made, buses, now):
     return len(runs)
 
 
-def handing(made, started, rail_made, buses):
+NUDGE_INPUTS = ["order", "stops_ahead", "ahead_sched", "elapsed", "base", "eta_model"]
+
+
+def handing(made, started, rail_made, buses, inputs=False):
     """What goes to live.py: the bus model's times for buses only (it's asked about every run on the road, trains and
     light rail too, which have models of their own), the buses just set out, and the trains' and light rail's handed over
-    (RAIL_HANDOVER). None with nothing to give."""
+    (RAIL_HANDOVER). None with nothing to give. inputs: with what the nudge reads too (NUDGE_INPUTS, where the source
+    has them, and which source each row is of)."""
     cols = ["route", "service", "start_sec", "first", "order_j", "code_j", "t", "eta"]
+    pick = lambda frame, source: (frame.select(cols + [c for c in NUDGE_INPUTS if c in frame.columns])
+                                  .with_columns(pl.lit(source).alias("source")) if inputs else frame.select(cols))
     given = []
     if made is not None:
-        given.append(made.filter(pl.col("route").is_in(sorted(buses))).select(cols))
+        given.append(pick(made.filter(pl.col("route").is_in(sorted(buses))), "bus"))
     if started is not None:
-        given.append(started.select(cols))
+        given.append(pick(started, "started"))
     if rail_made is not None:
-        given.append(rail_made.filter(pl.col("agency").is_in(RAIL_HANDOVER)).select(cols))
-    return pl.concat(given, how="vertical_relaxed") if given else None
+        given.append(pick(rail_made.filter(pl.col("agency").is_in(RAIL_HANDOVER)), "rail"))
+    return pl.concat(given, how="diagonal_relaxed" if inputs else "vertical_relaxed") if given else None
 
 
 def service_days(now):
@@ -778,6 +849,13 @@ def main():
             time.sleep(EVERY)
     model = Model(model_path, Model(fallback_path) if fallback_path else None)
     rail = {a: RailModel(rail_path, a) for a in OPERATORS if os.path.exists(os.path.join(rail_path, "gbdt-%s.txt" % a))}
+    nudge = None
+    if NUDGE:
+        try:
+            nudge = Nudge(NUDGE)
+            log("nudge", nudge.name, "in full to", nudge.full, "s ahead, none from", nudge.none)
+        except Exception as e:  # the times go out without their second look
+            log("nudge not read:", repr(e))
     days, recorded, logged = {}, Recorded(), 0
     motion = {}  # each bus's recent places, for its speed (with_speed)
     special = set()  # the special days listed so far (special_days()); the list only grows
@@ -839,10 +917,10 @@ def main():
             status["just set out"] = 0 if started is None else started.select(I.RUN).unique().height
             status["rail predictions"] = 0 if rail_made is None else rail_made.height
             buses = set().union(*(days[d].buses for d in active))
-            given = handing(made, started, rail_made, buses)
+            given = handing(made, started, rail_made, buses, inputs=nudge is not None)
             if given is not None:
                 routes = buses.union(*(days[d].rail[a] for d in active for a in RAIL_HANDOVER))
-                status["journeys handed over"] = hand_over(given, routes, start)
+                status["journeys handed over"] = hand_over(given, routes, start, nudge)
             status.update(rows=0 if rows is None else rows.height, predictions=0 if made is None else made.height,
                           buses=0 if made is None else made.select(I.RUN).unique().height, seconds=round(time.time() - start, 2),
                           peak_gb=peak_gb())
