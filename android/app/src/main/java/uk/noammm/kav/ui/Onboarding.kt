@@ -111,21 +111,14 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 // The same choices as Settings: where live locations come from, who plans trips, whose timetable lines
                 // and stops show, and whether the week on the phone updates itself.
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LiveSource() }
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PlanningSource() }
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { TimetableSource(); TimetableUpdates() }
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PlaceSearchChoice() }
                 // What's asked of Google or another service besides: line alerts, how busy, and photos.
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { AlertsChoice() }
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { CrowdChoice() }
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { StopPhotoChoice() }
                 // And whether all of it goes through a proxy of the rider's own.
-                Spacer(Modifier.height(K.gap3))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { ProxyChoice() }
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { page = 4 }
@@ -134,12 +127,10 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Text(T("Trips", "נסיעות"), style = K.type.largeTitle)
                 Spacer(Modifier.height(K.gap3))
                 PlanChoices(model)
-                Spacer(Modifier.height(K.gap5))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
                     OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it }, setup = true)
                 }
                 // Paying with Rav-Pass, which can be turned on here with its permissions, or later in Settings.
-                Spacer(Modifier.height(K.gap5))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSetup() }
                 Spacer(Modifier.height(K.gap8))
                 if (BuildConfig.UPDATER) OnboardingButton(T("Next", "הבא")) { page = 5 }

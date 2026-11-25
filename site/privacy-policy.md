@@ -80,8 +80,7 @@ instead of yours, and the proxy sees which services Kav connects to. Its address
 ## GitHub
 
 Kav downloads its offline map, the OpenFreeMap maps if you ask for them, the timetable and its own updates from GitHub,
-and checks GitHub for a new version each time it opens, unless both "Tell me about new versions" and "Download updates
-automatically" are off in Settings; daily timetable updates can be turned off there too. Once a day it also reads the
+and checks GitHub for a new version each time it opens, unless both "New version alerts" and "Automatic updates" are off in Settings; daily timetable updates can be turned off there too. Once a day it also reads the
 signed search recipe Vela Maps publishes on GitHub. GitHub sees your IP address for these downloads, not where you look.
 Until the offline map is downloaded, the preview of it in setup and in Settings is read from GitHub for one spot in Tel
 Aviv.

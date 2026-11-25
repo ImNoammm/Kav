@@ -45,7 +45,7 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
             if (!setup) row { UpdatePromptsRow() }
             row {
                 ToggleRow(
-                    T("Download updates automatically", "להוריד עדכונים אוטומטית"), auto,
+                    T("Automatic updates", "עדכונים אוטומטיים"), auto,
                     { Icon(Icons.Rounded.SystemUpdate, null, tint = toggleInk(auto), modifier = Modifier.size(22.dp)) },
                     info = if (setup) null else info,
                 ) { on ->

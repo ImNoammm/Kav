@@ -377,6 +377,14 @@ internal fun Modifier.overlapsHeight(): Modifier = layout { m, c ->
     layout(p.width, 0) { p.place(0, -p.height / 2) }
 }
 
+// As overlapsHeight, and only as wide as its mark: a row's (i) keeps its whole touch area, over the gaps beside it,
+// without taking room from the row's title.
+internal fun Modifier.overlapsToMark(mark: Dp): Modifier = layout { m, c ->
+    val p = m.measure(c.copy(minWidth = 0, minHeight = 0, maxWidth = androidx.compose.ui.unit.Constraints.Infinity, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+    val w = mark.roundToPx()
+    layout(w, 0) { p.place((w - p.width) / 2, -p.height / 2) }
+}
+
 // A hairline across a group, from inset at its start.
 @Composable
 fun Separator(inset: Dp = K.gap4) {
@@ -433,7 +441,7 @@ fun ListRow(
         Column(Modifier.fillMaxWidth()) {
             ListRow(
                 title, modifier, subtitle, value, leading,
-                trailing = { InfoButton(open, title, Modifier.overlapsHeight()) { open = !open }; trailing?.invoke() },
+                trailing = { InfoButton(open, title, Modifier.overlapsToMark(18.dp)) { open = !open }; trailing?.invoke() },
                 onClick, chevron, titleColor, subtitleMaxLines, subtitleColor,
             )
             InfoNote(open, info, Modifier.padding(start = K.gap4, end = K.gap4, bottom = K.gap3))

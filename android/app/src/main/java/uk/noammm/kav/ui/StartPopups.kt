@@ -17,7 +17,7 @@ import uk.noammm.kav.data.WhatsNew
 
 // Every popup Kav puts up by itself as it opens, in the order they go: a look to pick after a big update, the message
 // this version brings (StartNotice), the map to download, a backup the rider opened, the "Enjoying Kav?" note, a new
-// version (Tell me about new versions), one Kav downloaded itself to install (Download updates automatically), and
+// version (New version alerts), one Kav downloaded itself to install (Automatic updates), and
 // "Kav has been updated" with what's new, after any update. Setup comes before all of them, as Root shows nothing else
 // until it's done.
 enum class StartPopup { LOOK, NOTICE, MAP, IMPORT, EXTENSION, BLOCKED, CRASHED, SUPPORT, UPDATE, READY, UPDATED }

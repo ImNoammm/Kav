@@ -234,13 +234,18 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             FixCheck()
             HelpSection()
         }
-        Sub(T("Not in Kav", "מה שאין ב-Kav"))
-        Absent(T("No account", "אין חשבון"))
-        Absent(T("No ads", "אין פרסומות"))
-        Absent(T("No analytics or attribution", "אין אנליטיקה או ייחוס"))
-        Absent(T("No support chat", "אין צ'אט תמיכה"))
-        Absent(T("No upsell", "אין מכירה נוספת"))
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Credits() }
+        // With the page's other sections: its header on their line, its list on a card as theirs are.
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
+            Sub(T("Not in Kav", "מה שאין ב-Kav"))
+            Column(Modifier.fillMaxWidth().panel(K.rCard).padding(vertical = K.gap2)) {
+                Absent(T("No account", "אין חשבון"))
+                Absent(T("No ads", "אין פרסומות"))
+                Absent(T("No analytics or attribution", "אין אנליטיקה או ייחוס"))
+                Absent(T("No support chat", "אין צ'אט תמיכה"))
+                Absent(T("No upsell", "אין מכירה נוספת"))
+            }
+            Credits()
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -448,7 +453,7 @@ internal fun OnTheWayChoices(
             }
         }
         row {
-            ToggleRow(T("Say walking directions out loud", "הקראת הוראות הליכה בקול"), turns, { WalkGlyph(toggleInk(turns), 16.dp) }) { on ->
+            ToggleRow(T("Say walking directions", "הקראת הוראות הליכה"), turns, { WalkGlyph(toggleInk(turns), 16.dp) }) { on ->
                 turns = on; Prefs.setSpokenTurns(ctx, on)
                 if (on) uk.noammm.kav.Speaker.say(ctx, T("Turn right onto Herzl", "פנו ימינה להרצל")) { noVoice(ctx) }
             }
@@ -462,7 +467,7 @@ internal fun OnTheWayChoices(
     if (setup) return
     ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Start trips right away", "להתחיל נסיעות מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }, info = T(
+            ToggleRow(T("Start right away", "להתחיל מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }, info = T(
                 "A trip goes straight to its first walk instead of waiting for its time.",
                 "הנסיעה עוברת מיד להליכה הראשונה, בלי לחכות לשעה שלה.",
             )) { on ->
@@ -505,7 +510,7 @@ internal fun LineBadgeChoice() {
 internal fun UpdatePromptsRow() {
     val ctx = LocalContext.current
     ToggleRow(
-        T("Tell me about new versions", "עדכנו אותי על גרסאות חדשות"), Shown.updatePrompts,
+        T("New version alerts", "התראה על גרסה חדשה"), Shown.updatePrompts,
         { Icon(Icons.Rounded.NewReleases, null, tint = toggleInk(Shown.updatePrompts), modifier = Modifier.size(22.dp)) },
         info = T("A popup, and a dot on Settings, when a new version is out.", "חלון, ונקודה על ההגדרות, כשיוצאת גרסה חדשה."),
     ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
@@ -547,7 +552,7 @@ internal fun MapChoices(setup: Boolean = false) {
         ListGroup(Modifier.padding(top = K.gap2)) {
             row {
                 ToggleRow(T("3D buildings", "בניינים בתלת-ממד"), MapFile.buildings3d, { Icon(Icons.Rounded.Apartment, contentDescription = null, tint = toggleInk(MapFile.buildings3d), modifier = Modifier.size(20.dp)) },
-                    subtitle = T("Buildings stand up when you tilt the map", "הבניינים מתרוממים כשמטים את המפה"),
+                    subtitle = T("Stand up when you tilt the map", "מתרוממים כשמטים את המפה"),
                     subtitleMaxLines = Int.MAX_VALUE) { on ->
                     MapFile.buildings3d = on; Prefs.setBuildings3d(ctx, on)
                 }
@@ -807,7 +812,7 @@ internal fun PlanChoices(model: KavModel) {
         ListGroup {
             row { FareProfileChoice() }
             row {
-                ToggleRow(T("Wheelchair accessibility", "נגישות לכיסא גלגלים"), Shown.accessibility,
+                ToggleRow(T("Wheelchair access", "נגישות לכיסא גלגלים"), Shown.accessibility,
                     { AccessibleGlyph(toggleInk(Shown.accessibility), 18.dp) }) { on ->
                     Shown.accessibility = on; Prefs.setShowAccessibility(ctx, on)
                 }
@@ -1038,7 +1043,7 @@ internal fun StopPhotoChoice() {
     val ctx = LocalContext.current
     ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Photos of stops and places", "תמונות של תחנות ומקומות"), StopPhotos.enabled, { PhotoGlyph(toggleInk(StopPhotos.enabled)) }, info = T(
+            ToggleRow(T("Photos", "תמונות"), StopPhotos.enabled, { PhotoGlyph(toggleInk(StopPhotos.enabled)) }, info = T(
                 "A stop's is Street View facing it; a place's is from Google Maps. Google sees the stop or place, and your IP address.",
                 "של תחנה: Street View שפונה אליה; של מקום: מ-Google Maps. Google רואה את התחנה או המקום, ואת כתובת ה-IP שלכם.",
             )) { on ->
@@ -1797,7 +1802,7 @@ internal fun TimetableUpdates() {
         row {
             val from = if (KavLive.timetableServer != null) T("From your server", "מהשרת שלכם") else T("From GitHub", "מ-GitHub")
             ListRow(
-                T("Update the timetable daily", "לעדכן את לוח הזמנים כל יום"),
+                T("Timetable updates", "עדכון לוח הזמנים"),
                 Modifier.semantics { toggleableState = if (on) ToggleableState.On else ToggleableState.Off },
                 subtitle = if (mobile) from else from + T(", on Wi-Fi", ", ב-Wi-Fi"),
                 trailing = { KavSwitch(on) }, onClick = { on = !on; Prefs.setTimetableUpdates(ctx, on) }, chevron = false,
@@ -2165,7 +2170,7 @@ private fun FixCheck() {
                     result == SignedFile.Check.NEWER -> T("A fix arrived and is in use", "הגיע תיקון והוא כבר בשימוש")
                     result == SignedFile.Check.SAME -> T("Kav has the latest fixes", "ל-Kav יש את התיקונים האחרונים")
                     result == SignedFile.Check.FAILED -> T("Couldn't check. Try again online.", "לא הצלחנו לבדוק. נסו שוב כשיש חיבור.")
-                    else -> T("Checked once a day, no update needed", "נבדק פעם ביום, בלי צורך בעדכון")
+                    else -> T("Checked once a day", "נבדק פעם ביום")
                 },
                 style = K.type.body, color = if (result == SignedFile.Check.NEWER) K.realtime else K.text,
             )
