@@ -12,8 +12,9 @@ android/local.properties
 android/.kotlin/
 dist/
 
-# Notes and local dev tools
-/docs/
+# Notes and local dev tools; the design rules are the one file of docs the repository keeps
+/docs/*
+!/docs/DESIGN.md
 __pycache__/
 shared-trips.sqlite3*
 tools/android_emulator.sh
