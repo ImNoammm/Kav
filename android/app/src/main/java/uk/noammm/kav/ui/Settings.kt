@@ -510,7 +510,7 @@ internal fun LineBadgeChoice() {
 internal fun UpdatePromptsRow() {
     val ctx = LocalContext.current
     ToggleRow(
-        T("New version alerts", "התראה על גרסה חדשה"), Shown.updatePrompts,
+        T("New version alerts", "גרסאות חדשות"), Shown.updatePrompts,
         { Icon(Icons.Rounded.NewReleases, null, tint = toggleInk(Shown.updatePrompts), modifier = Modifier.size(22.dp)) },
         info = T("A popup, and a dot on the Settings button, when a new version is out.", "חלון קופץ ונקודה על כפתור ההגדרות כשיוצאת גרסה חדשה."),
     ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
@@ -1659,7 +1659,7 @@ private fun LinkCustomization() {
     val kavTheme = K.look.name.lowercase()
     ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Page matches my Kav", "העמוד כמו ה-Kav שלי"), matching,
+            ToggleRow(T("Page matches my Kav", "כמו ה-Kav שלי"), matching,
                 { Icon(Icons.Rounded.Sync, null, tint = toggleInk(matching), modifier = Modifier.size(20.dp)) },
                 info = T("The shared page's language, stop names and colors. Applies to links you share from now on.",
                     "השפה, שמות התחנות והצבעים של העמוד המשותף. חל על קישורים שתשתפו מעכשיו.")) { on ->

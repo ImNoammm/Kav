@@ -66,7 +66,7 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
             }
             if (auto && !mayInstall) row {
                 ListRow(
-                    T("Let Kav install updates", "לאפשר ל-Kav להתקין עדכונים"),
+                    T("Let Kav install updates", "הרשאה להתקין עדכונים"),
                     subtitle = T("Android asks this once", "Android שואלת את זה פעם אחת"),
                     onClick = { Updates.askInstallPermission(ctx) },
                 )

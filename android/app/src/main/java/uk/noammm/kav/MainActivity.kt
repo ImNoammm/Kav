@@ -666,7 +666,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var updateChecked by mutableStateOf(false)
     var updateFailed by mutableStateOf(false)
 
-    // Check for updates: asks GitHub now, as the rider asked, and keeps the answer as the background check does.
+    // Check now (Settings): asks GitHub now, as the rider asked, and keeps the answer as the background check does.
     suspend fun checkForUpdate(ctx: Context) {
         try {
             val installed = Updates.installedVersion(ctx)

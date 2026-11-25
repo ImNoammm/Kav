@@ -213,13 +213,14 @@ fun UpdateSection(model: KavModel) {
                     },
                 ) { Text(it, style = K.type.subhead, color = if (it == available) K.accentInk else K.textSecondary) }
             }
-            // One button that turns from Check for updates into Update when a version is found: its words fade and its
+            // One button that turns from Check now into Update when a version is found: its words fade and its
             // colours ease, rather than one button taking the other's place.
             val updating = model.updateProgress != null
             KavButton(
                 when {
                     release != null -> T("Update", "עדכון")
-                    else -> T("Check for updates", "בדקו עדכונים")
+                    // Short, so the status beside it stays on one line on a narrow screen.
+                    else -> T("Check now", "בדקו עכשיו")
                 },
                 {
                     if (release != null) model.startUpdate(ctx)
