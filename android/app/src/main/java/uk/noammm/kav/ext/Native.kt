@@ -81,6 +81,8 @@ object Native {
     fun settingsScreen(identity: String): Kav.Screen? = loaded[identity]?.settingsScreen
     fun isLoaded(identity: String) = loaded.containsKey(identity)
     fun provides(identity: String, hook: String) = loaded[identity]?.hooks?.containsKey(hook) == true
+    // The loaded extensions that provide a hook, with when each was switched on.
+    fun providing(hook: String): List<Pair<String, Long>> = loaded.values.filter { it.hooks.containsKey(hook) }.map { it.identity to it.onAt }
     fun nameOf(identity: String): String? = loaded[identity]?.name
 
     // The loaded extensions holding an action, and their views on a part, as Actions and Parts order them.
@@ -309,7 +311,11 @@ object Native {
         override fun screen(page: String, screen: Kav.Screen) { l.screens[page] = screen }
         override fun home(screen: Kav.Screen) { l.screens[PageSpecs.HOME_PAGE] = screen }
         override fun map(): kav.kavapp.api.KavMap = NativeMap.of(i.identity, l)
-        override fun provide(name: String, hook: Kav.Hook) { l.hooks[name] = hook }
+        override fun provide(name: String, hook: Kav.Hook) {
+            l.hooks[name] = hook
+            // The trip notification's buttons (TripButtons): provided again, they changed.
+            if (name == TripButtons.CAPABILITY) TripButtons.changed?.invoke()
+        }
         override fun settings(): String =
             runCatching { ExtSettings.read(hub.registry.stateDir(i.identity), PageSpecs.of(i.manifest)).toString() }.getOrDefault("{}")
         override fun onSettings(changed: Kav.SettingsChanged?) { l.onSettings = changed }

@@ -79,10 +79,18 @@ class TripService : Service() {
         ensureChannel(this)
         if (Prefs.spokenAlerts(this) || Prefs.spokenTurns(this)) Speaker.warm(this)
         running = this
+        // An extension saying its buttons on the notification changed (TripButtons): posted again now.
+        uk.noammm.kav.ext.TripButtons.changed = { handler.post { if (running === this) { shown = null; post(force = true) } } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACT_END) { end(); return START_NOT_STICKY }
+        // An extension's own button on the notification (TripButtons): the tap is told to it.
+        if (intent?.action == ACT_EXT) {
+            val who = intent.getStringExtra(EXTRA_EXT); val id = intent.getStringExtra(EXTRA_ID)
+            if (who != null && id != null) uk.noammm.kav.ext.TripButtons.tap(who, id)
+            return START_STICKY
+        }
         if (intent?.action == ACT_REPOST) shown = null
         if (!foreground && !goForeground()) { stopSelf(); return START_NOT_STICKY }
         if (journey() == null) { finish(); return START_NOT_STICKY }
@@ -99,7 +107,7 @@ class TripService : Service() {
         handler.removeCallbacksAndMessages(null)
         tracking?.invoke()
         tracking = null
-        if (running === this) running = null
+        if (running === this) { running = null; uk.noammm.kav.ext.TripButtons.changed = null }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         PayEntry.sync(this)
         super.onDestroy()
@@ -319,6 +327,9 @@ class TripService : Service() {
         private val BUZZ = longArrayOf(0, 300, 150, 300)
         private const val ACT_END = "uk.noammm.kav.trip.END"
         private const val ACT_REPOST = "uk.noammm.kav.trip.REPOST"
+        private const val ACT_EXT = "uk.noammm.kav.trip.EXT"
+        private const val EXTRA_EXT = "uk.noammm.kav.trip.EXT_ID"
+        private const val EXTRA_ID = "uk.noammm.kav.trip.BUTTON"
         private const val PROMOTED = "android.requestPromotedOngoing"
         private const val TICK_MS = 15_000L
         private const val MIN_GAP_MS = 2_000L
@@ -407,6 +418,24 @@ class TripService : Service() {
             if (pay.ticket != null) T("Show ticket", "הצגת הכרטיס") to PayEntry.pending(ctx, PayEntry.ticket(ctx, pay.ticket), 5)
             else T("Pay", "תשלום") to PayEntry.pending(ctx, PayEntry.pay(ctx, pay.section, pay.ride), 5)
 
+        // The notification's buttons: Kav's own ("pay" or "ticket", then "end"), or as an extension that provides
+        // "trip.notification" puts them (TripButtons), its own buttons' taps coming back here (ACT_EXT).
+        private fun buttons(ctx: Context, pay: TripPay?): List<Pair<String, PendingIntent>> {
+            val own = buildList {
+                pay?.let { p -> payAction(ctx, p).let { (label, pi) -> add(Triple(if (p.ticket != null) "ticket" else "pay", label, pi)) } }
+                add(Triple("end", T("End trip", "סיום נסיעה"), act(ctx, ACT_END)))
+            }
+            val ride = pay?.ride?.ride?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            return uk.noammm.kav.ext.TripButtons.of(own.map { it.first to it.second }, ride).map { b ->
+                val owner = b.owner
+                b.label to if (owner == null) own.first { it.first == b.id }.third else PendingIntent.getService(
+                    ctx, (owner + "|" + b.id).hashCode(),
+                    Intent(ctx, TripService::class.java).setAction(ACT_EXT).putExtra(EXTRA_EXT, owner).putExtra(EXTRA_ID, b.id),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            }
+        }
+
         @RequiresApi(Build.VERSION_CODES.BAKLAVA)
         private fun live(ctx: Context, n: TripNotice, accent: Int, pay: TripPay?): Notification {
             val style = Notification.ProgressStyle()
@@ -422,8 +451,7 @@ class TripService : Service() {
                 .setLargeIcon(Icon.createWithBitmap(plateIcon(n.glyph, n.tint)))
                 .setStyle(style)
                 .setShortCriticalText(n.chip)
-                .apply { pay?.let { payAction(ctx, it) }?.let { (label, pi) -> addAction(Notification.Action.Builder(null as Icon?, label, pi).build()) } }
-                .addAction(Notification.Action.Builder(null as Icon?, T("End trip", "סיום נסיעה"), act(ctx, ACT_END)).build())
+                .apply { for ((label, pi) in buttons(ctx, pay)) addAction(Notification.Action.Builder(null as Icon?, label, pi).build()) }
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))
                 .setOngoing(true)
@@ -446,8 +474,7 @@ class TripService : Service() {
                 .setSubText(n.arrive)
                 .setLargeIcon(plateIcon(n.glyph, n.tint))
                 .setProgress(n.max, n.progress, false)
-                .apply { pay?.let { payAction(ctx, it) }?.let { (label, pi) -> addAction(0, label, pi) } }
-                .addAction(0, T("End trip", "סיום נסיעה"), act(ctx, ACT_END))
+                .apply { for ((label, pi) in buttons(ctx, pay)) addAction(0, label, pi) }
                 .setContentIntent(openApp(ctx))
                 .setDeleteIntent(act(ctx, ACT_REPOST))
                 .setOngoing(true)

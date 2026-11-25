@@ -39,8 +39,9 @@ internal object PayEntry {
     fun on(ctx: Context): Boolean = uk.noammm.kav.ui.PayMode.on(ctx)
 
     // Turned on, set up or not: the Pay shortcut, tile and notification Pay stay, and while something is missing (Rav-Pass
-    // removed, a permission taken back) they open Kav on its setup popup.
-    fun chosen(ctx: Context): Boolean = Prefs.ravPass(ctx)
+    // removed, a permission taken back) they open Kav on its setup popup. An extension taking over paying (the action
+    // "pay") turns them on too, as it does paying itself (PayMode.on).
+    fun chosen(ctx: Context): Boolean = uk.noammm.kav.ext.Actions.held("pay") || Prefs.ravPass(ctx)
 
     // In the rider's language in Kav, for what Kav posts while none of its screens is open.
     fun t(ctx: Context, en: String, he: String) = if (Prefs.lang(ctx) == Lang.HE) he else en
