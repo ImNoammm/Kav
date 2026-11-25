@@ -2002,9 +2002,9 @@ internal fun toggleInk(on: Boolean): Color =
 @Composable
 internal fun ToggleRow(
     title: String, on: Boolean, glyph: @Composable () -> Unit, subtitle: String? = null,
-    subtitleMaxLines: Int = 1, subtitleColor: Color? = null, onChange: (Boolean) -> Unit,
+    subtitleMaxLines: Int = 1, subtitleColor: Color? = null, info: String? = null, onChange: (Boolean) -> Unit,
 ) = ListRow(
-    title, subtitle = subtitle,
+    title, subtitle = subtitle, info = info,
     subtitleMaxLines = subtitleMaxLines, subtitleColor = subtitleColor,
     modifier = Modifier.semantics { toggleableState = if (on) ToggleableState.On else ToggleableState.Off },
     leading = { Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { glyph() } },

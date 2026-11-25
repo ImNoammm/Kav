@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -410,7 +411,8 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
 }
 
 // A row of a list: its title and a line under it, something at its start (an icon, a tile), and at its end a value or
-// a control; a chevron where it opens something.
+// a control; a chevron where it opens something. info: its explanation, behind a small (i) before what's at its end,
+// which opens under the row inside its card: for a row with no header over it to carry one (a switch on its own).
 @Composable
 fun ListRow(
     title: String,
@@ -424,7 +426,20 @@ fun ListRow(
     titleColor: Color = K.text,
     subtitleMaxLines: Int = 1,
     subtitleColor: Color? = null,
+    info: String? = null,
 ) {
+    if (info != null) {
+        var open by rememberSaveable(title) { mutableStateOf(false) }
+        Column(Modifier.fillMaxWidth()) {
+            ListRow(
+                title, modifier, subtitle, value, leading,
+                trailing = { InfoButton(open, title, Modifier.overlapsHeight()) { open = !open }; trailing?.invoke() },
+                onClick, chevron, titleColor, subtitleMaxLines, subtitleColor,
+            )
+            InfoNote(open, info, Modifier.padding(start = K.gap4, end = K.gap4, bottom = K.gap3))
+        }
+        return
+    }
     Row(
         modifier
             .fillMaxWidth()
