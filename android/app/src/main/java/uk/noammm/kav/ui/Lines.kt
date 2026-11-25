@@ -198,6 +198,13 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
     }
     // The full list waits for Recent and Nearby, so it doesn't flash up first and then get pushed down.
     val listReady = list.leadReady || q.isNotBlank() || types.isNotEmpty()
+    // #107: a line number the list holds more than once, per operator and mode.
+    val twins = remember(sections) {
+        val seen = HashSet<String>(); val dup = HashSet<String>()
+        sections.forEach { (_, rs) -> rs.forEach { r -> val k = "${net.rAgency.getOrElse(r.route) { -1 }}|${net.rType[r.route]}|${net.rShort[r.route]}"; if (!seen.add(k)) dup.add(k) } }
+        dup
+    }
+    fun twin(r: LineRow) = "${net.rAgency.getOrElse(r.route) { -1 }}|${net.rType[r.route]}|${net.rShort[r.route]}" in twins
 
     Column(Modifier.fillMaxSize()) {
         KavPart("lines.header", Unit, { org.json.JSONObject() }) { ScreenHeader(T("Lines", "קווים")) }
@@ -228,7 +235,7 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
                 if (operator.isNotBlank()) item(key = "op-$operator") {
                     Box(Modifier.animateItem()) { SectionLabel(operatorLabel(operator)) }
                 }
-                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex) } }
+                itemsIndexed(rows, key = { _, it -> it.route }) { i, row -> Box(Modifier.animateItem()) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twin(row)) } }
             }
         }
         ScrollEdge(listState.canScrollBackward)
@@ -274,7 +281,7 @@ private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp): Modifier = layout {
 private fun SectionLabel(label: String) = SectionHeader(label)
 
 @Composable
-private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean, last: Boolean) {
+private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean, last: Boolean, twin: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -285,7 +292,7 @@ private fun LineRowCard(model: KavModel, net: Net, row: LineRow, first: Boolean,
         horizontalArrangement = Arrangement.spacedBy(K.gap3),
     ) {
         LineIdentity(net.rType[row.route], net.rShort[row.route], busOperator(net.rType[row.route], -1) { Operators.of(net, row.route) })
-        LineSpan(net, row, Modifier.weight(1f))
+        LineSpan(net, row, Modifier.weight(1f), twin)
         RowChevron()
     }
 }
@@ -454,7 +461,7 @@ private fun operatorLabel(name: String): String = when (name) {
 }
 
 @Composable
-private fun LineSpan(net: Net, row: LineRow, modifier: Modifier = Modifier) {
+private fun LineSpan(net: Net, row: LineRow, modifier: Modifier = Modifier, twin: Boolean = false) {
     if (row.a < 0) {
         Text(T("Route stops", "תחנות המסלול"), style = K.type.body, color = K.muted, modifier = modifier)
         return
@@ -465,9 +472,15 @@ private fun LineSpan(net: Net, row: LineRow, modifier: Modifier = Modifier) {
         row.both -> "\u2068$a\u2069 ↔ \u2068$b\u2069"
         else -> T("\u2068$a\u2069 → \u2068$b\u2069", "\u2068$a\u2069 ← \u2068$b\u2069")
     }
-    Text(
-        text, style = K.type.bodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = modifier,
-    )
+    // #107: two rows of one line number (a line published as two routes): each end with its street and town, so they differ.
+    val full = { s: Int -> net.stopName(s) + net.cityName(s).takeIf { it.isNotBlank() }?.let { " \u00b7 $it" }.orEmpty() }
+    Column(modifier) {
+        Text(text, style = K.type.bodyStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (twin) Text(
+            "\u2068${full(row.a)}\u2069 \u2192 \u2068${full(row.b)}\u2069", style = K.type.caption, color = K.dim,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 // A line as the stop boards show it: its plate, with the mode's mark and the number, at least as wide as a three-digit
@@ -1573,6 +1586,14 @@ private fun LinePage(
                 Modifier.padding(horizontal = K.gap4).padding(top = K.gap3),
             )
         }
+        // #107: a numbered line of the phone's timetable with no route going back the other way.
+        val noReturn by produceState<Boolean?>(null, route, line) {
+            value = if (route < 0 || line != null || number.isBlank()) false else withContext(Dispatchers.Default) { !hasReverse(net, route) }
+        }
+        if (noReturn == true) NoteCard(
+            T("No return route in the Transport Ministry data.", "אין מסלול חזור בנתוני משרד התחבורה."),
+            Modifier.padding(horizontal = K.gap4).padding(top = K.gap3),
+        )
         val state = when {
             ways != null && way == null && line != null -> 1
             rows == null && route < 0 && waysFailed -> 2
@@ -1830,6 +1851,29 @@ private fun PageStops(
 // Each way's button: where it ends, most often its last stop's name and then named as that stop is. The first way to a
 // place (each end's main one, Schedules.arrange) is just that; a later one to the same place also says where it starts,
 // or, starting at the same place too, how many stops it calls at.
+// #107: whether another route of this line (same number, operator and mode) leaves from where this one ends, or ends where
+// this one starts, or leaves from the town this one ends in (as the swap button finds it). A line that starts and ends at
+// one stop needs none.
+private fun hasReverse(net: Net, route: Int): Boolean {
+    fun ends(r: Int): Pair<String, String>? {
+        val t = net.representativeTrip(r)
+        if (t < 0 || net.tripStart[t + 1] - net.tripStart[t] < 2) return null
+        return shownEnd(net, net.stStop[net.tripStart[t]]) to shownEnd(net, net.stStop[net.tripStart[t + 1] - 1])
+    }
+    val me = ends(route) ?: return true
+    if (me.first == me.second) return true
+    val t0 = net.representativeTrip(route)
+    val myLastTown = net.cityName(net.stStop[net.tripStart[t0 + 1] - 1])
+    val short = net.rShort[route]; val agency = net.agencyOf(route); val type = net.rType[route]
+    for (r in net.rShort.indices) {
+        if (r == route || net.rShort[r] != short || net.rType[r] != type || net.agencyOf(r) != agency) continue
+        val e = ends(r) ?: continue
+        if (e.first == me.second || e.second == me.first) return true
+        if (net.cityName(net.stStop[net.tripStart[net.representativeTrip(r)]]) == myLastTown) return true
+    }
+    return false
+}
+
 internal fun wayLabels(net: Net, ways: List<Schedules.Way>): List<String> {
     val ends = ways.map { w ->
         val last = w.stops.last()
