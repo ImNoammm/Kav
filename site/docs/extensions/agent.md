@@ -412,7 +412,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 
 | Name | Args | Where Kav handles it | Kav source |
 |---|---|---|---|
-| `pay` | a ride (below), `{}` from Home's "Pay for a ride" and the shortcuts, `{"section": "train"}` for a train's exit ticket | every Pay button, the trip's notification, the Pay shortcut and tile: `ui/RavPass.kt` `RavPass.open` | `ui/RavPass.kt:101` |
+| `pay` | a ride (below), `{}` from Home's "Pay for a ride" and the shortcuts, `{"section": "train"}` for a train's exit ticket | every Pay button, the trip's notification, the Pay shortcut and tile: `ui/RavPass.kt` `RavPass.open` | `ui/RavPass.kt:159` |
 | `ticket.open` | `{"key"}` | a ticket opened from Home, a ride or the ride history: `ui/ExtActions.kt` `openTicket` | `ui/ExtActions.kt:54` |
 | `stop.open` | `{"stop": "il.mot/gtfs/stop/<code>", "name"}` | a stop's board opened (Stops tab, a trip, an alert): `KavModel.openStation`, `ui/Stations.kt` | `ui/ExtActions.kt:26` |
 | `line.open` | `{"number", "stop"}` (`stop` the board it was opened from, or `null`) | a line's page opened: `ui/Lines.kt` `openTimetableLine`, `KavModel.openSchedule` | `ui/ExtActions.kt:48` |
@@ -420,46 +420,46 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `trip.start` | `{"trip"}` | a trip's Start: `ui/TripDetail.kt` | `ui/TripDetail.kt:203` |
 | `trip.end` | `{"trip"}` | End trip in navigation: `ui/TripDetail.kt` (the trip notification's own End always ends it) | `ui/TripDetail.kt:226` |
 | `share` | `{"trip"}` | a trip's Share: `ui/TripDetail.kt` | `ui/TripDetail.kt:205` |
-| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results | `ui/DirectionsOnline.kt:405` |
-| `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` | `MainActivity.kt:403` |
-| `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` | `ui/Common.kt:574` |
+| `plan` | `{"from": {"name", "lat", "lon"}, "to": {...}, "at": <seconds, 0 for now>, "way": "depart" \| "arrive" \| "last"}` | a search started: `ui/DirectionsOnline.kt`. Taken over, Kav plans nothing and closes the results | `ui/DirectionsOnline.kt:410` |
+| `report` | `{"line", "agency", "origin", "destination", "at", "plate", "stops": [names]}` | a bus reported, from a trip, navigation, Live or a line: `KavModel.openReport` | `MainActivity.kt:427` |
+| `alert.open` | `{"label", "ids"}` | a service alert opened: `ui/Common.kt` `ServiceAlerts` | `ui/Common.kt:581` |
 | `taxi` | `{"link": "gett://..."}` | a taxi ordered: `ui/Gett.kt` | `ui/Gett.kt:56` |
 | `street.open` | `{"name", "lat", "lon"}` | a stop's Street View: `ui/StreetView.kt` `openStreet` | `ui/StreetView.kt:68` |
-| `place.save` | `{"places": [{"id", "name", "lat", "lon"}]}`, the whole list as it would be kept | Home's places added, edited, moved or removed: `KavModel.saveFavourites` | `MainActivity.kt:423` |
-| `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` | `MainActivity.kt:437` |
-| `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` | `MainActivity.kt:443` |
+| `place.save` | `{"places": [{"id", "name", "lat", "lon"}]}`, the whole list as it would be kept | Home's places added, edited, moved or removed: `KavModel.saveFavourites` | `MainActivity.kt:457` |
+| `stop.save` | `{"stops": [keys]}` | a stop saved or removed: `KavModel.saveStops` | `MainActivity.kt:471` |
+| `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` | `MainActivity.kt:477` |
 | `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` | `ui/Home.kt:108` |
-| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1453` |
-| `settings.page.open` | `{"page"}` | Opens a Settings page by ID. See the Settings parts below. | `ui/Settings.kt:336` |
+| `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1559` |
+| `settings.page.open` | `{"page"}` | Opens a Settings page by ID. See the Settings parts below. | `ui/Settings.kt:334` |
 | `pay.history.open` | `{"source": "home" \| "settings"}` | Opens ride history. Both entry points use the same default action. | `ui/PayHistory.kt:43` |
 | `plan.stop` | `{"end": "from" \| "to", "stop", "name", "place": {"name", "detail", "lat", "lon", "type", "mode"}}` | Sets the start or destination from a ministry or extension stop board and opens the planner. The default uses the coordinates in `place`. | `ui/ExtActions.kt:29` |
-| `live.show` | `{"show": "all" \| "vehicles" \| "stops"}` | Changes the Live map filter. | `ui/LiveScreen.kt:578` |
-| `search.open` | `{}` | Opens Home's destination search. | `ui/DirectionsOnline.kt:680` |
+| `live.show` | `{"show": "all" \| "vehicles" \| "stops"}` | Changes the Live map filter. | `ui/LiveScreen.kt:601` |
+| `search.open` | `{}` | Opens Home's destination search. | `ui/DirectionsOnline.kt:682` |
 | `results.place.pick` | `{"end": "from" \| "to" \| "stop", "index"}` | Opens the place picker. Omit the index to add an intermediate stop. Indices start at zero. | `ui/DirectionsOnline.kt:222` |
 | `results.endpoints.swap` | `{}` | Swaps the start and destination. | `ui/DirectionsOnline.kt:782` |
 | `results.stop.remove` | `{"index"}` | Removes one intermediate stop by zero-based index. | `ui/DirectionsOnline.kt:768` |
 | `results.stop.stay` | `{"index", "minutes"}` | Sets a stay from 0 to 60 minutes at a zero-based intermediate stop. | `ui/DirectionsOnline.kt:764` |
 | `results.time.select` | `{"at", "way": "depart" \| "arrive" \| "last"}` | Sets the requested time from the time sheet or the Earlier/Later row. Time is Unix seconds. Use 0 for now or last departure. | `ui/DirectionsOnline.kt:227` |
 | `results.order.select` | `{"order"}` | Sorts the current search. See order values below. | `ui/DirectionsOnline.kt:1124` |
-| `results.planner.select` | `{"source": "kav" \| "own" \| "ext:<publisher>/<dataset>", "default"}` | Selects one of the available planner tabs. With `"default": true`, results open on that tab from then on ([hooks.md](https://kavapp.link/docs/extensions/hooks#planner-tabs-and-display-settings)). | `ui/DirectionsOnline.kt:840` |
+| `results.planner.select` | `{"source": "kav" \| "own" \| "ext:<publisher>/<dataset>", "default"}` | Selects one of the available planner tabs. With `"default": true`, results open on that tab from then on ([hooks.md](https://kavapp.link/docs/extensions/hooks#planner-tabs-and-display-settings)). | `ui/DirectionsOnline.kt:843` |
 | `trip.track` | `{"trip", "leg", "tripId", "line"}` | Live location on a ride's card follows its bus. `leg` is the ride's place in the trip's `legs`, `tripId` the bus Kav found for it. | `ui/TripDetail.kt:201` |
-| `nav.step` | `{"trip", "step", "current", "steps"}` | Shows one step of a trip under way: the step dots, their arrows and Current step. Steps count from zero. | `ui/Navigate.kt:345` |
-| `nav.board.select` | `{"trip", "leg", "option"}` | Picks which bus to take on a wait card. Option 0 is the planned bus. | `ui/Navigate.kt:348` |
-| `nav.replan` | `{"trip", "reason", "key"}` | New route from here, when the plan stopped working. | `ui/Navigate.kt:403` |
-| `nav.replan.keep` | `{"trip", "reason", "key"}` | Keeps the route and closes that warning. | `ui/Navigate.kt:404` |
+| `nav.step` | `{"trip", "step", "current", "steps"}` | Shows one step of a trip under way: the step dots, their arrows and Current step. Steps count from zero. | `ui/Navigate.kt:406` |
+| `nav.board.select` | `{"trip", "leg", "option"}` | Picks which bus to take on a wait card. Option 0 is the planned bus. | `ui/Navigate.kt:409` |
+| `nav.replan` | `{"trip", "reason", "key"}` | New route from here, when the plan stopped working. | `ui/Navigate.kt:417` |
+| `nav.replan.keep` | `{"trip", "reason", "key"}` | Keeps the route and closes that warning. | `ui/Navigate.kt:418` |
 | `nav.plan` | `{"trip"}` | Shows the trip's plan over navigation. | `ui/TripDetail.kt:228` |
 | `nav.exit` | `{"trip"}` | Leaves navigation for Home, by its back button or Back. The trip goes on. | `ui/TripDetail.kt:138` |
 | `share.send` | `{"target": "copy" \| "more" \| <app package>, "name", "link"}` | A target in a trip's share sheet. `link` is `null` until Kav has made it. | `ui/ShareSheet.kt:583` |
-| `pay.mode` | `{"on": <boolean>, "from": "home" \| "settings" \| "setup"}` | Paying turned on (at once, or through setup) or off (Kav asks first), from Home's offer, the Paying switch or setup. | `ui/RavPass.kt:401` |
-| `pay.offer.hide` | `{}` | Hides Home's offer to set up paying. | `ui/RavPass.kt:242` |
-| `pay.place.open` | `{"place"}` | Opens one of Rav-Pass's pages from Settings' Paying. See the place names below. | `ui/RavPass.kt:506` |
-| `pay.history.clear` | `{"rides"}` | Clear history in Settings' Paying. Kav's own asks first. | `ui/RavPass.kt:483` |
+| `pay.mode` | `{"on": <boolean>, "from": "home" \| "settings" \| "setup"}` | Paying turned on (at once, or through setup) or off (Kav asks first), from Home's offer, the Paying switch or setup. | `ui/RavPass.kt:469` |
+| `pay.offer.hide` | `{}` | Hides Home's offer to set up paying. | `ui/RavPass.kt:301` |
+| `pay.place.open` | `{"place"}` | Opens one of Rav-Pass's pages from Settings' Paying. See the place names below. | `ui/RavPass.kt:612` |
+| `pay.history.clear` | `{"rides"}` | Clear history in Settings' Paying. Kav's own asks first. | `ui/RavPass.kt:555` |
 | `ticket.ravpass.open` | Same as `ticket.header`. | Open in Rav-Pass on a Rav-Pass ticket. | `ui/TicketCard.kt:343` |
 | `live.vehicle.open` | `{"key", "plate", "line", "to", "mode", "lat", "lon", "at"}` | A vehicle opened on Live: tapped on the map, in the list or on a stop's card. `key` is the one `vehicles` gives, `at` when it last said where it was (seconds). Kav's own opens its card, for a vehicle of those around. Needs `"api": 5`. | `ui/LiveScreen.kt:363` |
 | `live.stop.open` | `{"stop", "name"}` | A stop tapped on Live's map. `stop` is `null` for one that isn't the timetable's. Kav's own opens its card, for a stop of those around. Needs `"api": 5`. | `ui/LiveScreen.kt:366` |
 | `stop.alerts.open` | `{"stop", "name"}` | The Alerts button on a stop's board. Kav's own opens its line alerts while that board is open. Needs `"api": 5`. | `ui/Stations.kt:408` |
 | `line.alerts.save` | `{"alerts": [{"id", "stop", "name", "lines", "days", "from", "to", "toward"}]}`, the whole list as it would be kept | A line alert added or deleted. `days` has bit 0 for Sunday, `from` and `to` are minutes of the day, `toward` (a train station's) the places the trains end. Kav's own keeps the list given. Needs `"api": 5`. | `MainActivity.kt:485` |
-| `line.getoff` | `{"number", "operator", "stop", "name", "index"}` | "Get off here" on a line's page: the trip on board to that stop. `index` is the stop's place on the way shown, from zero. Kav's own works while that page is open. Needs `"api": 5`. | `ui/Lines.kt:1572` |
+| `line.getoff` | `{"number", "operator", "stop", "name", "index"}` | "Get off here" on a line's page: the trip on board to that stop. `index` is the stop's place on the way shown, from zero. Kav's own works while that page is open. Needs `"api": 5`. | `ui/Lines.kt:1592` |
 | `report.send` | `report`'s args, with `"about"`, `"issue"`, `"line"` and `"words"` | "Fill in the ministry's form" at the end of a report. Never told who reports it: the rider's name, phone, ID and photos stay in Kav's form. Kav's own opens the form while that step is open. Needs `"api": 5`. | `ui/Report.kt:947` |
 | `place.pick` | `{"place": {"name", "detail", "lat", "lon", "type", "mode"}, "title"}` | A place chosen in Kav's place search (a result, a saved place, a recent one, a stop), for any end of a trip. `title` is the search's heading. Kav's own uses the place given, so `kavAction` can give another; while the search is open. Needs `"api": 5`. | `ui/Pickers.kt:223` |
 | `link.open` | `{"from", "to", "toName", "at", "shared"}` | A trip link Kav was opened with (`kav://trip`, a shared trip, a `geo:` place). Each place is `{"name", "lat", "lon"}`, or `null` when the link leaves it to the rider; `at` in seconds, 0 for now; `shared` for a whole trip someone shared. Kav's own opens it in the planner. Needs `"api": 5`. | `MainActivity.kt:1066` |
@@ -517,22 +517,22 @@ when the part next shows.
 | `trip.map` | `{"trip"}` | its map | `ui/TripDetail.kt:294` |
 | `trip.summary` | `{"trip"}` | its summary under the map | `ui/TripDetail.kt:298` |
 | `trip.timeline` | `{"trip"}` | all its steps | `ui/TripDetail.kt:300` |
-| `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button | `ui/TripDetail.kt:473` |
-| `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line | `ui/TripDetail.kt:444` |
-| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:1024` |
+| `trip.ride` | `{"trip", "leg", "index"}` | each ride's card under its boarding stop, with its Pay button | `ui/TripDetail.kt:475` |
+| `trip.walk` | `{"trip", "leg", "index", "metres", "minutes"}` | each walk's line | `ui/TripDetail.kt:446` |
+| `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:1037` |
 | `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) | `ui/Stations.kt:366` |
-| `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:448` |
-| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1491` |
-| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:333` |
-| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1135` |
-| `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:346` |
+| `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:452` |
+| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1612` |
+| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:331` |
+| `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1241` |
+| `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:344` |
 | `stops.header` | `{}` | The Stops tab heading. | `ui/Stations.kt:218` |
 | `stops.search` | `{"query"}` | Search field and Select on map on the Stops tab. | `ui/Stations.kt:225` |
-| `lines.header` | `{}` | The Lines tab heading in both timetable modes. | `ui/Lines.kt:200` |
-| `lines.search` | `{"query"}` | The line search field in both timetable modes. | `ui/Lines.kt:241` |
-| `lines.filters` | `{"modes": [<GTFS route type>]}` | The mode filters in the Lines tab. An empty list selects all modes. | `ui/Lines.kt:247` |
-| `live.header` | `{"showingInfo": <boolean>}` | The Live tab heading and its info button. | `ui/LiveScreen.kt:514` |
-| `live.filters` | `{"show"}` | The Live map's All, Vehicles and Stops picker. Values match `live.show`. | `ui/LiveScreen.kt:572` |
+| `lines.header` | `{}` | The Lines tab heading in both timetable modes. | `ui/Lines.kt:201` |
+| `lines.search` | `{"query"}` | The line search field in both timetable modes. | `ui/Lines.kt:242` |
+| `lines.filters` | `{"modes": [<GTFS route type>]}` | The mode filters in the Lines tab. An empty list selects all modes. | `ui/Lines.kt:248` |
+| `live.header` | `{"showingInfo": <boolean>}` | The Live tab heading and its info button. | `ui/LiveScreen.kt:537` |
+| `live.filters` | `{"show"}` | The Live map's All, Vehicles and Stops picker. Values match `live.show`. | `ui/LiveScreen.kt:595` |
 | `ticket.header` | `{"key", "kind", "line", "from", "to", "validUntil"}` | The ticket heading. Optional fields are omitted, and times are in milliseconds. | `ui/TicketCard.kt:297` |
 | `ticket.validity` | Same as `ticket.header`. | The expiry, fare range and payment time. | `ui/TicketCard.kt:339` |
 | `ticket.ride` | Same as `ticket.header`. | The ticket's line and boarding and exit stops, when shown. | `ui/TicketCard.kt:396` |
@@ -549,20 +549,20 @@ when the part next shows.
 | `settings.page.privacy` | `{"page", "title"}` | The Privacy and sharing Settings page body. | `ui/Settings.kt:352` |
 | `settings.page.extensions` | `{"page", "title"}` | The Extensions Settings page body. | `ui/Settings.kt:352` |
 | `settings.page.kav` | `{"page", "title"}` | The Kav Settings page body. | `ui/Settings.kt:352` |
-| `results.endpoints` | `{"from", "to", "stops": [{"name", "minutes"}]}` | The endpoint picker, stopovers, swap, and Back. Destination is omitted when unset. | `ui/DirectionsOnline.kt:749` |
-| `results.options` | `{"at", "way", "order"}` | The time and sort controls above results. Values match the corresponding actions. | `ui/DirectionsOnline.kt:788` |
-| `results.time.shift` | `{"firstDeparture"}` | The Earlier/Later row and the displayed time of the first departure. | `ui/DirectionsOnline.kt:805` |
-| `results.planners` | `{"source", "sources"}` | The current and available planner tabs, by key: `kav`, `own`, or an extension's `ext:<publisher>/<dataset>`. | `ui/DirectionsOnline.kt:838` |
-| `nav.header` | `{"trip"}` | Navigation's top bar: Back to Home, the time left, and Show trip plan. | `ui/Navigate.kt:377` |
-| `nav.problem` | `{"trip", "reason", "key"}` | The warning when the plan stopped working, with New route from here. | `ui/Navigate.kt:401` |
-| `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:452` |
-| `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:804` |
-| `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:847` |
-| `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:439` |
-| `ride.pay` | `{"trip", "leg", "index"}` | The pay row of a ride's card, on a trip's page and in navigation's cards: "Pay for this ride" (or a station's) and what to do, under which Kav shows the ride's ticket instead once it has one (and then no part). `leg` is the ride, `index` its place in `trip.legs`. Replaced, your view sits in Kav's own rounded row and is all of it, so its taps are yours. Kav 5.1 and older have no such part, and `kav.part` throws there. | `ui/RavPass.kt:278` |
+| `results.endpoints` | `{"from", "to", "stops": [{"name", "minutes"}]}` | The endpoint picker, stopovers, swap, and Back. Destination is omitted when unset. | `ui/DirectionsOnline.kt:751` |
+| `results.options` | `{"at", "way", "order"}` | The time and sort controls above results. Values match the corresponding actions. | `ui/DirectionsOnline.kt:790` |
+| `results.time.shift` | `{"firstDeparture"}` | The Earlier/Later row and the displayed time of the first departure. | `ui/DirectionsOnline.kt:808` |
+| `results.planners` | `{"source", "sources"}` | The current and available planner tabs, by key: `kav`, `own`, or an extension's `ext:<publisher>/<dataset>`. | `ui/DirectionsOnline.kt:841` |
+| `nav.header` | `{"trip"}` | Navigation's top bar: Back to Home, the time left, and Show trip plan. | `ui/Navigate.kt:440` |
+| `nav.problem` | `{"trip", "reason", "key"}` | The warning when the plan stopped working, with New route from here. | `ui/Navigate.kt:468` |
+| `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:520` |
+| `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:876` |
+| `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:922` |
+| `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:464` |
+| `ride.pay` | `{"trip", "leg", "index"}` | The pay row of a ride's card, on a trip's page and in navigation's cards: "Pay for this ride" (or a station's) and what to do, under which Kav shows the ride's ticket instead once it has one (and then no part). `leg` is the ride, `index` its place in `trip.legs`. Replaced, your view sits in Kav's own rounded row and is all of it, so its taps are yours. Kav 5.1 and older have no such part, and `kav.part` throws there. | `ui/RavPass.kt:337` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
-| `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:130` |
+| `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:137` |
 | `stops.row` | `{"stop", "name", "list", "metres"}` | Each stop in the Stops tab. `list` is `saved`, `nearby` or `search`; `metres` only for `nearby`. Needs `"api": 5`. | `ui/Stations.kt:240` |
 | `stop.departure` | `{"stop", "name", "departure"}` | Each departure on a stop's board, as its own row. `departure` is as `departures` gives it. Rows sit with no space between them. Needs `"api": 5`. | `ui/Stations.kt:489` |
 | `stop.alerts` | `{"stop", "name"}` | Everything under the heading of a stop's line alerts. Needs `"api": 5`. | `ui/AlertSheet.kt:106` |
@@ -574,9 +574,9 @@ when the part next shows.
 | `live.vehicle` | `live.vehicle.open`'s, `{}` once it stops reporting | A vehicle's card on Live. Needs `"api": 5`. | `ui/LiveScreen.kt:754` |
 | `live.stop` | `{"stop", "name"}` | A stop's card on Live. Needs `"api": 5`. | `ui/LiveScreen.kt:744` |
 | `home.nearest` | `{"stop", "name", "metres"}` | The nearest station in Home's suggestions. Needs `"api": 5`. | `ui/HomeSuggestions.kt:233` |
-| `results.empty` | `{"reason"}` | The note when a search shows no routes. `reason` is `none`, `filtered` (the rider's filters hide them all), `shabbat`, `error` or `too_close`. Needs `"api": 5`. | `ui/DirectionsOnline.kt:852` |
-| `results.hidden` | `{"count", "reasons"}` | The row of routes the rider's rules hid, and why. Needs `"api": 5`. | `ui/DirectionsOnline.kt:926` |
-| `alert.sheet` | `{"label", "ids"}` | A service alert's notices, under its heading. Needs `"api": 5`. | `ui/Common.kt:604` |
+| `results.empty` | `{"reason"}` | The note when a search shows no routes. `reason` is `none`, `filtered` (the rider's filters hide them all), `shabbat`, `error` or `too_close`. Needs `"api": 5`. | `ui/DirectionsOnline.kt:854` |
+| `results.hidden` | `{"count", "reasons"}` | The row of routes the rider's rules hid, and why. Needs `"api": 5`. | `ui/DirectionsOnline.kt:927` |
+| `alert.sheet` | `{"label", "ids"}` | A service alert's notices, under its heading. Needs `"api": 5`. | `ui/Common.kt:611` |
 | `report.step` | `report`'s args, with `"step"` | Each page of the report form: `about`, `what`, `ride`, `more`, `you` or `check`. Needs `"api": 5`. | `ui/Report.kt:713` |
 | `search.result` | `{"place", "section", "index"}` | Each result of Kav's place search. `place` is as `place.pick` gives it; `section` is `recent`, `places` or `stops`. Needs `"api": 5`. | `ui/Pickers.kt:443` |
 
