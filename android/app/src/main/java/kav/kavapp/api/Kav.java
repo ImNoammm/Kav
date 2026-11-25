@@ -56,8 +56,9 @@ public interface Kav {
     default String stops(String query) { return null; }
 
     /** API 5. The live vehicles Kav has, as its Live tab and a line's page show them. query: {"line": "<number>"}, every
-     *  vehicle on the routes with that number, or {"near": [lat, lon], "km"}, those around a place. Answers a JSON array
-     *  of {"key", "plate", "route", "line", "to", "agency", "mode", "lat", "lon", "bearing", "speed", "at"}; null when
+     *  vehicle on the routes with that number, or {"near": [lat, lon], "km"}, those around a place; both, the line's
+     *  nearest the place first. Answers a JSON array of {"key", "plate", "route", "line", "to", "agency", "mode", "lat",
+     *  "lon", "bearing", "speed", "at"}, with "metres" when near is given; null when
      *  Kav's live source can't be reached. It asks the network: never on the main thread, where it throws. */
     default String vehicles(String query) { return null; }
 
@@ -68,8 +69,8 @@ public interface Kav {
     default String departures(String query) { return null; }
 
     /** API 5. Rides already over, into Kav's ride history (Settings › Paying › Ride history, Home's "This month"): a JSON
-     *  array of {"key", "kind", "line", "from", "to", "at", "riders", "price"}, kind "BUS", "TRAIN" or "LIGHT_RAIL", at
-     *  in milliseconds, price in agorot. The same key again updates that ride. Kav keeps the key as
+     *  array of {"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}, kind "BUS", "TRAIN" or
+     *  "LIGHT_RAIL", at in milliseconds, band the fare's reach in km, price in agorot. The same key again updates that ride. Kav keeps the key as
      *  "ext:<id()>:<key>", as with addTicket. A ride that isn't right throws. From any thread. */
     default void addRides(String rides) {}
 

@@ -66,8 +66,9 @@ object KavData {
     // -- Live vehicles: what Kav's Live tab and a line's page show ------------------------------------------------------
 
     // {"line": "<number>"}: every vehicle on the routes with that number; or {"near": [lat, lon], "km"}: those around a
-    // place (Kav's server is told only the box around it, in whole hundredths of a degree, as for the Live tab). Each
-    // {"key", "plate", "route", "line", "to", "agency", "mode", "lat", "lon", "bearing", "speed", "at"}.
+    // place (Kav's server is told only the box around it, in whole hundredths of a degree, as for the Live tab). Both
+    // line and near: the line's vehicles, nearest the place first. Each {"key", "plate", "route", "line", "to",
+    // "agency", "mode", "lat", "lon", "bearing", "speed", "at"}, with "metres" when near is given.
     fun vehicles(query: JSONObject): JSONArray {
         val number = query.optString("line").trim()
         val near = query.optJSONArray("near")?.let { a -> a.optDouble(0) to a.optDouble(1) }?.takeIf { !it.first.isNaN() && !it.second.isNaN() }
@@ -76,16 +77,22 @@ object KavData {
             near != null -> KavLive.area(KavLive.box(near.first, near.second, query.optDouble("km", 1.0).coerceIn(0.1, 20.0)))
             else -> throw IllegalArgumentException("vehicles needs \"line\" or \"near\"")
         }
-        return vehiclesJson(area)
+        return vehiclesJson(area, near)
     }
 
-    internal fun vehiclesJson(area: KavLive.Area): JSONArray = JSONArray(area.buses.map { b ->
+    internal fun vehiclesJson(area: KavLive.Area, near: Pair<Double, Double>? = null): JSONArray {
+        val metres = near?.let { (lat, lon) -> area.buses.associateWith { distance(lat, lon, it.spot.lat, it.spot.lon) } }
+        val buses = if (metres != null) area.buses.sortedBy { metres[it] } else area.buses
+        return JSONArray(buses.map { b -> vehicleJson(area, b).apply { metres?.get(b)?.let { put("metres", Math.round(it)) } } })
+    }
+
+    private fun vehicleJson(area: KavLive.Area, b: KavLive.Bus): JSONObject {
         val l = area.lines[b.route]
-        JSONObject().put("key", b.key).put("plate", KavLive.plateOf(b.key) ?: JSONObject.NULL).put("route", b.route)
+        return JSONObject().put("key", b.key).put("plate", KavLive.plateOf(b.key) ?: JSONObject.NULL).put("route", b.route)
             .put("line", l?.number ?: JSONObject.NULL).put("to", l?.to ?: JSONObject.NULL).put("agency", l?.agency ?: JSONObject.NULL)
             .put("mode", l?.type ?: JSONObject.NULL).put("lat", b.spot.lat).put("lon", b.spot.lon)
             .put("bearing", b.spot.bearing).put("speed", b.spot.speed).put("at", b.spot.at)
-    })
+    }
 
     // -- A stop's departures: its board -------------------------------------------------------------------------------
 
@@ -101,7 +108,8 @@ object KavData {
     // -- Rides into Kav's ride history --------------------------------------------------------------------------------
 
     // An extension's rides already over, as Kav's ride history keeps them: each {"key", "kind", "line", "from", "to",
-    // "at", "riders", "price"}, kind "BUS", "TRAIN" or "LIGHT_RAIL", at in milliseconds and price in agorot. The key is
+    // "at", "riders", "band", "price"}, kind "BUS", "TRAIN" or "LIGHT_RAIL", at in milliseconds, band the fare's reach
+    // in km and price in agorot. The key is
     // the extension's own, kept as "ext:<its identity>:<key>" as its tickets are, so no extension reaches another's
     // rides or those Kav read. A ride that isn't right throws.
     internal fun ride(identity: String, o: JSONObject): Ride {
@@ -116,11 +124,12 @@ object KavData {
         }
         val at = o.optLong("at", 0).takeIf { it > 0 } ?: throw IllegalArgumentException("a ride needs at, in milliseconds")
         return Ride(uk.noammm.kav.ExtTickets.key(identity, id), kind, text("line"), text("from"), text("to"), at,
-            o.optInt("riders", 1).coerceIn(1, 20), price = if (o.has("price") && !o.isNull("price")) o.optInt("price").takeIf { it >= 0 } else null)
+            o.optInt("riders", 1).coerceIn(1, 20), band = if (o.has("band") && !o.isNull("band")) o.optInt("band").takeIf { it > 0 } else null,
+            price = if (o.has("price") && !o.isNull("price")) o.optInt("price").takeIf { it >= 0 } else null)
     }
 
     // The history with an extension's rides added, each one already there (by key) brought up to date, keeping the fare's
-    // reach Kav read for it.
+    // reach Kav had for it when the extension gives none.
     internal fun withRides(history: List<Ride>, rides: List<Ride>): List<Ride> = rides.fold(history) { all, r ->
         val old = all.firstOrNull { it.key == r.key } ?: return@fold all + r
         all.map { if (it.key == r.key) r.copy(band = r.band ?: old.band) else it }
