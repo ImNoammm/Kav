@@ -450,6 +450,8 @@ internal fun ThemeChoice() {
         "ערכת נושא משנה את המראה של Kav, ויכולה להוסיף הגדרות ועוד משלה. ההגדרות נשארות במראה של Kav, כך שאף ערכת נושא לא יכולה להסתיר אותן או לזייף אותן.",
     ))
     ThemeList(hub) { id -> ExtUi.returnTo = "look"; ExtUi.wanted = "e:$id"; SettingsNav.wanted = "extensions" }
+    // The page's own parts follow at a section's distance.
+    Spacer(Modifier.height(K.gap6))
 }
 
 // Settings › Extensions, Morphe's way: one card for each source, which opens to its extensions, each with its own switch;
@@ -844,7 +846,7 @@ private fun ExtensionPage(hub: Hub, i: Registry.Installed) {
     val screens = extScreenRows(hub, i)
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
         HeaderCard({
-            CentredHeader({ ExtTile(hub.registry.iconFile(i.identity), null, m.contributions.map { it.capability } + m.adds, 72.dp) }, i.displayName, fromWords(hub, i).ifEmpty { null },
+            CentredHeader({ ExtTile(hub.registry.iconFile(i.identity), null, if (m.isTheme) listOf(uk.noammm.kav.ext.Looks.CAPABILITY) else m.contributions.map { it.capability } + m.adds, 72.dp) }, i.displayName, fromWords(hub, i).ifEmpty { null },
                 kav = ExtApp.kavMade(i.source), version = m.version)
             // Its publisher's own words for what it is, a clear gap under the name; a long one opens in full on a tap.
             if (m.description.isNotEmpty()) Description(iso(m.description.take(2000)), Modifier.padding(top = K.gap4))
@@ -905,17 +907,25 @@ private fun PowerCard(on: Boolean, theme: String? = null, onChange: (Boolean) ->
     }
 }
 
-// A publisher's description, in the middle: three lines, and a tap opens the rest in place (and closes it again).
+// A publisher's description, in the middle: three lines, and a tap opens the rest in place (and closes it again). A
+// small arrow under a cut one shows it opens, and turns as it does.
 @Composable
 private fun Description(text: String, modifier: Modifier = Modifier) {
     var open by rememberSaveable(text) { mutableStateOf(false) }
     var cut by remember(text) { mutableStateOf(false) }
-    Text(text, style = K.type.subhead, color = K.textTertiary,
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = if (open) Int.MAX_VALUE else 3,
-        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, onTextLayout = { if (!open) cut = it.hasVisualOverflow },
-        modifier = modifier.fillMaxWidth().animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))
-            .then(if (cut || open) Modifier.clip(RoundedCornerShape(K.rTile)).clickable(role = androidx.compose.ui.semantics.Role.Button,
-                onClickLabel = if (open) T("Show less", "הצגת פחות") else T("Show more", "הצגת עוד")) { open = !open } else Modifier))
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, label = "description")
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile))
+            .then(if (cut || open) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
+                onClickLabel = if (open) T("Show less", "הצגת פחות") else T("Show more", "הצגת עוד")) { open = !open } else Modifier)
+            .animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text, style = K.type.subhead, color = K.textTertiary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = if (open) Int.MAX_VALUE else 3,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, onTextLayout = { if (!open) cut = it.hasVisualOverflow })
+        if (cut || open) Icon(Icons.Rounded.ExpandMore, null, tint = K.textTertiary, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn })
+    }
 }
 
 // What it adds to Kav, a switch each in plain words, as rows of its page's Settings card: its parts on Kav's screens,
@@ -1099,7 +1109,7 @@ private fun AddSourceSheet(hub: Hub, onFile: () -> Unit, onClose: () -> Unit) {
                     ListGroup(Modifier.animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f)), inset = K.gap4 + 40.dp + K.gap3) {
                         for (x in suggested) row {
                             key(x.key) {
-                                ListRow(x.name, subtitle = T.ltr("github.com/${x.repo}"),
+                                ListRow(x.name, subtitle = T.ltr("github.com/${x.repo}"), subtitleMaxLines = 2,
                                     leading = { SourceAvatar(uk.noammm.kav.ext.Community.picture(hub.dir, x), x.name, 40.dp, kav = ExtApp.kavMade(x.key)) },
                                     onClick = { if (queue.isEmpty()) queue = listOf(x.repo) }, chevron = false,
                                     trailing = { Icon(Icons.Rounded.Add, T("Add", "הוספה"), tint = K.accentInk, modifier = Modifier.size(22.dp)) })
