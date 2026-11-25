@@ -5315,7 +5315,10 @@ def rider_cost():
 # Each route of the list also gets how much later than planned it really gets there on average, from how far off
 # Kav's times run (CHANCE_TABLES: live-error.json by minutes ahead, timetable-error.json by minutes along the trip,
 # each by kind of line, fitted on past days' passings): the chance the rider makes each bus, a missed one replaced by
-# the next run of its line or another line the card offers (CHANCE_MISSED with none known). led() then gives each
+# the next run of its line or another line the card offers (CHANCE_MISSED with none known). Trains and the light rail
+# have a table of their own where CHANCE_TABLES has one (rail-error.json: how far off Kav's times for them ran,
+# boarding and getting off, on routes Kav listed that were followed on the recorded passings); read off the buses'
+# live table they came out far less sure than they are. led() then gives each
 # place in the list to the route likeliest to get there soonest, ROUTE_COST and CHANCE_WEIGHT minutes for each
 # expected minute late, among those planned to get there within CHANCE_REACH of the route it would have put there; the
 # routes listed stay the same. Without the tables, by ROUTE_COST alone.
@@ -5328,8 +5331,9 @@ chance, chance_failed = None, None
 
 
 def chance_tables():
-    """The two tables: timetable-error.json from CHANCE_TABLES (keep_chance() rebuilds it), live-error.json from ETA's
-    folder where kav-eta writes one, else from CHANCE_TABLES. None without both."""
+    """The tables: timetable-error.json from CHANCE_TABLES (keep_chance() rebuilds it), live-error.json from ETA's
+    folder where kav-eta writes one, else from CHANCE_TABLES, and rail-error.json from CHANCE_TABLES where it has one.
+    None without the first two."""
     global chance, chance_failed
     tables = chance
     if tables is None and CHANCE_TABLES and chance_failed is None:
@@ -5340,6 +5344,10 @@ def chance_tables():
                                 ("timetable", os.path.join(CHANCE_TABLES, "timetable-error.json"))):
                 with open(where) as f:
                     got[name] = json.load(f)
+            rail = os.path.join(CHANCE_TABLES, "rail-error.json")
+            if os.path.exists(rail):
+                with open(rail) as f:
+                    got["rail"] = json.load(f)
             chance = tables = got
         except (OSError, ValueError) as e:
             chance_failed = repr(e)
@@ -6355,12 +6363,19 @@ def keep_busy():
 ON_TIME = {"n": 0, "q": [0]}
 
 
-def chance_errors(tables, leg, at, code, line, now):
-    """How far off (real minus Kav's, seconds) Kav's time at of this ride at that stop runs: samples, sorted."""
+def chance_errors(tables, leg, at, code, line, now, side="board"):
+    """How far off (real minus Kav's, seconds) Kav's time at of this ride at that stop runs: samples, sorted. side:
+    whether the rider boards there or gets off ("board", "alight"), which the rail table tells apart: a train's (or the
+    light rail's) own errors that many minutes ahead, else its errors at any, else those of both."""
     digits = "".join(ch for ch in (line[0] or "") if ch.isdigit())
     kind = "long" if len(digits) >= 3 else "short"
     edge = lambda edges, minutes: max(e for e in edges if e <= max(minutes, 0))
-    live, tt = tables["live"], tables["timetable"]
+    live, tt, rail = tables["live"], tables["timetable"], tables.get("rail")
+    if rail and line[6] in (0, 1, 2, 5, 6, 7):
+        which = "train" if line[6] == 2 else "tram"
+        for key in ("%s|%s|%d" % (which, side, edge(rail["edges"], (at - now) / 60)), "%s|%s" % (which, side), "rail|%s" % side):
+            if key in rail["table"]:
+                return rail["table"][key]["q"]
     if leg.get("live") or line[6] in (0, 1, 2, 5, 6, 7):
         return live["table"].get("%s|%d" % (kind, edge(live["edges"], (at - now) / 60)), ON_TIME)["q"]
     own = tt["per_stop"].get("%s|%s" % (leg["line"], code))
@@ -6393,7 +6408,7 @@ def expected_late(it, stops, lines, now, tables, held=False):
             a["dep"] for a in leg.get("alts") or [] if a["dep"] > leg["dep"]]
         late += reach * (1 - made) * ((min(later) - leg["dep"]) if later else CHANCE_MISSED)
         reach *= made
-        before = chance_errors(tables, leg, leg["arr"], code(leg["stops"][-1]), line, now)
+        before = chance_errors(tables, leg, leg["arr"], code(leg["stops"][-1]), line, now, "alight")
     return reach if held else late + sum(before) / len(before)
 
 
