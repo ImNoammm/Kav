@@ -30,27 +30,24 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
     var mayInstall by remember { mutableStateOf(Updates.canInstall(ctx)) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { mayInstall = Updates.canInstall(ctx) } }
-    val title = T("Automatic updates", "עדכונים אוטומטיים")
     val info = T(
-        "Each time you open Kav, it asks GitHub whether there's a new version and offers it right away. Once a day in " +
-            "the background it also downloads it, on Wi-Fi (or mobile data, if you allow it), and makes sure it's signed with Kav's own key. Nothing " +
-            "installs by itself: Kav asks, Install now or Later. Install now closes Kav to " +
-            "update it, and Android or Google Play Protect may ask you to confirm. Kav sends nothing about you: GitHub " +
-            "sees your IP address and the time, as for any download. While this is on, Tell me about new versions doesn't apply.",
-        "בכל פעם שתפתחו את Kav היא שואלת את GitHub אם יש גרסה חדשה ומציעה אותה מיד. פעם ביום ברקע היא גם " +
-            "מורידה אותה, ב-Wi-Fi (או בנתונים סלולריים, אם תאפשרו), ומוודאת שהיא חתומה במפתח של Kav. שום דבר לא מותקן מעצמו: " +
-            "Kav תשאל, להתקין עכשיו או אחר כך. התקנה סוגרת את Kav כדי לעדכן אותה, ו-Android או " +
-            "Google Play Protect עשויים לבקש מכם לאשר. Kav לא שולחת שום דבר עליכם: GitHub רואה את כתובת ה-IP " +
-            "שלכם ואת השעה, כמו בכל הורדה. כשזה פועל, עדכנו אותי על גרסאות חדשות לא חל.",
+        "Kav asks GitHub when it opens and downloads a new version in the background. Nothing installs until you say so. GitHub sees your IP address.",
+        "Kav שואלת את GitHub כשהיא נפתחת ומורידה גרסה חדשה ברקע. שום דבר לא מותקן בלי אישור שלכם. GitHub רואה את כתובת ה-IP שלכם.",
     )
     Column(Modifier.fillMaxWidth()) {
-        InfoHeader(title, info, headline = setup)
-        if (setup) Spacer(Modifier.height(K.gap3))
-        ListGroup(Modifier.padding(horizontal = if (setup) K.gap3 else 0.dp).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+        // Setting Kav up, the step's own title carries the (i); in Settings the rows are a card of their own under the
+        // update's, and the first row carries it.
+        if (setup) {
+            InfoHeader(T("Updates", "עדכונים"), info, headline = true)
+            Spacer(Modifier.height(K.gap3))
+        }
+        ListGroup(Modifier.padding(horizontal = if (setup) K.gap3 else 0.dp).padding(top = if (setup) 0.dp else K.gap3).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+            if (!setup) row { UpdatePromptsRow() }
             row {
                 ToggleRow(
                     T("Download updates automatically", "להוריד עדכונים אוטומטית"), auto,
                     { Icon(Icons.Rounded.SystemUpdate, null, tint = toggleInk(auto), modifier = Modifier.size(22.dp)) },
+                    info = if (setup) null else info,
                 ) { on ->
                     auto = on
                     Prefs.setAutoUpdate(ctx, on)

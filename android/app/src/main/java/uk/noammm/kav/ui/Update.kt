@@ -180,7 +180,7 @@ private fun UpdateProgress(model: KavModel) {
 @Composable
 private fun UpdateButton(model: KavModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val busy = model.updateProgress != null
-    KavButton(if (busy) T("Updating…", "מעדכנים…") else T("Update", "עדכון"), onClick, modifier, busy = busy)
+    KavButton(T("Update", "עדכון"), onClick, modifier, busy = busy)
 }
 
 @Composable
@@ -207,7 +207,6 @@ fun UpdateSection(model: KavModel) {
                 // Short enough for one line beside the button in both languages.
                 ChangingText(
                     available ?: when {
-                        checking -> T("Looking…", "בודקים…")
                         model.updateFailed -> T("Couldn't check", "הבדיקה נכשלה")
                         model.updateChecked -> T("Up to date", "גרסה עדכנית")
                         else -> T("Not checked yet", "עוד לא נבדק")
@@ -219,8 +218,7 @@ fun UpdateSection(model: KavModel) {
             val updating = model.updateProgress != null
             KavButton(
                 when {
-                    release != null -> if (updating) T("Updating…", "מעדכנים…") else T("Update", "עדכון")
-                    checking -> T("Checking…", "בודקים…")
+                    release != null -> T("Update", "עדכון")
                     else -> T("Check for updates", "בדקו עדכונים")
                 },
                 {

@@ -20,18 +20,6 @@ enum class ResultFilter {
             BIKE -> T("Bike", "אופניים")
             WALK -> T("Walking only", "הליכה בלבד")
         }
-
-    val desc: String
-        get() = when (this) {
-            BUS -> T("Every bus operator", "כל מפעילי האוטובוסים")
-            TRAIN -> T("Israel Railways", "רכבת ישראל")
-            LIGHT_RAIL -> T("The Jerusalem and Tel Aviv light rail", "הרכבת הקלה בירושלים ובתל אביב")
-            CARMELIT_RAKAVLIT -> T("Haifa's funicular and the Cable Express cable car", "הכרמלית וכבל אקספרס, הרכבלית של חיפה")
-            SHUTTLE -> T("Municipal shuttle lines", "קווי שאטל עירוניים")
-            TAXI -> T("Gett rides, on their own or before a train", "נסיעות Gett, בפני עצמן או לפני רכבת")
-            BIKE -> T("Cycling routes", "מסלולי אופניים")
-            WALK -> T("Routes done entirely on foot", "מסלולים המתבצעים כולם ברגל")
-        }
 }
 
 fun routeTypesFor(on: Set<ResultFilter>): List<Int> {

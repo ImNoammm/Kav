@@ -446,20 +446,23 @@ internal object PayMode {
 // The switch, in Settings and in setup. Turned on with something missing since: Action required, and the setup popup,
 // which has the way to turn it off.
 @Composable
-internal fun PayModeSwitch() {
+internal fun PayModeSwitch() = ListGroup(Modifier.padding(top = K.gap6)) { row { PayModeRow() } }
+
+// The switch's row: what turning it on asks for is behind its (i).
+@Composable
+private fun PayModeRow() {
     val ctx = LocalContext.current
     val action = PayMode.lost.isNotEmpty()
     val on = Shown.payments || action
-    ListGroup {
-        row {
-            ToggleRow(T("Pay with ${PayApp.current.label()}", "תשלום עם ${PayApp.current.he}"), on, { Canvas(Modifier.size(18.dp)) { drawQr() } },
-                subtitle = if (action) T("Action required", "נדרשת פעולה") else null,
-                subtitleMaxLines = 2, subtitleColor = if (action) K.problem else null) { want ->
-                when {
-                    action -> PaySetup.show(offerOff = true)
-                    else -> payMode(ctx, want, "settings")
-                }
-            }
+    val app = PayApp.current
+    ToggleRow(T("Pay with ${app.label()}", "תשלום עם ${app.he}"), on, { Canvas(Modifier.size(18.dp)) { drawQr() } },
+        subtitle = if (action) T("Action required", "נדרשת פעולה") else null,
+        subtitleMaxLines = 2, subtitleColor = if (action) K.problem else null,
+        info = T("Pay buttons on Home and on each ride open ${app.label()}. Kav asks for two permissions: a button back to Kav over it, and reading its ticket screens.",
+            "כפתורי התשלום במסך הבית ובכל נסיעה פותחים את ${app.he}. Kav מבקשת שתי הרשאות: כפתור חזרה ל-Kav מעליה, וקריאת מסכי הכרטיס שלה.")) { want ->
+        when {
+            action -> PaySetup.show(offerOff = true)
+            else -> payMode(ctx, want, "settings")
         }
     }
 }
@@ -493,19 +496,9 @@ internal fun PayOffAskHost() {
     }
 }
 
-@Composable
-private fun PayingHeader() {
-    val app = PayApp.current
-    InfoHeader(T("Paying", "תשלום"), T("Pay buttons on Home and on each ride open ${app.label()}. It needs two of Android's permissions: showing over other apps, for a small button back to Kav while you pay, and Kav's ticket reader, which reads only ${app.en}'s ticket screens to show your ticket in Kav.",
-        "כפתורי התשלום במסך הבית ובכל נסיעה פותחים את ${app.he}. צריך בשביל זה שתי הרשאות של Android: הצגה מעל אפליקציות אחרות, לכפתור קטן שמחזיר ל-Kav בזמן התשלום, וקורא הכרטיסים של Kav, שקורא רק את מסכי הכרטיס ${app.heOf} כדי להציג את הכרטיס שלכם ב-Kav."))
-}
-
 // Setup's paying step: the same switch, with the same popup.
 @Composable
-internal fun PayingSetup() {
-    PayingHeader()
-    PayModeSwitch()
-}
+internal fun PayingSetup() = PayModeSwitch()
 
 // Settings' Paying page: the one switch, then while it's on Rav-Pass's own places as rows (the everyday ones first), and
 // what Kav keeps: the fare profile, the live tickets and the ride history.
@@ -517,7 +510,7 @@ internal fun PayingSettings() {
     if (extension != null) ListGroup { row { ListRow(T("With \u2068$extension\u2069", "עם \u2068$extension\u2069"), chevron = false) } }
     // Which app paying goes through, first: the switch below and the setup popup both follow this choice, so it shows
     // before paying is set up at all (otherwise a rider who wants egg would have to set Rav-Pass up just to switch).
-    else { PayAppChoice(); PayModeSwitch() }
+    else ListGroup { row { PayAppRow() }; row { PayModeRow() } }
     if (!Shown.payments) return
     SectionHeader(PayApp.current.label())
     PlaceGroup(listOf(
@@ -577,21 +570,20 @@ private fun PageSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.(c
 // keeps the permissions (they are Kav's own) and re-checks the phone: an app that isn't installed is the setup popup's
 // first step. The tickets and ride history already read stay.
 @Composable
-internal fun PayAppChoice() {
+internal fun PayAppChoice() = ListGroup { row { PayAppRow() } }
+
+@Composable
+private fun PayAppRow() {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
-    ListGroup {
-        row {
-            ListRow(T("Payment app", "אפליקציית התשלום"), subtitle = PayApp.current.label(),
-                leading = { Icon(Icons.Rounded.Wallet, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(22.dp)) },
-                onClick = { open = true })
-        }
-    }
+    ListRow(T("Payment app", "אפליקציית התשלום"), subtitle = PayApp.current.label(),
+        leading = { Icon(Icons.Rounded.Wallet, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(22.dp)) },
+        onClick = { open = true })
     if (open) PageSheet({ open = false }) { close ->
         Text(T("Payment app", "אפליקציית התשלום"), style = K.type.title, color = K.text)
         Spacer(Modifier.height(K.gap2))
-        Text(T("Pay buttons open the app you choose. Both are on HopOn's platform, so tickets, places and the way back to Kav work the same in both.",
-            "כפתורי התשלום פותחים את האפליקציה שתבחרו. שתיהן על הפלטפורמה של הופון, ולכן הכרטיסים, המקומות והחזרה ל-Kav עובדים באותה צורה בשתיהן."),
+        Text(T("Pay buttons open the app you choose. Both work the same in Kav.",
+            "כפתורי התשלום פותחים את האפליקציה שתבחרו. שתיהן עובדות אותו דבר ב-Kav."),
             style = K.type.body, color = K.textSecondary)
         Spacer(Modifier.height(K.gap4))
         for (app in PayApp.entries) {

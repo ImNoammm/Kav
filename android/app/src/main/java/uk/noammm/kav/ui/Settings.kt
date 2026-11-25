@@ -79,7 +79,7 @@ import uk.noammm.kav.data.RideAlerts
 import uk.noammm.kav.data.RiderProxy
 import uk.noammm.kav.data.GoogleCrowd
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Menu
@@ -168,12 +168,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             searchName().let { who ->
                 when {
                     !Prefs.privateSearch(ctx) -> T("$who sees where you are", "$who רואה איפה אתם")
-                    model.seen == Seen.CITY -> T("Private search: $who sees your town", "חיפוש פרטי: $who רואה את היישוב שלכם")
-                    model.seen == Seen.PLACE -> T("Private search: $who sees a place you picked", "חיפוש פרטי: $who רואה מקום שבחרתם")
-                    else -> T("Private search: $who sees no location", "חיפוש פרטי: $who לא רואה מיקום")
+                    model.seen == Seen.CITY -> T("$who sees your town", "$who רואה את היישוב שלכם")
+                    model.seen == Seen.PLACE -> T("$who sees a place you picked", "$who רואה מקום שבחרתם")
+                    else -> T("$who sees no location", "$who לא רואה מיקום")
                 }
             },
-            T("Kav links", "קישורי Kav"),
             if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
         ).filterNotNull().joinToString(" · "),
     ) {
@@ -206,11 +205,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             Sub(T("Kav's language", "השפה של Kav"))
             LanguageRow(ctx)
             StopNamesRow(ctx)
-            InfoHeader(
-                T("Names on the map", "שמות במפה"),
-                T("Places and streets on the map. Kav's own language stays as it is.",
-                    "מקומות ורחובות על המפה. השפה של Kav נשארת כפי שהיא."),
-            )
+            Sub(T("Names on the map", "שמות במפה"))
             MapLabelsRow(ctx)
             Sub(T("Time format", "תבנית שעה"))
             ClockChoice(ctx)
@@ -234,75 +229,18 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Spacer(Modifier.height(K.gap1))
         if (BuildConfig.UPDATER) UpdateSection(model)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-            if (BuildConfig.UPDATER) {
-                UpdatePrompts()
-                AutomaticUpdates()
-            }
+            if (BuildConfig.UPDATER) AutomaticUpdates()
             BackupSection(model)
             FixCheck()
             HelpSection()
         }
         Sub(T("Not in Kav", "מה שאין ב-Kav"))
-        Absent(
-            T("No account", "אין חשבון"),
-            T(
-                "Planning, live times and search need no sign-in, profile or sync.",
-                "תכנון, זמני הגעה בזמן אמת וחיפוש לא דורשים התחברות, פרופיל או סנכרון.",
-            ),
-        )
-        Absent(
-            T("No adverts", "אין פרסומות"),
-            T(
-                "Vungle, AdMob and Facebook Audience Network are all absent. Kav calls no ad endpoint, and never " +
-                    "requests ad targeting.",
-                "Vungle, ‏AdMob ו־Facebook Audience Network: כולם לא נמצאים כאן. Kav לא פונה לאף נקודת קצה פרסומית, " +
-                    "ולעולם לא מבקשת מיקוד פרסומי.",
-            ),
-        )
-        Absent(
-            T("No analytics or attribution", "אין אנליטיקה או ייחוס"),
-            T(
-                "Braze (~1,100), AppsFlyer (~890), Adjust, " +
-                    "Firebase Crashlytics (443) and Facebook SDK (~700) are all absent.",
-                "Braze (כ־1,100), AppsFlyer (כ־890), Adjust, " +
-                    "Firebase Crashlytics (443) ו־Facebook SDK (כ־700): כולם לא נמצאים כאן.",
-            ),
-        )
-        Absent(
-            T("No support chat", "אין צ'אט תמיכה"),
-            T("Zendesk (~1,800 references) is not here either.", "גם Zendesk (כ־1,800 הפניות) לא נמצאת כאן."),
-        )
-        Absent(
-            T("No upsell", "אין מכירה נוספת"),
-            T(
-                "There is no premium tier to be offered, so nothing in this app " +
-                    "has a reason to interrupt you.",
-                "אין גרסת פרימיום להציע, ולכן לשום דבר באפליקציה הזו אין סיבה להפריע לכם.",
-            ),
-        )
-        Sub(T("Credits", "קרדיטים"))
-        Absent(
-            T("How busy", "עומס"),
-            T("Kav's own: the Ministry of Transport's count of Rav-Kav taps, from data.gov.il.", "של Kav: ספירת תיקופי הרב-קו של משרד התחבורה, מ-data.gov.il."),
-        )
-        Absent(
-            T("Maps", "מפות"),
-            T(
-                "Map data © OpenStreetMap contributors, Protomaps. Satellite imagery: Esri, Vantor, Earthstar Geographics. " +
-                    "OpenFreeMap maps: OpenFreeMap, © OpenMapTiles, styles after OSM Bright, OSM Liberty, Dark Matter and " +
-                    "Fiord Color (MapTiler, OpenMapTiles, Mapbox, CARTO, Maputnik), Noto fonts (SIL Open Font License). " +
-                    "Road numbers drawn as the Ministry of Transport's route markers.",
-                "נתוני המפה © תורמי OpenStreetMap, Protomaps. צילומי הלוויין: Esri, Vantor, Earthstar Geographics. " +
-                    "מפות OpenFreeMap: ‏OpenFreeMap, © OpenMapTiles, בסגנונות על פי OSM Bright, ‏OSM Liberty, ‏Dark Matter ו-Fiord " +
-                    "Color ‏(MapTiler, OpenMapTiles, Mapbox, CARTO, Maputnik), גופני Noto ‏(SIL Open Font License). " +
-                    "מספרי הדרכים מצוירים כתמרורי מספר הדרך של משרד התחבורה.",
-            ),
-        )
-        Absent(
-            T("Buses", "אוטובוסים"),
-            T("What kind of bus: the Ministry of Transport's file of the operators' buses, from data.gov.il.",
-                "סוג האוטובוס: קובץ ציי האוטובוסים של המפעילים, של משרד התחבורה, מ-data.gov.il."),
-        )
+        Absent(T("No account", "אין חשבון"))
+        Absent(T("No ads", "אין פרסומות"))
+        Absent(T("No analytics or attribution", "אין אנליטיקה או ייחוס"))
+        Absent(T("No support chat", "אין צ'אט תמיכה"))
+        Absent(T("No upsell", "אין מכירה נוספת"))
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Credits() }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -323,7 +261,6 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = Alignment.Top),
                 ) {
                     Column {
-                        Group(T("Update available", "עדכון זמין"))
                         Column(Modifier.padding(horizontal = K.gap1)) { UpdateSection(model) }
                         Spacer(Modifier.height(K.gap5))
                     }
@@ -422,19 +359,19 @@ private fun HelpSection() {
     val ctx = LocalContext.current
     var reporting by remember { mutableStateOf(false) }
     @Composable
-    fun link(title: String, subtitle: String, onClick: () -> Unit) = ListRow(
-        title, subtitle = subtitle, onClick = onClick, chevron = false,
-        trailing = { Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp)) },
+    fun link(title: String, onClick: () -> Unit) = ListRow(
+        title, onClick = onClick, chevron = false,
+        trailing = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(20.dp)) },
     )
     InfoHeader(T("Help and feedback", "עזרה ומשוב"), T(
             "The forms open blank. For a bug, Kav shows what it can add about itself and your phone, and adds it only if you choose to.",
             "הטפסים נפתחים ריקים. בדיווח על באג, Kav מראה מה היא יכולה להוסיף עליה ועל הטלפון, ומוסיפה אותם רק אם תבחרו בכך.",
         ))
     ListGroup {
-        row { link(T("Report a bug", "דיווח על באג"), T("On GitHub", "ב-GitHub")) { reporting = true } }
-        row { link(T("Ask for a feature", "בקשה לפיצ'ר"), T("On GitHub", "ב-GitHub")) { openLink(ctx, featureLink()) } }
-        row { link(T("Kav's code", "הקוד של Kav"), T("And its server's", "ושל השרת שלה")) { openLink(ctx, REPO_URL) } }
-        row { link(T("Buy me a coffee", "קנו לי קפה"), T("If you like Kav", "אם Kav עוזרת לכם")) { openLink(ctx, COFFEE_URL) } }
+        row { link(T("Report a bug", "דיווח על באג")) { reporting = true } }
+        row { link(T("Ask for a feature", "בקשה לפיצ'ר")) { openLink(ctx, featureLink()) } }
+        row { link(T("Kav's code", "הקוד של Kav")) { openLink(ctx, REPO_URL) } }
+        row { link(T("Buy me a coffee", "קנו לי קפה")) { openLink(ctx, COFFEE_URL) } }
     }
     if (reporting) BugReportSheet { reporting = false }
 }
@@ -484,8 +421,8 @@ internal fun LookChoices(inset: Dp = 0.dp, heading: @Composable (String) -> Unit
 // language.
 private fun noVoice(ctx: android.content.Context) = android.widget.Toast.makeText(
     ctx,
-    T("This phone has no text-to-speech voice for English. Install one, or pick it in Android's settings under Text-to-speech.",
-        "בטלפון הזה אין קול להקראה בעברית. התקינו אחד, או בחרו בו בהגדרות אנדרואיד תחת המרת טקסט לדיבור."),
+    T("No English voice on this phone. Add one in Android's Text-to-speech settings.",
+        "אין בטלפון קול בעברית. הוסיפו אחד בהגדרות המרת טקסט לדיבור של Android."),
     android.widget.Toast.LENGTH_LONG,
 ).show()
 
@@ -496,11 +433,11 @@ internal fun OnTheWayChoices(
 ) {
     val ctx = LocalContext.current
     InfoHeader(T("Alerts", "התראות"), if (setup) T(
-        "Your bus arriving and when to get off, and each turn of a walk as you reach it, spoken over whatever is playing in Kav's language.",
-        "האוטובוס שלכם מגיע ומתי לרדת, וכל פנייה בהליכה כשאתם מגיעים אליה, בקול מעל מה שמתנגן, בשפה של Kav.",
+        "Spoken over what's playing, in Kav's language. On silent, only into headphones.",
+        "נאמרות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
     ) else T(
-        "Your bus arriving and when to get off, and each turn of a walk as you reach it, spoken over whatever is playing in Kav's language; and the current step in a small window when you leave Kav. On silent, they're said only into headphones.",
-        "האוטובוס שלכם מגיע ומתי לרדת, וכל פנייה בהליכה כשאתם מגיעים אליה, בקול מעל מה שמתנגן, בשפה של Kav; והצעד הנוכחי בחלון קטן כשיוצאים מ-Kav. במצב שקט הם נאמרים רק באוזניות.",
+        "Spoken over what's playing, in Kav's language; on silent, only into headphones. Small window: the current step when you leave Kav.",
+        "נאמרות מעל מה שמתנגן, בשפה של Kav; במצב שקט, רק באוזניות. חלון קטן: הצעד הנוכחי כשיוצאים מ-Kav.",
     ))
     var turns by remember { mutableStateOf(Prefs.spokenTurns(ctx)) }
     ListGroup {
@@ -523,13 +460,12 @@ internal fun OnTheWayChoices(
         }
     }
     if (setup) return
-    InfoHeader(T("Starting a trip", "התחלת נסיעה"), T(
-        "A trip you start goes straight to its first walk, as in other navigation apps, instead of waiting for its time or for you to move away.",
-        "נסיעה שמתחילים עוברת מיד להליכה הראשונה, כמו באפליקציות ניווט אחרות, במקום לחכות לשעה שלה או לכך שתתרחקו.",
-    ))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Start right away", "להתחיל מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }) { on ->
+            ToggleRow(T("Start trips right away", "להתחיל נסיעות מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }, info = T(
+                "A trip goes straight to its first walk instead of waiting for its time.",
+                "הנסיעה עוברת מיד להליכה הראשונה, בלי לחכות לשעה שלה.",
+            )) { on ->
                 onStart(on); Prefs.setBeginTripsImmediately(ctx, on)
             }
         }
@@ -540,13 +476,7 @@ internal fun OnTheWayChoices(
 @Composable
 internal fun LineBadgeChoice() {
     val ctx = LocalContext.current
-    InfoHeader(
-        T("Line badges", "סמלי הקווים"),
-        T(
-            "How bus lines look on boards, plans and trips. Kav: the operator's color fills the badge. Strip: a gray badge with the operator's color as a strip under it.",
-            "איך קווי האוטובוס נראים בלוחות, במסלולים ובנסיעות. Kav: צבע המפעיל ממלא את הסמל. פס: סמל אפור עם פס בצבע המפעיל מתחתיו.",
-        ),
-    )
+    SectionHeader(T("Line badges", "סמלי הקווים"))
     val badges = listOf(LineBadgeAppearance.KAV, LineBadgeAppearance.STRIP)
     KavSegmented(
         listOf("Kav", T("Strip", "פס")), badges.indexOf(K.lineBadgeAppearance),
@@ -569,26 +499,20 @@ internal fun LineBadgeChoice() {
     }
 }
 
-// Whether Kav tells of new versions on its own: in Updates, under its Check for updates, and the updates step of
-// setting Kav up, which has none.
+// Whether Kav tells of new versions on its own: a row of the updates' card in Settings (AutomaticUpdates), and a card
+// of its own in the updates step of setting Kav up.
 @Composable
-internal fun UpdatePrompts(checkAbove: Boolean = true) {
+internal fun UpdatePromptsRow() {
     val ctx = LocalContext.current
-    InfoHeader(T("New versions", "גרסאות חדשות"), T(
-        "Off, Kav doesn't look for new versions on its own and shows no popup or dot for them, for updating with " +
-            "Obtainium or another app." + if (checkAbove) " Check for updates above still works." else "",
-        "כשכבוי, Kav לא מחפשת גרסאות חדשות בעצמה ולא מציגה עליהן חלון או נקודה, בשביל עדכון עם Obtainium " +
-            "או אפליקציה אחרת." + if (checkAbove) " הכפתור בדקו עדכונים למעלה עדיין עובד." else "",
-    ))
-    ListGroup {
-        row {
-            ToggleRow(
-                T("Tell me about new versions", "עדכנו אותי על גרסאות חדשות"), Shown.updatePrompts,
-                { Icon(Icons.Rounded.NewReleases, null, tint = toggleInk(Shown.updatePrompts), modifier = Modifier.size(22.dp)) },
-            ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
-        }
-    }
+    ToggleRow(
+        T("Tell me about new versions", "עדכנו אותי על גרסאות חדשות"), Shown.updatePrompts,
+        { Icon(Icons.Rounded.NewReleases, null, tint = toggleInk(Shown.updatePrompts), modifier = Modifier.size(22.dp)) },
+        info = T("A popup, and a dot on Settings, when a new version is out.", "חלון, ונקודה על ההגדרות, כשיוצאת גרסה חדשה."),
+    ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
 }
+
+@Composable
+internal fun UpdatePrompts() = ListGroup(Modifier.padding(top = K.gap6)) { row { UpdatePromptsRow() } }
 
 // Which map Kav draws: its own, kept on the phone; satellite photos under its names, which load from Esri; or one of
 // OpenFreeMap's four, loaded from OpenFreeMap until they're downloaded. After setup, the download the chosen map needs
@@ -599,24 +523,17 @@ internal fun MapChoices(setup: Boolean = false) {
     InfoHeader(
         T("Map type", "סוג מפה"),
         T(
-            "Standard is Kav's own map, kept on your phone, and works without internet. Satellite photos come from Esri " +
-                "while you look, and the OpenFreeMap maps load from OpenFreeMap until you download them, so each sees " +
-                "which area you view. GovMap streets and aerial photos load from the Survey of Israel while you look. 3D buildings " +
-                "are off at first: if the map stutters or drops frames with them on, turn them off.",
-            "המפה הרגילה היא המפה של Kav, שנשמרת בטלפון ועובדת בלי אינטרנט. תמונות הלוויין מגיעות מ-Esri בזמן הצפייה, " +
-                "ומפות OpenFreeMap נטענות מ-OpenFreeMap עד שמורידים אותן, ולכן כל אחד מהם רואה איזה אזור אתם צופים בו. מפות הרחובות ותצלומי האוויר של GovMap נטענים מהמרכז למיפוי ישראל בזמן הצפייה. " +
-                "הבניינים בתלת-ממד כבויים בהתחלה: אם המפה מגמגמת או מאבדת פריימים כשהם פועלים, כבו אותם.",
+            "Standard is on your phone and works offline. The others load as you look, so their provider sees the area you view.",
+            "המפה הרגילה נמצאת בטלפון ועובדת בלי אינטרנט. האחרות נטענות בזמן הצפייה, ולכן הספק שלהן רואה את האזור שאתם צופים בו.",
         ),
     )
     fun pick(t: MapFile.Type) { MapFile.type = t; Prefs.setMapType(ctx, t) }
     ListGroup {
         row {
-            MapTypeChoice(mapName(MapFile.Type.STANDARD), T("Kav's own map, on your phone. No internet needed.",
-                "המפה של Kav, בטלפון. בלי צורך באינטרנט."), MapFile.type == MapFile.Type.STANDARD) { pick(MapFile.Type.STANDARD) }
+            MapTypeChoice(mapName(MapFile.Type.STANDARD), T("On your phone, works offline", "בטלפון, עובדת בלי אינטרנט"), MapFile.type == MapFile.Type.STANDARD) { pick(MapFile.Type.STANDARD) }
         }
         row {
-            MapTypeChoice(mapName(MapFile.Type.SATELLITE), T("Photos from Esri while you look, with the standard map's names.",
-                "תצלומים מ-Esri בזמן הצפייה, עם השמות של המפה הרגילה."), MapFile.type == MapFile.Type.SATELLITE) { pick(MapFile.Type.SATELLITE) }
+            MapTypeChoice(mapName(MapFile.Type.SATELLITE), T("Photos from Esri", "תצלומים מ-Esri"), MapFile.type == MapFile.Type.SATELLITE) { pick(MapFile.Type.SATELLITE) }
         }
     }
     // Under the standard map once it's picked: its buildings standing up in 3D close in, or flat.
@@ -649,10 +566,8 @@ internal fun MapChoices(setup: Boolean = false) {
     Sub("GovMap")
     ListGroup {
         for ((t, look) in listOf(
-            MapFile.Type.GOVMAP to T("The Survey of Israel's streets and buildings, with Hebrew names. Loads while you look.",
-                "הרחובות והמבנים של המרכז למיפוי ישראל, עם שמות בעברית. נטענת בזמן הצפייה."),
-            MapFile.Type.GOVMAP_PHOTO to T("The Survey of Israel's 2025 aerial photos, with names. Loads while you look.",
-                "תצלומי האוויר של המרכז למיפוי ישראל מ-2025, עם שמות. נטענים בזמן הצפייה."),
+            MapFile.Type.GOVMAP to T("Survey of Israel streets, names in Hebrew", "רחובות המרכז למיפוי ישראל, שמות בעברית"),
+            MapFile.Type.GOVMAP_PHOTO to T("Survey of Israel aerial photos, 2025", "תצלומי אוויר של המרכז למיפוי ישראל, 2025"),
         )) row { MapTypeChoice(mapName(t), look, MapFile.type == t) { pick(t) } }
     }
     if (!setup) {
@@ -711,7 +626,7 @@ private fun MapDownload() {
     // Kept while the card closes once the map is in, so it doesn't flash back to "isn't on your phone yet".
     var shown by remember { mutableStateOf(state) }
     if (state !is MapPack.State.Ready) shown = state
-    AnimatedVisibility(state !is MapPack.State.Ready, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(state !is MapPack.State.Ready, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
         Column(Modifier.padding(top = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             val now = shown
             // The note, the bar and a failure fade into each other while the space eases.
@@ -729,21 +644,18 @@ private fun MapDownload() {
                     val why = (shown as? MapPack.State.Failed)?.why.orEmpty()
                     Text(T("Couldn't download the map. $why", "ההורדה של המפה לא הצליחה. $why"), style = K.type.subhead, color = K.critical)
                 }
-                else -> Text(
+                else -> NoteCard(
                     when {
                         !provider.needsPack -> T(
-                            "${mapsOf(pack)} load from OpenFreeMap while you look. Download them to keep all four on your " +
-                                "phone instead: about ${pack.bytes shr 20} MB, once.",
-                            "${mapsOf(pack)} נטענות מ-OpenFreeMap בזמן הצפייה. אפשר להוריד אותן כדי לשמור את ארבען בטלפון: " +
-                                "בערך ${pack.bytes shr 20} MB, פעם אחת.",
+                            "Download to keep all four on your phone: about ${pack.bytes shr 20} MB, once.",
+                            "אפשר להוריד כדי לשמור את ארבען בטלפון: בערך ${pack.bytes shr 20} MB, פעם אחת.",
                         )
                         MapFile.type == MapFile.Type.SATELLITE -> T(
-                            "Satellite's names come from the map on your phone, which isn't here yet: about ${pack.bytes shr 20} MB, once.",
-                            "השמות במפת הלוויין מגיעים מהמפה שבטלפון, שעוד לא כאן: בערך ${pack.bytes shr 20} MB, פעם אחת.")
+                            "Satellite's names need the standard map: about ${pack.bytes shr 20} MB, once.",
+                            "השמות במפת הלוויין צריכים את המפה הרגילה: בערך ${pack.bytes shr 20} MB, פעם אחת.")
                         else -> T("This map isn't on your phone yet: about ${pack.bytes shr 20} MB, once.",
                             "המפה הזו עוד לא בטלפון: בערך ${pack.bytes shr 20} MB, פעם אחת.")
                     },
-                    style = K.type.subhead, color = K.textSecondary,
                 )
             }
             }
@@ -774,12 +686,12 @@ private fun MapsOnPhone() {
         produceState(0L, pack.state) { value = withContext(Dispatchers.IO) { pack.used(files) } }.value
     }
     val any = sizes.any { it > 0 }
-    AnimatedVisibility(any, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(any, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
         Column(Modifier.padding(top = K.gap3)) {
             Sub(T("On your phone", "בטלפון"))
             Column(Modifier.fillMaxWidth().panel(K.rCard)) {
                 MapPacks.all.forEachIndexed { i, pack ->
-                    AnimatedVisibility(sizes[i] > 0, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    AnimatedVisibility(sizes[i] > 0, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
                         Column {
                             if (MapPacks.all.take(i).indices.any { sizes[it] > 0 }) Separator()
                             MapPackRow(pack, sizes[i])
@@ -806,10 +718,7 @@ private fun MapPackRow(pack: MapPack, used: Long) {
                 LiveText(
                     when (state) {
                         is MapPack.State.Downloading -> T("Downloading… ${(state.progress * 100).toInt()}%", "מורידים… ${(state.progress * 100).toInt()}%")
-                        is MapPack.State.Ready -> T("${used shr 20} MB", "${used shr 20} MB") + if (standard) T(
-                            " · Streets and names available offline",
-                            " · רחובות ושמות זמינים ללא אינטרנט",
-                        ) else ""
+                        is MapPack.State.Ready -> "${used shr 20} MB"
                         else -> T("${used shr 20} of ${pack.bytes shr 20} MB, not finished", "${used shr 20} מתוך ${pack.bytes shr 20} MB, לא הסתיים")
                     },
                     style = K.type.subhead, color = K.dim,
@@ -831,11 +740,11 @@ private fun MapPackRow(pack: MapPack, used: Long) {
             Column(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
                 Text(
                     if (MapFile.typesOf(pack).any { MapFile.provider(it).needsPack }) T(
-                        "${mapsOf(pack)} then wait for this map to be downloaded again before they show anything.",
-                        "${mapsOf(pack)} יחכו אז עד שהמפה הזו תורד שוב לפני שיציגו משהו.",
+                        "${mapsOf(pack)} won't show until it's downloaded again.",
+                        "${mapsOf(pack)} לא יוצגו עד שהיא תורד שוב.",
                     ) else T(
-                        "${mapsOf(pack)} then load from OpenFreeMap while you look, so OpenFreeMap sees which area you view.",
-                        "${mapsOf(pack)} ייטענו אז מ-OpenFreeMap בזמן הצפייה, ולכן OpenFreeMap יראה איזה אזור אתם צופים בו.",
+                        "${mapsOf(pack)} then load online, and OpenFreeMap sees the area you view.",
+                        "${mapsOf(pack)} ייטענו אז מהרשת, ו-OpenFreeMap יראה את האזור שאתם צופים בו.",
                     ),
                     style = K.type.subhead, color = K.textSecondary,
                 )
@@ -879,7 +788,8 @@ internal fun PlanChoices(model: KavModel) {
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
         InfoHeader(
             T("What a plan may show", "מה מסלול יכול לכלול"),
-            offered.joinToString("\n") { f -> f.label + ": " + f.desc },
+            T("Shuttle: municipal shuttle lines. Taxi: Gett rides, on their own or before a train.",
+                "שאטל: קווי שאטל עירוניים. מונית: נסיעות Gett, בפני עצמן או לפני רכבת."),
         )
         ListGroup {
             offered.forEach { f ->
@@ -891,8 +801,8 @@ internal fun PlanChoices(model: KavModel) {
         }
         RouteSettings()
         InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
-            "The CO2e of every plan and trip, from every planner: Kav works it out from each ride's distance, by bus, train, light rail or taxi, with the UK government's figures per passenger.",
-            "ה-CO2e של כל מסלול ונסיעה, מכל מתכנן: Kav מחשבת אותו לפי המרחק של כל נסיעה, באוטובוס, ברכבת, ברכבת קלה או במונית, לפי הנתונים של ממשלת בריטניה לכל נוסע.",
+            "Emissions are CO2e per passenger, worked out from each ride's distance.",
+            "הפליטות הן CO2e לנוסע, מחושבות לפי המרחק של כל נסיעה.",
         ))
         ListGroup {
             row { FareProfileChoice() }
@@ -928,27 +838,26 @@ private fun RouteSettings() {
         PlanSettings.Spare.entries.indexOf(now.spare)) { save(now.copy(spare = PlanSettings.Spare.entries[it])) }
 }
 
-// What each choice does, under its own "i", in the server's own rules (live.py rider_cost(), kept()).
+// What each choice does, under its own "i", in a rider's words; the rules themselves are the server's (live.py
+// rider_cost(), kept()).
 internal fun paceInfo() = T(
-    "How fast Kav plans your walks: slow is 1 meter a second, the usual 1.33 (4.8 km/h), fast 1.6.",
-    "באיזה קצב Kav מתכנן את ההליכות שלכם: איטי הוא מטר בשנייה, הרגיל 1.33 (4.8 קמ״ש), מהיר 1.6.",
+    "Slow is 1 meter a second, usual 1.33 (4.8 km/h), fast 1.6.",
+    "איטי הוא מטר בשנייה, רגיל 1.33 (4.8 קמ״ש), מהיר 1.6.",
 )
 
 internal fun walkingInfo() = T(
-    "Less counts a minute on foot twice, and the first route walks at most a minute more than the usual first route. I don't mind counts it half. The first route still stays the usual one, unless another walks at most a quarter of an hour more in all and either gets there no later, or gets there at most 8 minutes later and saves more than a minute on foot (less) or a change (I don't mind). Arriving by a time, later means setting out earlier.",
-    "פחות מחשבת כל דקה ברגל כפול, ובמסלול הראשון הולכים לכל היותר דקה יותר מבמסלול הראשון הרגיל. לא אכפת לי מחשבת אותה כחצי. המסלול הראשון בכל זאת נשאר הרגיל, אלא אם במסלול אחר הולכים לכל היותר רבע שעה יותר בסך הכול, והוא מגיע לא מאוחר יותר, או מגיע עד 8 דקות מאוחר יותר וחוסך יותר מדקה ברגל (פחות) או החלפה (לא אכפת לי). בהגעה עד שעה מסוימת, מאוחר יותר פירושו לצאת מוקדם יותר.",
+    "Less prefers routes with less walking, even if they take a little longer. I don't mind walks more to save time or a change.",
+    "פחות מעדיף מסלולים עם פחות הליכה, גם אם הם קצת ארוכים יותר. לא אכפת לי הולך יותר כדי לחסוך זמן או החלפה.",
 )
 
 internal fun changesInfo() = T(
-    "Fewer counts each change twice. The first route still stays the usual one, unless another walks at most a quarter of an hour more in all and either gets there no later, or saves a change and gets there at most 8 minutes later. Arriving by a time, later means setting out earlier.",
-    "פחות מחשבת כל החלפה כפול. המסלול הראשון בכל זאת נשאר הרגיל, אלא אם במסלול אחר הולכים לכל היותר רבע שעה יותר בסך הכול, והוא מגיע לא מאוחר יותר, או חוסך החלפה ומגיע עד 8 דקות מאוחר יותר. בהגעה עד שעה מסוימת, מאוחר יותר פירושו לצאת מוקדם יותר.",
+    "Fewer prefers routes with fewer changes, even if they arrive a few minutes later.",
+    "פחות מעדיף מסלולים עם פחות החלפות, גם אם הם מגיעים כמה דקות מאוחר יותר.",
 )
 
-// Tight's cost, from Kav's routes judged on the buses that really passed (13 Nov: leaving 84 s later, a planned bus
-// lost on 27% of routes against 19%); a route the server finds likely missed says so on its card too.
 internal fun spareInfo() = T(
-    "How much spare time Kav plans at stops. Tight plans none before the bus and half a minute at a change: you leave about a minute and a half later, and miss about half as many buses again. A route you're likely to miss says so. Relaxed plans a minute and a half before the bus and three at a change.",
-    "כמה זמן מיותר Kav מתכנן בתחנות. צפוף מתכנן בלי זמן מיותר לפני האוטובוס וחצי דקה בהחלפה: יוצאים בערך דקה וחצי מאוחר יותר, ומפספסים בערך פי אחד וחצי אוטובוסים. מסלול שסביר שתפספסו מסומן. נינוח מתכנן דקה וחצי לפני האוטובוס ושלוש דקות בהחלפה.",
+    "Tight plans no spare time: you leave later and miss more buses. Relaxed adds a minute and a half before a bus and three at a change.",
+    "צפוף מתכנן בלי זמן מיותר: יוצאים מאוחר יותר ומפספסים יותר אוטובוסים. נינוח מוסיף דקה וחצי לפני אוטובוס ושלוש דקות בהחלפה.",
 )
 
 @Composable
@@ -984,8 +893,8 @@ private fun FareProfileChoice() {
     BottomSheet({ open = false }, scrolls = true) { close ->
         SheetHeader(T("Fare profile", "פרופיל הנחה"), { close { open = false } })
         NoteCard(T(
-            "Changes single-ride estimates only. Monthly caps and passes are not included.",
-            "משנה רק את הערכת המחיר של נסיעות בודדות. תקרות חודשיות ומנויים אינם נכללים.",
+            "For single-ride prices only, not monthly caps or passes.",
+            "רק למחיר של נסיעה בודדת, לא לתקרות חודשיות או למנויים.",
         ))
         FareFromRavPassRow()
         for (profile in uk.noammm.kav.data.FareProfile.entries) ListRow(
@@ -1013,15 +922,13 @@ private fun FareProfileChoice() {
 @Composable
 internal fun AlertsChoice() {
     val ctx = LocalContext.current
-    InfoHeader(T("Detours and alerts", "עיקופים והתראות"), T(
-        "Detours, delays and moved stops on your lines, whichever planner you use: on results, trips and navigation. Kav in English and Kav in Hebrew each keep their own source: Kav's server, which also translates the notices into English, until you pick another.",
-        "עיקופים, עיכובים ותחנות שהוזזו בקווים שלכם, בכל מתכנן: בתוצאות, בנסיעות ובניווט. ל-Kav באנגלית ול-Kav בעברית יש מקור משלהן: השרת של Kav, שגם מתרגם את ההודעות לאנגלית, עד שתבחרו אחר.",
-    ))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
             ToggleRow(
                 T("Service alerts", "הודעות שירות"), RideAlerts.enabled,
                 { Icon(Icons.Rounded.Campaign, null, tint = toggleInk(RideAlerts.enabled), modifier = Modifier.size(22.dp)) },
+                info = T("Detours, delays and moved stops on your lines: on results, trips and navigation.",
+                    "עיקופים, עיכובים ותחנות שהוזזו בקווים שלכם: בתוצאות, בנסיעות ובניווט."),
             ) { on -> RideAlerts.enabled = on; Prefs.setRideAlerts(ctx, on) }
         }
     }
@@ -1039,9 +946,9 @@ internal fun AlertsChoice() {
                 exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
             ) {
                 Column {
-                    InfoHeader(T("Notices in", "ההודעות ב"), T(
-                        "The operators write their notices in Hebrew. In English, Kav's server translates them, or your own server when alerts come from it: only the notice's text goes, nothing of your trip. Line numbers, stop codes and times stay as written.",
-                        "המפעילים כותבים את ההודעות בעברית. באנגלית, השרת של Kav מתרגם אותן, או השרת שלכם כשההתראות מגיעות ממנו: רק נוסח ההודעה נשלח, שום דבר על הנסיעה. מספרי קווים, קודי תחנות ושעות נשארים כפי שנכתבו.",
+                    InfoHeader(T("Notices in", "שפת ההודעות"), T(
+                        "Operators write notices in Hebrew. For English, the server translates the notice's text; nothing of your trip is sent.",
+                        "המפעילים כותבים את ההודעות בעברית. לאנגלית, השרת מתרגם את נוסח ההודעה; שום דבר על הנסיעה לא נשלח.",
                     ))
                     KavSegmented(
                         listOf(T("Automatic", "אוטומטי"), "English", "עברית"), Prefs.ALERT_LANGUAGES.indexOf(RideAlerts.language),
@@ -1059,22 +966,20 @@ internal fun AlertsChoice() {
 internal fun CrowdChoice() {
     val ctx = LocalContext.current
     var crowd by remember { mutableStateOf(Prefs.crowdSource(ctx)) }
-    // What each choice sends where, behind the (i) with the rest, so it fades as the choice changes.
+    // What each choice is and what it sends where, behind the (i), so it fades as the choice changes.
+    val server = if (KavLive.server == KavLive.KAV_SERVER) T("Kav's server", "השרת של Kav") else T("Your server", "השרת שלכם")
     val said = when (crowd) {
         Prefs.CROWD_KAV -> T(
-            "Your phone asks Kav's server (or your own, when live times come from it) how busy the lines you look at usually are: the first time each shows after Kav opens, and again after six hours (after ten minutes when there was no answer). It learns which lines you look at. Nothing goes to Google.",
-            "הטלפון שואל את השרת של Kav (או את השרת שלכם, כשזמני ההגעה בזמן אמת מגיעים ממנו) כמה עמוסים בדרך כלל הקווים שאתם מסתכלים עליהם: בפעם הראשונה שכל קו מוצג אחרי ש-Kav נפתחת, ושוב אחרי שש שעות (אחרי עשר דקות כשלא הייתה תשובה). הוא יודע אילו קווים אתם מסתכלים עליהם. שום דבר לא נשלח ל-Google.",
+            "How busy the line usually is at this hour, from counts of Rav-Kav taps. $server learns which lines you look at.",
+            "כמה עמוס הקו בדרך כלל בשעה הזו, לפי ספירת תיקופי רב-קו. $server יודע אילו קווים אתם מסתכלים עליהם.",
         )
         Prefs.CROWD_GOOGLE -> T(
-            "Kav asks Google from your phone about the stop you board at while a trip, navigation or a line's page is open, at most every ten minutes: Google sees the stop and your IP address.",
-            "Kav שואלת את Google מהטלפון על תחנת העלייה כשנסיעה, ניווט או דף של קו פתוחים, לכל היותר כל עשר דקות: Google רואה את התחנה ואת כתובת ה-IP שלכם.",
+            "Google Maps' prediction. Google sees the stop you board at and your IP address.",
+            "התחזית של Google Maps. Google רואה את תחנת העלייה ואת כתובת ה-IP שלכם.",
         )
         else -> T("Nothing is shown, and no one is asked.", "לא מוצג דבר, ואף אחד לא נשאל.")
     }
-    InfoHeader(T("How busy", "עומס"), T(
-        "How busy the next bus usually is at that hour, on trips, in navigation, on a line's page and on a bus's card. Kav's compares the hour with the line's own hours, from the Ministry of Transport's count of Rav-Kav taps: taps are boardings, so it never says how full a bus is, and it has nothing for trains. Google's is Google Maps' prediction.",
-        "כמה עמוס בדרך כלל האוטובוס הבא בשעה הזו, בנסיעות, בניווט, בדף של קו ובכרטיס של אוטובוס. של Kav משווה את השעה לשעות של הקו עצמו, לפי ספירת תיקופי הרב-קו של משרד התחבורה: תיקופים הם עליות, ולכן הוא לא אומר כמה מלא האוטובוס, ואין לו נתונים לרכבות. של Google הוא התחזית של Google Maps.",
-    ) + " " + said)
+    InfoHeader(T("How busy", "עומס"), said)
     KavSegmented(
         listOf("Kav", "Google", T("Off", "כבוי")), Prefs.CROWDS.indexOf(crowd),
         { i ->
@@ -1094,16 +999,16 @@ private fun AlertsSource() {
         { s ->
             when (s) {
                 Source.GOOGLE -> T(
-                    "Google Maps, asked from your phone about each ride of a trip you open, at most every five minutes: Google sees the stops you board and leave each ride at, and your IP address. Only an alert that names your line is shown. The operators write them in Hebrew, and Google cuts them at 1000 characters. Not shown on the list of results.",
-                    "Google Maps, נשאלת מהטלפון על כל נסיעה בקו במסלול שפתחתם, לכל היותר כל חמש דקות: Google רואה את התחנות שבהן אתם עולים ויורדים בכל קו, ואת כתובת ה-IP שלכם. מוצגת רק התראה שמזכירה את הקו שלכם. המפעילים כותבים אותן בעברית, ו-Google קוטעת אותן אחרי 1000 תווים. לא מוצג ברשימת התוצאות.",
+                    "Asked from your phone for each ride of a trip you open. Google sees the stops you board and leave at, and your IP address.",
+                    "נשאלת מהטלפון על כל קו במסלול שפתחתם. Google רואה את התחנות שבהן אתם עולים ויורדים, ואת כתובת ה-IP שלכם.",
                 )
                 Source.KAV -> T(
-                    "Kav's server sends Israel's whole list with every notice in it, every ten minutes while results or a trip are open. It sees your IP address but not your trip: your lines are found in the list on your phone. Notices come in English too, translated on Kav's server.",
-                    "השרת של Kav שולח את כל הרשימה של ישראל עם כל ההודעות שבה, כל עשר דקות כשתוצאות או נסיעה פתוחות. הוא רואה את כתובת ה-IP שלכם אבל לא את הנסיעה: הקווים שלכם נמצאים ברשימה בטלפון.",
+                    "Kav's server sends the whole country's list, so it sees your IP address but not your trip.",
+                    "השרת של Kav שולח את הרשימה של כל הארץ, ולכן הוא רואה את כתובת ה-IP שלכם אבל לא את הנסיעה.",
                 )
                 Source.OWN -> T(
-                    "Your own copy of Kav's server sends the whole list the same way, from the GTFS-Realtime alerts feed it's set up with, such as the Ministry of Transport's.",
-                    "עותק משלכם של השרת של Kav שולח את כל הרשימה באותה דרך, מפיד התראות ה-GTFS-Realtime שהוגדר בו, כמו זה של משרד התחבורה.",
+                    "Your own server sends the whole list the same way.",
+                    "השרת שלכם שולח את כל הרשימה באותה דרך.",
                 )
             }
         },
@@ -1119,7 +1024,7 @@ private fun AlertsSource() {
     ) { c ->
         val answers = c as? KavLive.Check.Answers
         when {
-            c == null -> K.textTertiary to T("Checking the connection", "בודקים את החיבור")
+            c == null -> K.textTertiary to ""
             answers?.alerts != null -> K.realtime to T("Connected · alerts ready", "מחובר · ההתראות זמינות")
             answers != null -> K.problem to T("Connected, but it doesn't serve alerts", "מחובר, אבל הוא לא מגיש התראות")
             else -> K.problem to T("Not reachable. Tap for details", "לא זמין. הקישו לפרטים")
@@ -1131,19 +1036,12 @@ private fun AlertsSource() {
 @Composable
 internal fun StopPhotoChoice() {
     val ctx = LocalContext.current
-    InfoHeader(T("Photos", "תמונות"), T(
-        "A stop's photo is Google's Street View facing it. A place's is the photo Google Maps shows first when you open " +
-            "the place; a place with none, like most addresses, keeps its pin. Each is fetched when the stop or place is " +
-            "shown, and kept on your phone: Google then sees that stop, or the place's name and location, and your IP " +
-            "address. Off, Google is asked only when you open Street View.",
-        "התמונה של תחנה היא Street View של Google שפונה אליה. התמונה של מקום היא זו ש-Google Maps מציגה ראשונה " +
-            "כשפותחים את המקום; מקום בלי תמונה, כמו רוב הכתובות, נשאר עם הסיכה. כל אחת נטענת כשהתחנה או המקום " +
-            "מוצגים, ונשמרת בטלפון: Google רואה אז את התחנה, או את השם והמיקום של המקום, ואת כתובת ה-IP שלכם. כשכבוי, " +
-            "Google נשאלת רק כשפותחים Street View.",
-    ))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Photos of stops and places", "תמונות של תחנות ומקומות"), StopPhotos.enabled, { PhotoGlyph(toggleInk(StopPhotos.enabled)) }) { on ->
+            ToggleRow(T("Photos of stops and places", "תמונות של תחנות ומקומות"), StopPhotos.enabled, { PhotoGlyph(toggleInk(StopPhotos.enabled)) }, info = T(
+                "A stop's is Street View facing it; a place's is from Google Maps. Google sees the stop or place, and your IP address.",
+                "של תחנה: Street View שפונה אליה; של מקום: מ-Google Maps. Google רואה את התחנה או המקום, ואת כתובת ה-IP שלכם.",
+            )) { on ->
                 StopPhotos.enabled = on; Prefs.setStopPhotos(ctx, on)
             }
         }
@@ -1157,15 +1055,8 @@ internal fun ProxyChoice() {
     val scope = rememberCoroutineScope()
     val saved = RiderProxy.setting
     InfoHeader(T("Proxy", "פרוקסי"), T(
-        "Send everything Kav asks for through a proxy of your own: Kav's server, Google, the planners, the maps and the " +
-            "pages Kav shows then see the proxy's address instead of yours. If the proxy can't be reached, nothing loads " +
-            "until it's back or turned off. Pages shown in Kav (Street View, the report form) can log in to an " +
-            "HTTP proxy but not to a SOCKS5 one. A connection Kav already has open can carry on as it was for a few " +
-            "minutes; close and reopen Kav for everything to switch at once.",
-        "שליחת כל מה ש-Kav מבקשת דרך פרוקסי משלכם: השרת של Kav, Google, המתכננים, המפות והעמודים ש-Kav מציגה רואים " +
-            "אז את הכתובת של הפרוקסי במקום שלכם. אם אי אפשר להגיע לפרוקסי, שום דבר לא נטען עד שהוא חוזר או נכבה. עמודים " +
-            "שמוצגים ב-Kav (Street View, טופס הדיווח) יכולים להתחבר לפרוקסי HTTP אבל לא לפרוקסי SOCKS5. " +
-            "חיבור ש-Kav כבר פתחה יכול להמשיך כמו שהיה עוד כמה דקות; סגרו ופתחו את Kav כדי שהכול יעבור מיד.",
+        "Everything Kav asks for goes through your proxy, so servers see its address, not yours. If it can't be reached, nothing loads.",
+        "כל מה ש-Kav מבקשת עובר דרך הפרוקסי שלכם, כך שהשרתים רואים את הכתובת שלו ולא את שלכם. אם אי אפשר להגיע אליו, שום דבר לא נטען.",
     ))
     val kinds = RiderProxy.Kind.entries
     var kind by remember { mutableStateOf(saved.kind) }
@@ -1213,18 +1104,18 @@ internal fun ProxyChoice() {
                 keyboard = androidx.compose.ui.text.input.KeyboardType.Password, secret = true)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
                 val said = when {
-                    trying -> T("Trying…", "בודקים…") to K.textSecondary
+                    trying -> null
                     tried == "" -> T("Works: Kav goes through it", "עובד: Kav עוברת דרכו") to K.realtime
                     tried != null -> T("Couldn't connect: $tried", "אין חיבור: $tried") to K.problem
                     draft != saved -> T("Not saved yet", "עוד לא נשמר") to K.textSecondary
                     else -> null
                 }
                 Text(said?.first.orEmpty(), style = K.type.subhead, color = said?.second ?: K.textSecondary, modifier = Modifier.weight(1f))
-                KavButton(T("Save and try", "שמירה ובדיקה"), { save(draft) }, enabled = draft.on && !trying, style = ButtonStyle.Secondary)
+                KavButton(T("Save and try", "שמירה ובדיקה"), { save(draft) }, enabled = draft.on, busy = trying, style = ButtonStyle.Secondary)
             }
             if (!RiderProxy.pagesFollow) Text(
-                T("This phone's WebView can't use a proxy, so pages shown in Kav still connect directly.",
-                    "ה-WebView בטלפון הזה לא יכול להשתמש בפרוקסי, ולכן עמודים שמוצגים ב-Kav עדיין מתחברים ישירות."),
+                T("This phone's WebView can't use a proxy: pages shown in Kav connect directly.",
+                    "ה-WebView בטלפון הזה לא תומך בפרוקסי: עמודים שמוצגים ב-Kav מתחברים ישירות."),
                 style = K.type.subhead, color = K.problem,
             )
         }
@@ -1239,14 +1130,12 @@ internal fun LiveSource() {
         { s ->
             when (s) {
                 Source.GOOGLE -> ""
-                Source.KAV -> T("Buses and trains straight from the Ministry of Transport, with Kav's own arrival times. ",
-                    "אוטובוסים ורכבות ישירות ממשרד התחבורה, עם זמני ההגעה של Kav. ")
-                Source.OWN -> T("Your own copy of Kav's server, from server/selfhost. As set now, ",
-                    "עותק משלכם של השרת של Kav, מ-server/selfhost. כפי שמוגדר עכשיו, ") + kavStill() + " "
-            } + T(
-                "A server sees only the lines and area you look at, never your IP address, and keeps no logs.",
-                "השרת רואה רק את הקווים והאזור שאתם צופים בהם, אף פעם לא את כתובת ה-IP שלכם, ולא שומר יומנים.",
-            )
+                Source.KAV -> T(
+                    "From the Ministry of Transport, with Kav's arrival times. The server sees the lines and area you look at, not your IP address.",
+                    "ממשרד התחבורה, עם זמני ההגעה של Kav. השרת רואה את הקווים והאזור שאתם צופים בהם, לא את כתובת ה-IP שלכם.",
+                )
+                Source.OWN -> T("Your own copy of Kav's server. ", "עותק משלכם של השרת של Kav. ") + kavStill()
+            }
         },
         Source.LIVE, KavLive.source, { s -> KavLive.source = s; Prefs.setLiveSource(ctx, s) },
         // Own picked but not set up yet: its address and key come first, Kav's server answers until then.
@@ -1255,7 +1144,7 @@ internal fun LiveSource() {
     ) { c ->
         val answers = c as? KavLive.Check.Answers
         when {
-            c == null -> K.textTertiary to T("Checking the connection", "בודקים את החיבור")
+            c == null -> K.textTertiary to ""
             answers?.live == true -> K.realtime to T(
                 "Connected · ${"%,d".format(answers.vehicles)} buses live",
                 "מחובר · ${"%,d".format(answers.vehicles)} אוטובוסים בזמן אמת",
@@ -1278,15 +1167,11 @@ internal fun PlanningSource() {
                 // Google gives line alerts only, never offered here.
                 Source.GOOGLE -> ""
                 Source.KAV -> T(
-                    "Kav's planner works out the trips you search for on Kav's server, on the ministry's timetable. It sees each trip's two points and time, never your IP address, and keeps no logs.",
-                    "המתכנן של Kav מחשב את המסלולים שאתם מחפשים בשרת של Kav, לפי לוח הזמנים של משרד התחבורה. הוא רואה את שתי הנקודות והשעה של כל מסלול, אף פעם לא את כתובת ה-IP שלכם, ולא שומר יומנים.",
+                    "Kav's server plans the trips you search for. It sees each trip's two points and time, not your IP address.",
+                    "השרת של Kav מתכנן את המסלולים שאתם מחפשים. הוא רואה את שתי הנקודות והשעה של כל מסלול, לא את כתובת ה-IP שלכם.",
                 )
-                Source.OWN -> T("Your own copy of Kav's server works out the trips you search for, with its planner on. As set now, ",
-                    "עותק משלכם של השרת של Kav מחשב את המסלולים שאתם מחפשים, עם המתכנן שלו. כפי שמוגדר עכשיו, ") + kavStill()
-            } + T(
-                " The trips it finds get their live times from the choice above.",
-                " המסלולים שהוא מוצא מקבלים את זמני ההגעה בזמן אמת מהבחירה שלמעלה.",
-            )
+                Source.OWN -> T("Your own copy of Kav's server plans your trips. ", "עותק משלכם של השרת של Kav מתכנן את המסלולים שלכם. ") + kavStill()
+            }
         },
         Source.PLANNING, KavPlan.source, { s -> KavPlan.source = s; Prefs.setPlanSource(ctx, s) },
         // Own picked but not set up yet: its address and key come first, Kav's server plans until then.
@@ -1299,11 +1184,10 @@ internal fun PlanningSource() {
         },
         note = when {
             KavPlan.source.key !in KavPlan.plannerTabs() ->
-                T("Its tab is hidden, so an extension plans your trips. See Routes from every planner.",
-                    "הלשונית שלו מוסתרת, ולכן תוסף מתכנן את המסלולים שלכם. ראו מסלולים מכל המתכננים.")
+                T("Its tab is hidden, so an extension plans your trips.", "הלשונית שלו מוסתרת, ולכן תוסף מתכנן את המסלולים שלכם.")
             KavPlan.source == Source.OWN && KavLive.ownServer.isEmpty() ->
-                if (KavLive.source == Source.OWN) T("Set up your server above, under live locations. Until then, Kav's server plans trips.",
-                    "הגדירו את השרת שלכם למעלה, תחת מיקומים בזמן אמת. עד אז, השרת של Kav מתכנן מסלולים.")
+                if (KavLive.source == Source.OWN) T("Set up your server above. Until then, Kav's server plans trips.",
+                    "הגדירו את השרת שלכם למעלה. עד אז, השרת של Kav מתכנן מסלולים.")
                 else T("Until your server is set up, Kav's server plans trips.", "עד שהשרת שלכם מוגדר, השרת של Kav מתכנן מסלולים.")
             !KavPlan.offered && KavPlan.source == Source.OWN ->
                 T("Your server doesn't plan trips yet. Turn its planner on, or pick Kav's server.",
@@ -1313,7 +1197,7 @@ internal fun PlanningSource() {
     ) { c ->
         val answers = c as? KavLive.Check.Answers
         when {
-            c == null -> K.textTertiary to T("Checking the connection", "בודקים את החיבור")
+            c == null -> K.textTertiary to ""
             answers != null && (KavPlan.server == KavLive.KAV_SERVER || answers.planner == true) ->
                 K.realtime to T("Connected · trip planner ready", "מחובר · מתכנן המסלולים מוכן")
             answers?.planner == false -> K.problem to T("Connected, but its trip planner isn't ready yet", "מחובר, אבל מתכנן המסלולים שלו עוד לא מוכן")
@@ -1337,13 +1221,10 @@ internal fun TimetableSource() {
                 // Google gives line alerts only, never offered here.
                 Source.GOOGLE -> ""
                 Source.KAV -> T(
-                    "The week of scheduled departures on your phone, built each night on GitHub from the Ministry of Transport's timetable. Lines and stop boards open without signal and ask no one.",
-                    "שבוע היציאות המתוכננות שבטלפון, שנבנה כל לילה ב-GitHub מלוח הזמנים של משרד התחבורה. קווים ולוחות תחנות נפתחים בלי קליטה ולא שואלים אף אחד.",
+                    "The week of departures kept on your phone, from the Ministry of Transport's timetable. Lines and stop boards ask no one.",
+                    "שבוע היציאות ששמור בטלפון, מלוח הזמנים של משרד התחבורה. קווים ולוחות תחנות לא שואלים אף אחד.",
                 )
-                Source.OWN -> T(
-                    "The week your own copy of Kav's server builds each night, kept on your phone. As set now, ",
-                    "השבוע שעותק משלכם של השרת של Kav בונה כל לילה, שמור בטלפון. כפי שמוגדר עכשיו, ",
-                ) + kavStill()
+                Source.OWN -> T("The week your own server builds, kept on your phone. ", "השבוע שהשרת שלכם בונה, שמור בטלפון. ") + kavStill()
             } + if (s.provider) T(" Without signal, Kav shows the timetable on your phone instead.", " בלי קליטה, Kav מציגה במקום זאת את לוח הזמנים שבטלפון.") else ""
         },
         Source.TIMETABLE, Schedules.source, { s -> Schedules.source = s; Prefs.setTimetableSource(ctx, s) },
@@ -1361,7 +1242,7 @@ internal fun TimetableSource() {
     ) { c ->
         val answers = c as? KavLive.Check.Answers
         when {
-            c == null -> K.textTertiary to T("Checking the connection", "בודקים את החיבור")
+            c == null -> K.textTertiary to ""
             answers != null && Schedules.source.provider -> K.realtime to T("Connected · timetable ready", "מחובר · לוח הזמנים זמין")
             answers?.timetable?.isNotEmpty() == true -> K.realtime to T("Connected · its week is built", "מחובר · השבוע שלו בנוי")
             answers != null -> K.problem to T("Connected, but its week isn't built yet", "מחובר, אבל השבוע שלו עוד לא נבנה")
@@ -1377,11 +1258,8 @@ private fun kavStill(): String {
     val parts = Sources.onKav(
         KavLive.source, KavPlan.source, if (KavPlan.everyPlanner) KavPlan.tabs() else emptyList(), TripShare.server, KavLive.ownServer,
     )
-    if (parts.isEmpty()) return T(
-        "nothing goes to Kav's server, other than opening a link made there.",
-        "שום דבר לא נשלח לשרת של Kav, חוץ מפתיחת קישור שנוצר בו.",
-    )
-    return T("still from Kav's server: ", "עדיין מהשרת של Kav: ") + parts.joinToString(", ") {
+    if (parts.isEmpty()) return T("Nothing goes to Kav's server.", "שום דבר לא נשלח לשרת של Kav.")
+    return T("Still from Kav's server: ", "עדיין מהשרת של Kav: ") + parts.joinToString(", ") {
         when (it) {
             Sources.Part.LIVE -> T("live locations", "מיקומים בזמן אמת")
             Sources.Part.TRIPS -> T("trip planning", "תכנון מסלולים")
@@ -1403,8 +1281,8 @@ internal fun ShareServerChoice() {
     ) {
         Column {
             InfoHeader(T("Share links made on", "קישורי שיתוף נוצרים ב"), T(
-                "Where a Kav link you share keeps the trip until it expires: Kav's server or your own. Whoever opens the link reads the trip from there. Until you pick, links are made on your server while live times or trips come from it.",
-                "המקום שבו קישור Kav ששיתפתם שומר את הנסיעה עד שתוקפו פג: השרת של Kav או השרת שלכם. מי שפותח את הקישור קורא את הנסיעה משם. עד שתבחרו, קישורים נוצרים בשרת שלכם כשזמני ההגעה בזמן אמת או המסלולים מגיעים ממנו.",
+                "Where a Kav link keeps the trip until it expires. Whoever opens the link reads it from there.",
+                "איפה קישור Kav שומר את הנסיעה עד שתוקפו פג. מי שפותח את הקישור קורא אותה משם.",
             ))
             val order = listOf(Source.KAV, Source.OWN)
             KavSegmented(
@@ -1528,7 +1406,11 @@ private fun SourceChoice(
     ) { NoteCard(said.orEmpty(), Modifier.padding(top = K.gap2)) }
     val settingUp = server == null
     val showFields = source == Source.OWN && fields
-    val (dot, line) = status(inUse)
+    // While the server is asked, a small ring turns where its dot is and the last answer's line stays in place.
+    val asking = inUse == null
+    val (dot, found) = status(inUse)
+    var line by remember(server) { mutableStateOf("") }
+    if (!asking) line = found
     val title = if (source.provider) sourceName(source) else if (server != KavLive.KAV_SERVER) T.ltr(server.orEmpty().removePrefix("https://")) else T("Kav's server", "השרת של Kav")
     // The card comes and goes with a choice that asks a server, and what it says (another provider, its check coming
     // back) fades from one to the next.
@@ -1552,7 +1434,11 @@ private fun SourceChoice(
             ) { (name, said) ->
                 ListRow(
                     name, subtitle = said,
-                    leading = { Box(Modifier.size(10.dp).clip(CircleShape).background(shade)) },
+                    leading = {
+                        androidx.compose.animation.Crossfade(asking, animationSpec = tween(150), label = "asking") { ring ->
+                            if (ring) Spinner(10.dp) else Box(Modifier.size(10.dp).clip(CircleShape).background(shade))
+                        }
+                    },
                     onClick = if (source.provider) null else ({ open = !open }),
                 )
             }
@@ -1618,7 +1504,12 @@ private fun SourceChoice(
                         android.content.pm.PackageManager.PERMISSION_GRANTED) scanning = true
                     else askCamera.launch(android.Manifest.permission.CAMERA)
                 }, style = ButtonStyle.Secondary, icon = Icons.Rounded.QrCodeScanner)
-                if (scanning) BottomSheet({ scanning = false }) { close ->
+                // Over the whole screen, as the page's other sheets are: the page scrolls, so a sheet laid out in it would sit
+                // inside this card.
+                if (scanning) androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { scanning = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                ) { BottomSheet({ scanning = false }) { close ->
                     Column(Modifier.fillMaxWidth().padding(K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
                         Text(T("Point the camera at the code on your server's setup page", "כוונו את המצלמה לקוד בדף ההגדרה של השרת שלכם"),
                             style = K.type.body)
@@ -1639,7 +1530,7 @@ private fun SourceChoice(
                             }
                         }
                     }
-                }
+                } }
                 // Connect, then Sign in where the server asks for an account, then nothing once in: one fading into the next.
                 androidx.compose.animation.AnimatedContent(
                     when { access == "accounts" && !signedInHere -> 2; !connected -> 1; else -> 0 },
@@ -1740,26 +1631,19 @@ private fun CheckLines(c: KavLive.Check) {
     }
 }
 
-// What a shared trip's link is.
-@Composable
-private fun ShareLinks() {
-    // Made where the rider picked (TripShare.server).
-    val on = if (TripShare.server != KavLive.KAV_SERVER) T("your server", "שרת שלכם") else T("Kav's server", "שרת של Kav")
-    InfoHeader(
-        T("Trips you share", "נסיעות שאתם משתפים"),
-        T("A Kav link keeps the trip you picked, with its stops and map, on $on until it expires.",
-            "קישור Kav שומר את הנסיעה שבחרתם, עם התחנות והמפה, ב$on עד שתוקפו פג."),
-    )
-}
-
 @Composable
 private fun LinkCustomization() {
     val ctx = LocalContext.current
     var style by remember { mutableStateOf(Prefs.linkStyle(ctx)) }
     fun save(next: uk.noammm.kav.data.ShareStyle) { style = next; Prefs.setLinkStyle(ctx, next) }
-    ShareLinks()
     Column {
-    Sub(T("Link expires after", "תוקף הקישור"))
+    // Made where the rider picked (TripShare.server).
+    val on = if (TripShare.server != KavLive.KAV_SERVER) T("your server", "שרת שלכם") else T("Kav's server", "שרת של Kav")
+    InfoHeader(
+        T("Link expires after", "תוקף הקישור"),
+        T("A Kav link keeps the trip you shared, with its stops and map, on $on until then.",
+            "קישור Kav שומר את הנסיעה ששיתפתם, עם התחנות והמפה, ב$on עד אז."),
+    )
     val expiryDays = listOf(3, 7, 30)
     KavSegmented(expiryDays.map { T("$it days", "$it ימים") }, expiryDays.indexOf(style.expiryDays),
         { save(style.copy(expiryDays = expiryDays[it])) })
@@ -1768,17 +1652,22 @@ private fun LinkCustomization() {
     val kavLanguage = if (T.lang == Lang.HE) "he" else "en"
     val kavStops = if (StopNames.english) "en" else "he"
     val kavTheme = K.look.name.lowercase()
-    InfoHeader(T("The page", "העמוד"), T("Changes apply to links you share from now on.", "השינויים חלים על קישורים שתשתפו מעכשיו."))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Match my Kav settings", "כמו ההגדרות שלי ב-Kav"), matching,
-                { Icon(Icons.Rounded.Sync, null, tint = toggleInk(matching), modifier = Modifier.size(20.dp)) }) { on ->
+            ToggleRow(T("Page matches my Kav", "העמוד כמו ה-Kav שלי"), matching,
+                { Icon(Icons.Rounded.Sync, null, tint = toggleInk(matching), modifier = Modifier.size(20.dp)) },
+                info = T("The shared page's language, stop names and colors. Applies to links you share from now on.",
+                    "השפה, שמות התחנות והצבעים של העמוד המשותף. חל על קישורים שתשתפו מעכשיו.")) { on ->
                 save(if (on) style.copy(language = "auto", stopLanguage = "auto", theme = "auto")
                 else style.copy(language = kavLanguage, stopLanguage = kavStops, theme = kavTheme))
             }
         }
     }
-    AnimatedVisibility(!matching, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(
+        !matching,
+        enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+        exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+    ) {
         Column {
             val languages = listOf("en", "he")
             Sub(T("Language", "שפה"))
@@ -1904,18 +1793,16 @@ internal fun TimetableUpdates() {
     val ctx = LocalContext.current
     var on by remember { mutableStateOf(Prefs.timetableUpdates(ctx)) }
     var mobile by remember { mutableStateOf(Prefs.timetableOnMobile(ctx)) }
-    InfoHeader(T("Timetable on your phone", "לוח הזמנים בטלפון"), T(
-        "The week of scheduled departures Kav keeps on your phone, for stop boards and planning without signal, built each night on GitHub from the Ministry of Transport's timetable. Off, Kav keeps the last copy, which can go out of date. On mobile data, it updates only once the copy is three days old, unless you turn on Also on mobile data.",
-        "שבוע היציאות המתוכננות ש-Kav שומרת בטלפון, ללוחות התחנות ולתכנון בלי קליטה, שנבנה כל לילה ב-GitHub מלוח הזמנים של משרד התחבורה. כשכבוי, Kav שומרת את העותק האחרון, שעלול להתיישן. בנתונים סלולריים הוא מתעדכן רק כשהעותק בן שלושה ימים, אלא אם תפעילו את גם בנתונים סלולריים.",
-    ))
-    ListGroup(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+    ListGroup(Modifier.padding(top = K.gap6).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
         row {
             val from = if (KavLive.timetableServer != null) T("From your server", "מהשרת שלכם") else T("From GitHub", "מ-GitHub")
             ListRow(
-                T("Update it every day", "לעדכן אותו כל יום"),
+                T("Update the timetable daily", "לעדכן את לוח הזמנים כל יום"),
                 Modifier.semantics { toggleableState = if (on) ToggleableState.On else ToggleableState.Off },
                 subtitle = if (mobile) from else from + T(", on Wi-Fi", ", ב-Wi-Fi"),
                 trailing = { KavSwitch(on) }, onClick = { on = !on; Prefs.setTimetableUpdates(ctx, on) }, chevron = false,
+                info = T("The week of departures on your phone, for stop boards and planning without signal.",
+                    "שבוע היציאות שבטלפון, ללוחות התחנות ולתכנון בלי קליטה."),
             )
         }
         if (on) row {
@@ -1973,13 +1860,12 @@ internal fun PrivacyRows(model: KavModel, onChoose: () -> Unit) {
     val ctx = LocalContext.current
     var priv by remember(model.prefsVersion) { mutableStateOf(Prefs.privateSearch(ctx)) }
     PlaceSearchChoice()
-    InfoHeader(T("Search", "חיפוש"), T(
-            "Your exact location stays off search. A trip still sends its two points.",
-            "המיקום המדויק שלכם לא נשלח בחיפוש. מסלול עדיין שולח את שתי הנקודות שלו.",
-        ))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
-            ToggleRow(T("Private search", "חיפוש פרטי"), priv, { ShieldGlyph(toggleInk(priv), 18.dp) }) { on ->
+            ToggleRow(T("Private search", "חיפוש פרטי"), priv, { ShieldGlyph(toggleInk(priv), 18.dp) }, info = T(
+                "Your exact location stays off search. A trip still sends its two points.",
+                "המיקום המדויק שלכם לא נשלח בחיפוש. מסלול עדיין שולח את שתי הנקודות שלו.",
+            )) { on ->
                 priv = on; uk.noammm.kav.Prefs.setPrivateSearch(ctx, on); uk.noammm.kav.data.GoogleMaps.shareLocation = !on
             }
         }
@@ -2040,8 +1926,15 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
     }
     val seens = listOf(Seen.CITY, Seen.PLACE, Seen.NONE)
     Column {
-        // The search's name fades to the other one's when it's switched, the words around it staying where they are.
-        ChangingText(searchName()) { who -> SectionHeader(T("What $who sees", "מה $who רואה")) }
+        val about = when (model.seen) {
+            Seen.NONE -> T("Searches carry no location, so results aren't sorted by distance.",
+                "החיפוש לא כולל מיקום, ולכן התוצאות לא ממוינות לפי מרחק.")
+            Seen.CITY -> T("The center of your town, worked out on your phone. ", "מרכז היישוב שלכם, שמחושב בטלפון. ") +
+                (city?.let { T("Now: $it.", "כרגע: $it.") } ?: "")
+            Seen.PLACE -> T("A place you pick, so results near it come first.", "מקום שתבחרו, כך שתוצאות קרובות אליו מופיעות ראשונות.")
+        }
+        // The search's name fades to the other one's when it's switched.
+        ChangingText(searchName()) { who -> InfoHeader(T("What $who sees", "מה $who רואה"), about) }
         KavSegmented(
             listOf(T("Your town", "היישוב שלכם"), T("A place", "מקום"), T("Nothing", "כלום")),
             seens.indexOf(model.seen).coerceAtLeast(0),
@@ -2051,22 +1944,6 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
             },
         )
         val place = model.seenPlace?.name
-        androidx.compose.animation.AnimatedContent(
-            model.seen to city,
-            transitionSpec = { fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(120)) },
-            label = "seen",
-        ) { (seen, town) ->
-            NoteCard(
-                when (seen) {
-                    Seen.NONE -> T("Searches carry no location, so results aren't sorted by distance.",
-                        "החיפוש לא כולל מיקום, ולכן התוצאות לא ממוינות לפי מרחק.")
-                    Seen.CITY -> T("The center of your town, worked out on your phone. ", "מרכז היישוב שלכם, שמחושב בטלפון. ") +
-                        (town?.let { T("Now: $it.", "כרגע: $it.") } ?: "")
-                    Seen.PLACE -> T("A place you pick, so results near it come first.", "מקום שתבחרו, כך שתוצאות קרובות אליו מופיעות ראשונות.")
-                },
-                Modifier.padding(top = K.gap2),
-            )
-        }
         androidx.compose.animation.AnimatedVisibility(
             model.seen == Seen.PLACE,
             enter = androidx.compose.animation.expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) +
@@ -2074,11 +1951,10 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
             exit = androidx.compose.animation.shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) +
                 androidx.compose.animation.fadeOut(tween(120)),
         ) {
-            ListGroup {
+            ListGroup(Modifier.padding(top = K.gap2)) {
                 row {
                     ListRow(
                         place ?: T("Pick a place", "בחירת מקום"),
-                        subtitle = searchName().let { who -> T("$who sees this instead of you", "$who רואה אותו במקומכם") },
                         leading = { Icon(Icons.Rounded.Place, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(24.dp)) },
                         onClick = onChoose,
                     )
@@ -2100,14 +1976,7 @@ private fun LanguageRow(ctx: android.content.Context) {
 // Ministry of Transport names them in Hebrew, or in English where it has their English names.
 @Composable
 internal fun StopNamesRow(ctx: android.content.Context) {
-    InfoHeader(
-        T("Stop names", "שמות תחנות"),
-        T(
-            "Only the names of stops, stations and towns, as the Ministry of Transport gives them, on the boards, " +
-                "lines and trips. Kav's own language stays as it is.",
-            "רק שמות התחנות והיישובים, כפי שמשרד התחבורה נותן אותם, בלוחות, בקווים ובנסיעות. השפה של Kav נשארת כפי שהיא.",
-        ),
-    )
+    SectionHeader(T("Stop names", "שמות תחנות"))
     KavSegmented(
         listOf("English", "עברית"), selected = if (StopNames.english) 0 else 1,
         onSelect = { i -> StopNames.english = i == 0; Prefs.setStopNamesEnglish(ctx, i == 0) },
@@ -2281,8 +2150,8 @@ private fun FixCheck() {
     var checking by remember { mutableStateOf(false) }
     InfoHeader(
         T("Fixes for Google", "תיקונים ל-Google"),
-        T("Small signed updates Kav fetches when Google changes how it answers, so it keeps working between releases.",
-            "עדכונים קטנים וחתומים ש-Kav מורידה כש-Google משנה את אופן התשובה, כדי שתמשיך לעבוד בין גרסאות."),
+        T("Small signed updates for when Google changes how it answers, so Kav keeps working between releases.",
+            "עדכונים קטנים וחתומים למקרה ש-Google משנה את אופן התשובה, כדי ש-Kav תמשיך לעבוד בין גרסאות."),
     )
     Row(
         Modifier.fillMaxWidth().panel(K.rCard).padding(horizontal = K.gap4, vertical = K.gap3),
@@ -2293,7 +2162,6 @@ private fun FixCheck() {
             // The status rolls from one state to the next, in its colour.
             LiveText(
                 when {
-                    checking -> T("Looking…", "בודקים…")
                     result == SignedFile.Check.NEWER -> T("A fix arrived and is in use", "הגיע תיקון והוא כבר בשימוש")
                     result == SignedFile.Check.SAME -> T("Kav has the latest fixes", "ל-Kav יש את התיקונים האחרונים")
                     result == SignedFile.Check.FAILED -> T("Couldn't check. Try again online.", "לא הצלחנו לבדוק. נסו שוב כשיש חיבור.")
@@ -2316,10 +2184,7 @@ private fun FixCheck() {
 }
 
 @Composable
-private fun Group(title: String) = SectionHeader(title, Modifier.padding(horizontal = K.gap4))
-
-@Composable
-private fun Absent(title: String, desc: String) {
+private fun Absent(title: String, desc: String? = null) {
     Row(
         Modifier.padding(horizontal = K.gap4, vertical = K.gap2).fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(K.gap3),
@@ -2329,7 +2194,44 @@ private fun Absent(title: String, desc: String) {
         )
         Column(Modifier.weight(1f)) {
             Text(title, style = K.type.body)
-            Text(desc, style = K.type.subhead, modifier = Modifier.padding(top = 2.dp))
+            desc?.let { Text(it, style = K.type.subhead, modifier = Modifier.padding(top = 2.dp)) }
+        }
+    }
+}
+
+// Whose data and maps Kav shows, in full as their licenses ask, on a sheet of its own behind one row.
+@Composable
+private fun Credits() {
+    var open by remember { mutableStateOf(false) }
+    ListGroup(Modifier.padding(top = K.gap6)) { row { ListRow(T("Credits", "קרדיטים"), onClick = { open = true }) } }
+    if (open) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { open = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        BottomSheet({ open = false }, scrolls = true) { close ->
+            SheetHeader(T("Credits", "קרדיטים"), { close { open = false } })
+            Absent(
+                T("How busy", "עומס"),
+                T("The Ministry of Transport's count of Rav-Kav taps, from data.gov.il.", "ספירת תיקופי הרב-קו של משרד התחבורה, מ-data.gov.il."),
+            )
+            Absent(
+                T("Maps", "מפות"),
+                T(
+                    "Map data © OpenStreetMap contributors, Protomaps. Satellite imagery: Esri, Vantor, Earthstar Geographics. " +
+                        "OpenFreeMap maps: OpenFreeMap, © OpenMapTiles, styles after OSM Bright, OSM Liberty, Dark Matter and " +
+                        "Fiord Color (MapTiler, OpenMapTiles, Mapbox, CARTO, Maputnik), Noto fonts (SIL Open Font License). " +
+                        "Road numbers drawn as the Ministry of Transport's route markers.",
+                    "נתוני המפה © תורמי OpenStreetMap, Protomaps. צילומי הלוויין: Esri, Vantor, Earthstar Geographics. " +
+                        "מפות OpenFreeMap: ‏OpenFreeMap, © OpenMapTiles, בסגנונות על פי OSM Bright, ‏OSM Liberty, ‏Dark Matter ו-Fiord " +
+                        "Color ‏(MapTiler, OpenMapTiles, Mapbox, CARTO, Maputnik), גופני Noto ‏(SIL Open Font License). " +
+                        "מספרי הדרכים מצוירים כתמרורי מספר הדרך של משרד התחבורה.",
+                ),
+            )
+            Absent(
+                T("Buses", "אוטובוסים"),
+                T("The Ministry of Transport's file of the operators' buses, from data.gov.il.",
+                    "קובץ ציי האוטובוסים של המפעילים, של משרד התחבורה, מ-data.gov.il."),
+            )
         }
     }
 }

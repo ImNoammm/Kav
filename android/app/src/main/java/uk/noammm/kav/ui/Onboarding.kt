@@ -70,27 +70,15 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 )
                 // A question of its own: the names of stops, apart from Kav's language.
                 StopNamesRow(ctx)
-                InfoHeader(
-                    T("Names on the map", "שמות במפה"),
-                    T("Places and streets on the map. Kav's own language stays as it is.",
-                        "מקומות ורחובות על המפה. השפה של Kav נשארת כפי שהיא."),
-                )
+                SectionHeader(T("Names on the map", "שמות במפה"))
                 MapLabelsRow(ctx)
                 SectionHeader(T("Time format", "תבנית שעה"))
                 ClockChoice(ctx, Modifier)
                 Spacer(Modifier.height(K.gap6))
                 OnboardingButton(T("Next", "הבא")) { page = 1 }
             } else if (p == 1) {
-                InfoHeader(
-                    T("Pick a look", "בחרו מראה"),
-                    T(
-                        "OLED black, light or dark, or as your phone is set, transparent or solid on top. " +
-                            "The preview changes as you tap, and Settings has this again later.",
-                        "שחור OLED, בהיר או כהה, או לפי הטלפון, עם משטחים שקופים או אטומים. " +
-                            "התצוגה המקדימה משתנה כשאתם מקישים, ואפשר לשנות זאת שוב בהגדרות.",
-                    ),
-                    headline = true,
-                )
+                // The preview under it shows each choice, so the step needs no explanation.
+                Text(T("Pick a look", "בחרו מראה"), style = K.type.largeTitle)
                 Spacer(Modifier.height(K.gap5))
                 AccentPreview()
                 Spacer(Modifier.height(K.gap2))
@@ -101,16 +89,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { Prefs.lookPicked(ctx); page = 2 }
             } else if (p == 2) {
-                InfoHeader(
-                    T("Pick a color", "בחרו צבע"),
-                    T(
-                        "Kav is gray with one color on top. Slide along the colors, or take a preset; " +
-                            "the preview follows as you go, and Settings has this again later.",
-                        "Kav אפורה עם צבע אחד מעליה. החליקו לאורך הצבעים או בחרו גוון מוכן; " +
-                            "התצוגה המקדימה מתעדכנת תוך כדי, ואפשר לשנות זאת שוב בהגדרות.",
-                    ),
-                    headline = true,
-                )
+                Text(T("Pick a color", "בחרו צבע"), style = K.type.largeTitle)
                 Spacer(Modifier.height(K.gap5))
                 AccentPreview()
                 Spacer(Modifier.height(K.gap6))
@@ -151,16 +130,8 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { page = 4 }
             } else if (p == 4) {
-                InfoHeader(
-                    T("What should a plan show?", "מה מסלול יכול לכלול?"),
-                    T(
-                        "Everything is on. Switch off what you never take and the planner " +
-                            "leaves it out. This is the same list Settings keeps.",
-                        "הכול פעיל. כבו את מה שאתם אף פעם לא נוסעים בו והמתכנן ישמיט אותו. " +
-                            "זו אותה רשימה שנמצאת בהגדרות.",
-                    ),
-                    headline = true,
-                )
+                // Named as Settings' page with the same choices is; each section under it has its own header.
+                Text(T("Trips", "נסיעות"), style = K.type.largeTitle)
                 Spacer(Modifier.height(K.gap3))
                 PlanChoices(model)
                 Spacer(Modifier.height(K.gap5))
@@ -179,7 +150,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 }
             } else if (p == 5) {
                 AutomaticUpdates(setup = true)
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { UpdatePrompts(checkAbove = false) }
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { UpdatePrompts() }
                 Spacer(Modifier.height(K.gap8))
                 // Everything downloaded already: setup ends here, without its last step.
                 AnimatedContent(allThere, transitionSpec = { switching() }, label = "setupNext") { done ->
@@ -198,30 +169,14 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                     if (pack != null) T("Download the map and timetable", "הורדת המפה ולוח הזמנים")
                     else T("Download the timetable", "הורדת לוח הזמנים"),
                     if (pack != null) T(
-                        "Kav keeps its map on your phone instead of loading tiles from a server as " +
-                            "you go, so nothing tracks where you look. It's about ${pack.bytes shr 20} MB for all " +
-                            "of Israel, once. After that the map works with no signal. Kav needs it " +
-                            "before it can show you anything, so it downloads now. With it comes the week of scheduled " +
-                            "departures, about 6 MB, built each night from the Ministry of Transport's timetable and " +
-                            "kept up to date in the background.",
-                        "Kav מחזיקה את המפה בטלפון שלכם במקום לטעון אריחים משרת תוך כדי תנועה, " +
-                            "כך שאף אחד לא עוקב אחרי מה שאתם מסתכלים עליו. זה בערך ${pack.bytes shr 20} MB לכל " +
-                            "ישראל, פעם אחת. אחרי זה המפה עובדת גם בלי קליטה. Kav צריכה אותה כדי " +
-                            "להציג לכם משהו, אז מורידים אותה עכשיו. איתה מגיע שבוע היציאות המתוכננות, בערך 6 MB, " +
-                            "שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
+                        "The map is for all of Israel and then works without signal. The week's timetable comes with it.",
+                        "המפה היא של כל ישראל, ואחרי ההורדה היא עובדת גם בלי קליטה. איתה מגיע לוח הזמנים של השבוע.",
                     ) else if (provider is uk.noammm.kav.data.GovMap) T(
-                        "The GovMap map you picked loads from the Survey of Israel as you look, so it sees which area you view. " +
-                            "What downloads now is the week of scheduled departures, about 6 MB, kept on your phone for use without signal.",
-                        "מפת GovMap שבחרתם נטענת מהמרכז למיפוי ישראל בזמן הצפייה, ולכן הוא רואה איזה אזור אתם צופים בו. " +
-                            "מה שיורד עכשיו הוא שבוע היציאות המתוכננות, בערך 6 MB, שנשמר בטלפון לשימוש גם בלי קליטה.",
+                        "The GovMap map loads as you look, so the Survey of Israel sees the area you view. What downloads now is the week's timetable.",
+                        "מפת GovMap נטענת בזמן הצפייה, ולכן המרכז למיפוי ישראל רואה את האזור שאתם צופים בו. מה שיורד עכשיו הוא לוח הזמנים של השבוע.",
                     ) else T(
-                        "The OpenFreeMap map you picked loads from OpenFreeMap as you look, so OpenFreeMap sees which " +
-                            "area you view. Settings can keep it on your phone instead. What downloads now is the week " +
-                            "of scheduled departures, about 6 MB, built each night from the Ministry of Transport's " +
-                            "timetable and kept up to date in the background.",
-                        "מפת OpenFreeMap שבחרתם נטענת מ-OpenFreeMap בזמן הצפייה, ולכן OpenFreeMap רואה איזה אזור " +
-                            "אתם צופים בו. בהגדרות אפשר לשמור אותה בטלפון במקום זאת. מה שיורד עכשיו הוא שבוע היציאות " +
-                            "המתוכננות, בערך 6 MB, שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
+                        "The OpenFreeMap map loads as you look, so OpenFreeMap sees the area you view. What downloads now is the week's timetable.",
+                        "מפת OpenFreeMap נטענת בזמן הצפייה, ולכן OpenFreeMap רואה את האזור שאתם צופים בו. מה שיורד עכשיו הוא לוח הזמנים של השבוע.",
                     ),
                     headline = true,
                 )
@@ -258,7 +213,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                             if (week !is Timetable.State.Ready) T("Downloading the timetable…", "מורידים את לוח הזמנים…")
                             else T("Downloading the map…", "מורידים את המפה…"),
                         )
-                        else -> {}
+                        else -> ((pack?.bytes ?: 0L) + WEEK_BYTES.toLong() shr 20).let { mb -> NoteCard(T("About $mb MB, once.", "בערך $mb MB, פעם אחת.")) }
                     }
                 }
                 Spacer(Modifier.height(K.gap8))
@@ -326,10 +281,8 @@ internal fun TimetableStep() {
         InfoHeader(
             T("Getting the timetable", "מורידים את לוח הזמנים"),
             T(
-                "Kav no longer comes with its timetable. It downloads the week of scheduled departures, about 6 MB, built " +
-                    "each night from the Ministry of Transport's timetable, and keeps it up to date in the background.",
-                "Kav כבר לא מגיעה עם לוח הזמנים. היא מורידה את שבוע היציאות המתוכננות, בערך 6 MB, שנבנה כל לילה " +
-                    "מלוח הזמנים של משרד התחבורה, ומעדכנת אותו ברקע.",
+                "Kav now downloads its timetable: the week's departures, about 6 MB, kept up to date in the background.",
+                "Kav מורידה עכשיו את לוח הזמנים: היציאות של השבוע, בערך 6 MB, והוא מתעדכן ברקע.",
             ),
             headline = true,
         )

@@ -101,8 +101,8 @@ private fun EveryPlannerRows(theirs: List<String>) {
     InfoHeader(
         T("Routes from every planner", "מסלולים מכל המתכננים"),
         T(
-            "Results get a tab for each planner under Earlier and Later: Kav's, and each extension's switched on here. Each search then goes to every online planner with a tab: each gets the trip's two points and time, and your IP address. On your phone plans locally. An extension's planner is its own code, and gets the trip's two points and time. Hide a planner's tab and it isn't asked.",
-            "בתוצאות יש לשונית לכל מתכנן מתחת למוקדם יותר ומאוחר יותר: של Kav, ושל כל תוסף שמופעל כאן. כל חיפוש נשלח אז לכל המתכננים המקוונים שיש להם לשונית: כל אחד מקבל את שתי הנקודות והשעה של המסלול, ואת כתובת ה-IP שלכם. התכנון בטלפון מתבצע מקומית. המתכנן של תוסף הוא הקוד שלו, והוא מקבל את שתי הנקודות והשעה של המסלול. מסתירים לשונית של מתכנן, והוא לא נשאל.",
+            "Each search goes to every planner with a tab. Each gets the trip's two points and time, and your IP address.",
+            "כל חיפוש נשלח לכל מתכנן שיש לו לשונית. כל אחד מקבל את שתי הנקודות והשעה של המסלול, ואת כתובת ה-IP שלכם.",
         ),
     )
     val dir = uk.noammm.kav.ext.ExtApp.dir(ctx)
@@ -148,13 +148,7 @@ private fun EveryPlannerRows(theirs: List<String>) {
     }
     // Which tab results open on, once there are two; an extension can choose it too (results.planner.select).
     if (shown.size > 1) {
-        InfoHeader(
-            T("Results open on", "התוצאות נפתחות על"),
-            T(
-                "The tab results show first. Kav's opens on the planner chosen above. An extension can choose this too.",
-                "הלשונית שהתוצאות מציגות קודם. של Kav נפתחת על המתכנן שנבחר למעלה. גם תוסף יכול לבחור את זה.",
-            ),
-        )
+        SectionHeader(T("Results open on", "התוצאות נפתחות על"))
         KavSegmented(shown.map(KavPlan::tabName), shown.indexOf(KavPlan.opensOn(shown)).coerceAtLeast(0), { i -> chooseOpensOn(ctx, shown[i]) })
     }
 }
