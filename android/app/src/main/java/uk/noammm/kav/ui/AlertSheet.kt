@@ -181,11 +181,11 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
             )
             NoteCard(
                 if (numbers.isEmpty()) T(
-                    "On those days and hours, the next trains to these places stay in your notifications, refreshed about every minute.",
-                    "בימים ובשעות האלה, הרכבות הבאות ליעדים האלה יופיעו בהתראות, ויתעדכנו בערך כל דקה.",
+                    "On those days and hours, the next trains to these places stay in your notifications.",
+                    "בימים ובשעות האלה, הרכבות הבאות ליעדים האלה יופיעו בהתראות.",
                 ) else T(
-                    "On those days and hours, the next buses of these lines stay in your notifications, refreshed about every minute.",
-                    "בימים ובשעות האלה, האוטובוסים הבאים של הקווים האלה יופיעו בהתראות, ויתעדכנו בערך כל דקה.",
+                    "On those days and hours, the next buses of these lines stay in your notifications.",
+                    "בימים ובשעות האלה, האוטובוסים הבאים של הקווים האלה יופיעו בהתראות.",
                 ),
                 Modifier.padding(top = K.gap3),
             )

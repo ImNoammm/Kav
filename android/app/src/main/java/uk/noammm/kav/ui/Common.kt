@@ -490,10 +490,8 @@ fun PreciseLocationNudge() {
             Text(T("Your location is not accurate", "המיקום שלכם אינו מדויק"), style = K.type.headline)
             Text(
                 T(
-                    "Turn on ‘Use precise location’. Without it Android rounds your position " +
-                        "to about a kilometer, which can plan your trip from the wrong town.",
-                    "הפעילו את ‘השתמשו במיקום מדויק’. בלעדיו אנדרואיד מעגל את המיקום שלכם " +
-                        "לכדי קילומטר בערך, מה שעלול לתכנן את הנסיעה מהעיר הלא נכונה.",
+                    "Turn on Use precise location, or trips may start from the wrong place.",
+                    "הפעילו את השתמשו במיקום מדויק, אחרת מסלולים עלולים להתחיל מהמקום הלא נכון.",
                 ),
                 style = K.type.subhead, modifier = Modifier.padding(top = 2.dp),
             )
@@ -606,7 +604,8 @@ fun ServiceAlertSheet(alert: RideAlerts.Alert, onDismiss: () -> Unit) {
         // A stop or a line in the notice opens on its tab, the sheet closing first.
         val openStop: (Int) -> Unit = { code -> close { onDismiss(); uk.noammm.kav.AlertLink.alert = alert; uk.noammm.kav.AlertLink.stop = code } }
         val openLine: (String) -> Unit = { number -> close { onDismiss(); uk.noammm.kav.AlertLink.alert = alert; uk.noammm.kav.AlertLink.line = number } }
-        SheetHeader(alert.label.ifBlank { T("Service alert", "הודעת שירות") }, { close(onDismiss) })
+        val heading = alert.label.ifBlank { T("Service alert", "הודעת שירות") }
+        SheetHeader(heading, { close(onDismiss) })
         Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
             val list = notices
             when {
@@ -632,7 +631,8 @@ fun ServiceAlertSheet(alert: RideAlerts.Alert, onDismiss: () -> Unit) {
                     val hebrew = HEBREW.findAll(a.title + a.body).count() > LATIN.findAll(a.title + a.body).count()
                     val notice = if (hebrew) LayoutDirection.Rtl else LocalLayoutDirection.current
                     CompositionLocalProvider(LocalLayoutDirection provides notice) {
-                        a.title.takeIf { it.isNotBlank() }?.let {
+                        // A notice titled as the sheet is isn't titled twice.
+                        a.title.takeIf { it.isNotBlank() && !it.trim().equals(heading.trim(), ignoreCase = true) }?.let {
                             Text(it, style = K.type.headline, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(K.gap2))
                         }

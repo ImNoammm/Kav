@@ -221,8 +221,8 @@ private fun GetRavPass() {
     }
     Title(T("${PayApp.current.label()} is required", "נדרשת ${PayApp.current.he}"))
     Spacer(Modifier.height(K.gap2))
-    Text(T("Since Kav 5, paying goes through the ${PayApp.current.label()} app. Install it, sign in and add a way to pay, then come back to Kav.",
-        "מ-Kav 5 התשלום עובר דרך האפליקציה ${PayApp.current.he}. התקינו אותה, התחברו והוסיפו אמצעי תשלום, ואז חזרו ל-Kav."),
+    Text(T("Install it, sign in and add a way to pay, then come back to Kav.",
+        "התקינו אותה, התחברו והוסיפו אמצעי תשלום, ואז חזרו ל-Kav."),
         style = K.type.body, color = K.textSecondary, textAlign = TextAlign.Center)
     Spacer(Modifier.height(K.gap5))
     KavButton(when (store) {
@@ -256,14 +256,16 @@ private fun Allow(rows: List<Need>, missing: List<Need>, greyed: Need?, onOverla
         }
     }
     // Kav can't ask Android whether it greyed the switch out, so this says what to do if it did, with Android's own words.
-    AnimatedVisibility(greyed != null, enter = fadeIn(tween(220)) + expandVertically(), exit = fadeOut(tween(150)) + shrinkVertically()) {
+    AnimatedVisibility(
+        greyed != null,
+        enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+        exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+    ) {
         Column(Modifier.fillMaxWidth().padding(top = K.gap3).clip(RoundedCornerShape(K.rTile)).background(K.fill).padding(K.gap4),
             verticalArrangement = Arrangement.spacedBy(K.gap2)) {
             Text(T("Was the switch grayed out?", "המתג היה אפור?"), style = K.type.bodyStrong, color = K.text)
-            Text(T("Android blocks it for apps installed from a download rather than an app store, until you allow it. " +
-                "Open Kav's App info, tap ⋮ at the top, then \"Allow restricted settings\", and come back to try again.",
-                "Android חוסמת אותו לאפליקציות שהותקנו מהורדה ולא מחנות אפליקציות, עד שתאשרו. " +
-                    "פתחו את \"פרטי האפליקציה\" של Kav, הקישו על ⋮ למעלה ואז על \"הרשאה להגדרות מוגבלות\", וחזרו לנסות שוב."),
+            Text(T("In Kav's App info, tap ⋮ at the top, then \"Allow restricted settings\", and try again.",
+                "בפרטי האפליקציה של Kav, הקישו על ⋮ למעלה ואז על \"הרשאה להגדרות מוגבלות\", ונסו שוב."),
                 style = K.type.subhead)
             KavButton(T("Open Kav's App info", "פתיחת פרטי האפליקציה של Kav"), onClick = { openAppInfo(ctx) },
                 style = ButtonStyle.Secondary, wide = true)

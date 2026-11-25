@@ -305,8 +305,8 @@ internal fun TicketScreen(t: Ticket, model: uk.noammm.kav.KavModel?, onClose: ()
             // An extension's ticket without codes has nothing to show here.
             if (codes.isEmpty() && uk.noammm.kav.ExtTickets.mine(t)) Unit
             else if (codes.isEmpty()) Box(Modifier.fillMaxWidth().heightIn(min = 120.dp).panel(K.rTile).padding(K.gap4), contentAlignment = Alignment.Center) {
-                Text(T("The ticket for an inspector is in ${PayApp.current.label()}: open it there, under \"Active travel ticket for inspection\". Once you have, Kav shows it here too.",
-                    "הכרטיס לביקורת נמצא ${PayApp.current.heIn}: פתחו אותו שם, תחת \"כרטיס נסיעה פעילה לביקורת\". אחרי שתפתחו אותו, Kav תציג אותו גם כאן."),
+                Text(T("Open the ticket in ${PayApp.current.label()}, under \"Active travel ticket for inspection\". Kav then shows it here too.",
+                    "פתחו את הכרטיס ${PayApp.current.heIn}, תחת \"כרטיס נסיעה פעילה לביקורת\". אחר כך Kav תציג אותו גם כאן."),
                     style = K.type.body, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             } else KavPart("ticket.codes", t, { about().put("code", pager.currentPage).put("codes", codes.size) }) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(K.gap2)) {

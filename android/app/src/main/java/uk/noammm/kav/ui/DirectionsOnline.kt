@@ -516,8 +516,8 @@ fun DirectionsOnline(model: KavModel) {
         } catch (e: uk.noammm.kav.ext.ProviderProblem) {
             android.util.Log.i("KavPlan", "extension planner: ${e.message}")
             error = if (e.off) T(
-                "Extensions are off while Kav is in safe mode, so the extension you chose to plan with wasn't asked. Turn them back on in Settings › Extensions.",
-                "התוספים כבויים כל עוד Kav במצב בטוח, ולכן התוסף שבחרתם לתכנון לא נשאל. אפשר להפעיל אותם שוב בהגדרות › תוספים.",
+                "Extensions are off in safe mode, so your planner extension wasn't asked.",
+                "התוספים כבויים במצב בטוח, ולכן תוסף התכנון שלכם לא נשאל.",
             ) else if (e.missing) T(
                 "The extension that planned this trip isn't installed, so it wasn't planned again.",
                 "התוסף שתכנן את הנסיעה הזו לא מותקן, ולכן היא לא תוכננה שוב.",

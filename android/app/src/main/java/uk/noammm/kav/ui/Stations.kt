@@ -279,11 +279,8 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
                             )
                             Spacer(Modifier.height(K.gap3))
                             NoteCard(
-                                T(
-                                    "Your location, read once, used only to sort this list. " +
-                                        "It is never stored and never leaves the phone.",
-                                    "המיקום שלכם, שנקרא פעם אחת, משמש רק למיון הרשימה הזו. הוא לעולם לא נשמר ולא יוצא מהטלפון.",
-                                ),
+                                T("Used once, only to sort this list. It never leaves the phone.",
+                                    "משמש פעם אחת, רק למיון הרשימה. הוא לא יוצא מהטלפון."),
                             )
                         }
                     }

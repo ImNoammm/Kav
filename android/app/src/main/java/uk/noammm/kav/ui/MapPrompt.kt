@@ -35,12 +35,8 @@ fun MapPrompt() {
             Text(T("Download the map", "הורדת המפה"), style = K.type.title)
             Text(
                 T(
-                    "Kav keeps its map on your phone instead of loading tiles from a server as " +
-                        "you go, so nothing tracks where you look. It's about ${pack.bytes shr 20} MB for " +
-                        "all of Israel, downloaded once. After that the map works with no signal.",
-                    "Kav שומרת את המפה על הטלפון שלכם במקום לטעון אריחים משרת תוך כדי תנועה, " +
-                        "כך שאף אחד לא עוקב אחרי מה שאתם מסתכלים עליו. מדובר בכ-${pack.bytes shr 20} מגה-בייט " +
-                        "לכל ישראל, בהורדה חד-פעמית. אחר כך המפה עובדת גם בלי קליטה.",
+                    "About ${pack.bytes shr 20} MB for all of Israel, once. Then the map works without signal.",
+                    "בערך ${pack.bytes shr 20} MB לכל ישראל, פעם אחת. אחר כך המפה עובדת גם בלי קליטה.",
                 ),
                 fontSize = 14.sp, color = K.muted, lineHeight = 20.sp,
             )

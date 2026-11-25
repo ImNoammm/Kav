@@ -731,10 +731,7 @@ internal fun ReportScreen(report: ReportFor, onClose: () -> Unit) {
 @Composable
 private fun AboutStep(d: Draft) = StepPage(
     T("What do you want to report?", "על מה תרצו לדווח?"),
-    if (d.report.train) T("Kav fills in the National Public Transport Authority's form for you. It takes Israel Railways' trains and both light rails.",
-        "Kav ממלאת בשבילכם את הטופס של הרשות הארצית לתחבורה ציבורית. הוא מקבל את הרכבות של רכבת ישראל ואת שתי הרכבות הקלות.")
-    else T("Kav fills in the National Public Transport Authority's form for you. It takes every bus company's lines.",
-        "Kav ממלאת בשבילכם את הטופס של הרשות הארצית לתחבורה ציבורית. הוא מקבל את הקווים של כל חברות האוטובוסים."),
+    T("Kav fills in the National Public Transport Authority's form for you.", "Kav ממלאת בשבילכם את הטופס של הרשות הארצית לתחבורה ציבורית."),
 ) {
     BusCard(d.report)
     ReportAbout.entries.filter { it.train == d.report.train }.forEach { a ->
@@ -789,9 +786,8 @@ private fun RideStep(d: Draft, named: (ReportStop) -> ReportStop) {
         WhenField(T("When it happened", "מתי זה קרה"), momentLabel(d.at)) { d.choosingTime = true }
         if (issue.appeal) {
             Heading(T("The demand", "הדרישה"))
-            Hint(true, T("Appeals go to the National Transport Supervisor, within 60 days of the demand. The form asks for a " +
-                "photo of it too, which you can add in the next step.", "ערעורים עוברים למפקח הארצי על התעבורה, בתוך 60 יום " +
-                "מקבלת הדרישה. הטופס מבקש גם צילום שלה, ואפשר להוסיף אותו בשלב הבא."))
+            Hint(true, T("Appeals go in within 60 days of the demand. Add a photo of it in the next step.",
+                "ערעור מגישים בתוך 60 יום מקבלת הדרישה. צרפו צילום שלה בשלב הבא."))
             Field(T("Demand number", "מספר הדרישה"), d.demand, { d.demand = it.filter(Char::isDigit).take(16) },
                 helper = T("At the top of the demand the inspector gave you", "בראש הדרישה שקיבלתם מהפקח"),
                 error = d.errors["demand"], keyboard = KeyboardType.Number)
@@ -860,9 +856,7 @@ private fun MoreStep(d: Draft, named: (ReportStop) -> ReportStop) {
             Heading(T("The ministry also asks", "משרד התחבורה שואל גם"))
             YesNo(T("Did you record it on a phone or camera?", "תיעדתם את האירוע בטלפון או במצלמה?"), d.recorded,
                 d.errors["recorded"]) { d.recorded = it }
-            Hint(d.recorded == "1", T("Add photos above. The form takes photos, not video or sound; the ministry asks you for " +
-                "those if it needs them.", "צרפו תמונות למעלה. הטופס מקבל תמונות, לא וידאו או הקלטות; משרד התחבורה יבקש " +
-                "אותם אם יצטרך."))
+            Hint(d.recorded == "1", T("Add photos above. The form takes no video or sound.", "צרפו תמונות למעלה. הטופס לא מקבל וידאו או הקלטות."))
             YesNo(T("Were there witnesses?", "היו עדים לאירוע?"), d.witnesses, d.errors["witnesses"]) { d.witnesses = it }
             Hint(d.witnesses == "1", T("Write who they were and how to reach them in your words above, as the ministry asks.",
                 "כתבו מי היו העדים ואיך אפשר להשיג אותם בתיאור למעלה, כפי שמשרד התחבורה מבקש."))
@@ -879,9 +873,8 @@ private fun YouStep(d: Draft) {
     val ctx = LocalContext.current
     StepPage(
         T("Your details", "הפרטים שלכם"),
-        T("The ministry doesn't handle anonymous reports. Kav keeps these only on this phone, sealed, and puts them in the " +
-            "form for you.", "משרד התחבורה לא מטפל בדיווחים אנונימיים. Kav שומרת את הפרטים רק בטלפון הזה, מוצפנים, וממלאת " +
-            "אותם בטופס בשבילכם."),
+        T("The ministry doesn't handle anonymous reports. Kav keeps these only on this phone.",
+            "משרד התחבורה לא מטפל בדיווחים אנונימיים. Kav שומרת את הפרטים רק בטלפון הזה."),
         action = T("Next", "הבא"), errors = d.errors,
         onAction = {
             d.next {
@@ -923,9 +916,8 @@ private fun CheckStep(d: Draft, named: (ReportStop) -> ReportStop, onFill: (Fill
     val ride = d.ride(named)
     StepPage(
         T("Check it", "בדקו לפני המילוי"),
-        T("Kav opens the ministry's form and fills it in. There you confirm your phone with the code they text you, check " +
-            "it and tap Send (שליחה).", "Kav פותחת את הטופס של משרד התחבורה וממלאת אותו. שם מאמתים את הטלפון בקוד שנשלח " +
-            "ב-SMS, בודקים ומקישים על שליחה."),
+        T("Kav opens the ministry's form and fills it in. There you confirm your phone by a texted code and tap שליחה.",
+            "Kav פותחת את הטופס של משרד התחבורה וממלאת אותו. שם מאמתים את הטלפון בקוד שנשלח ב-SMS ומקישים על שליחה."),
         action = T("Fill in the ministry's form", "מילוי הטופס של משרד התחבורה"),
         onAction = {
             val me = d.me()

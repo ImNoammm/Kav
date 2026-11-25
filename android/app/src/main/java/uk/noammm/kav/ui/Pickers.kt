@@ -356,10 +356,7 @@ fun PlacePicker(
         setting?.let { f ->
             item(key = "setting") {
                 NoteCard(
-                    T(
-                        "Search for where ${f.label} is. The place you pick is kept as ${f.label}.",
-                        "חפשו היכן נמצא ${f.label}. המקום שתבחרו יישמר בתור ${f.label}.",
-                    ),
+                    T("The place you pick is kept as ${f.label}.", "המקום שתבחרו יישמר בתור ${f.label}."),
                     Modifier.padding(horizontal = K.gap4, vertical = K.gap2),
                 )
             }

@@ -552,16 +552,12 @@ private fun LiveScreenForSource(model: KavModel) {
         Text(
             when {
                 KavLive.own -> T(
-                    "Buses and times come straight from the Ministry of Transport through your server, about every 15s. " +
-                        "A vehicle shows here once one of the stops around you has a bus reporting its position.",
-                    "האוטובוסים והזמנים מגיעים ישירות ממשרד התחבורה דרך השרת שלכם, בערך כל 15 שניות. " +
-                        "כלי רכב מופיע כאן ברגע שאחת התחנות סביבכם מקבלת דיווח מיקום מאוטובוס.",
+                    "From the Ministry of Transport through your server, about every 15 seconds. A bus shows once it reports where it is.",
+                    "ממשרד התחבורה דרך השרת שלכם, בערך כל 15 שניות. אוטובוס מופיע ברגע שהוא מדווח איפה הוא.",
                 )
                 else -> T(
-                    "Buses and times come straight from the Ministry of Transport through Kav's server, about every 15s. " +
-                        "A vehicle shows here once one of the stops around you has a bus reporting its position.",
-                    "האוטובוסים והזמנים מגיעים ישירות ממשרד התחבורה דרך השרת של Kav, בערך כל 15 שניות. " +
-                        "כלי רכב מופיע כאן ברגע שאחת התחנות סביבכם מקבלת דיווח מיקום מאוטובוס.",
+                    "From the Ministry of Transport through Kav's server, about every 15 seconds. A bus shows once it reports where it is.",
+                    "ממשרד התחבורה דרך השרת של Kav, בערך כל 15 שניות. אוטובוס מופיע ברגע שהוא מדווח איפה הוא.",
                 )
             },
             style = K.type.subhead,
@@ -1212,8 +1208,8 @@ private fun LiveList(
             LiveGlyph(K.textTertiary, 28.dp)
             ChangingText(
                 if (unreached && KavLive.feedDown) T(
-                    "The Ministry of Transport's live feed isn't working right now. Times shown are from the timetable.",
-                    "המידע בזמן אמת של משרד התחבורה לא פועל כרגע. הזמנים המוצגים הם לפי לוח הזמנים.",
+                    "The Ministry of Transport's live feed is down. Times are from the timetable.",
+                    "המידע בזמן אמת של משרד התחבורה לא פועל. הזמנים הם לפי לוח הזמנים.",
                 )
                 else if (unreached) T("Live locations can't be reached right now", "אין כרגע גישה למיקומים בזמן אמת")
                 else T("No vehicles nearby right now", "אין כרגע כלי רכב בסביבה"),

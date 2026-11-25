@@ -67,8 +67,8 @@ internal object FareFromRavPass {
         return when (p[0]) {
             "nofare" -> T("${app.label()} shows “$shown”, which Kav has no fare profile for. Choose one by hand.",
                 "${app.heIn} מופיע “$shown”, ול-Kav אין פרופיל הנחה כזה. בחרו פרופיל ידנית.")
-            "unknown" -> T("${app.label()} shows “$shown”, which isn't one of its own profile names Kav knows. Choose one by hand.",
-                "${app.heIn} מופיע “$shown”, שאינו אחד משמות הפרופילים ${app.heOf} ש-Kav מכירה. בחרו פרופיל ידנית.")
+            "unknown" -> T("${app.label()} shows “$shown”, which Kav doesn't know. Choose one by hand.",
+                "${app.heIn} מופיע “$shown”, ש-Kav לא מכירה. בחרו פרופיל ידנית.")
             "several" -> T("${app.label()} shows more than one profile (“$shown”). Choose one by hand.",
                 "${app.heIn} מופיע יותר מפרופיל אחד (“$shown”). בחרו פרופיל ידנית.")
             "nothing" -> T("${app.label()} shows no discount profile. Choose one by hand.", "${app.heIn} לא מופיע פרופיל הנחה. בחרו פרופיל ידנית.")
@@ -86,8 +86,8 @@ internal fun FareFromRavPassRow() {
     val app = PayApp.current
     ListRow(
         T("Get it from ${app.label()}", "קבלה ${app.heFrom}"),
-        subtitle = if (!reader) T("Needs Kav's ticket reader: turn on Pay with ${app.label()} in Settings", "צריך את קורא הכרטיסים של Kav: הפעילו את התשלום עם ${app.he} בהגדרות")
-            else FareFromRavPass.why() ?: T("Opens ${app.en}'s Profile tab, and Kav reads the profile it shows there", "פותח את האזור האישי ${app.heIn}, ו-Kav קוראת את הפרופיל שמופיע שם"),
+        subtitle = if (!reader) T("Turn on Pay with ${app.label()} first", "הפעילו קודם את התשלום עם ${app.he}")
+            else FareFromRavPass.why() ?: T("Kav reads it from ${app.en}'s Profile tab", "Kav קוראת אותו מהאזור האישי ${app.heIn}"),
         subtitleMaxLines = Int.MAX_VALUE,
         onClick = if (reader) ({ FareFromRavPass.ask(ctx) }) else null,
     )
