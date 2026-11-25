@@ -117,6 +117,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             LiveSource()
             PlanningSource()
+            TransitousChoice()
             EveryPlannerChoice()
             AlertsChoice()
             CrowdChoice()
