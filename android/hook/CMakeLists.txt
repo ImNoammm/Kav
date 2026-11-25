@@ -11,6 +11,12 @@ project(kavhook)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# No folder names in the debug info the build ID is hashed from, so the same sources and NDK give the same library in
+# any folder (F-Droid builds it again and compares). DEPS as one plain path first: given with .. in it, it wouldn't match.
+get_filename_component(DEPS "${DEPS}" ABSOLUTE)
+add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=hook -ffile-prefix-map=${DEPS}=deps
+    -ffile-prefix-map=${CMAKE_BINARY_DIR}=build -ffile-prefix-map=${ANDROID_NDK}=ndk)
+
 # xz-embedded, for the symbols ART keeps compressed in libart.so's .gnu_debugdata.
 set(XZ ${DEPS}/xz-embedded)
 add_library(xz_static STATIC ${XZ}/linux/lib/xz/xz_crc32.c ${XZ}/linux/lib/xz/xz_crc64.c

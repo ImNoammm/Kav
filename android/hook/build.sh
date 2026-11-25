@@ -9,6 +9,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=${WORK:-$(mktemp -d)}
 fetch() {
   [ -d "$WORK/$1" ] || git clone -q "$2" "$WORK/$1"
+  # Fetched by its hash when a clone doesn't have it: LSPlant's master was rewritten after 7a768e3, which is on no branch.
+  git -C "$WORK/$1" cat-file -e "$3^{commit}" 2>/dev/null || git -C "$WORK/$1" fetch -q origin "$3"
   git -C "$WORK/$1" checkout -q "$3"
   if [ $# -gt 3 ]; then git -C "$WORK/$1" submodule update -q --init --recursive "$4"; fi
 }
