@@ -11,7 +11,7 @@ The parts you can swap without writing a whole server have guides of their own:
 
 `GET /live/v1/status` answers anyone on a copy, and says how to sign in, as `"access"`:
 
-- **`key`** (Kav's own server): every request is signed with the key the app is built with.
+- **`key`** (Kav's own server): requests are signed with the app key or an individually issued client key.
 - **`accounts`** (a copy's default): a person signs each phone in once, and the phone signs every request with a token
   of its own.
 - **`open`**: no signing at all. Each address may make 120 requests a minute, and gets 429 past that. The address is
@@ -31,8 +31,19 @@ X-Kav: <slot>.<mac>
   without the query, starting with `/`.
 - `live.py` takes a slot up to three hours off, for phones whose clocks are wrong.
 
-The key is the app's own on Kav's server, and a phone's token on a server with accounts. A refused request gets 404, as
-if the address weren't there.
+On Kav's server, Android fork builds can set an issued client key as `kav.liveKey` in `android/local.properties`.
+Other clients, including iOS, sign requests to `https://api.kavapp.link` with that same format. Use the entire key as
+UTF-8 bytes, including its prefix, and omit `X-Kav-Device`. A refused request gets 404.
+
+Named keys cover the transit endpoints below and trip sharing. They have their own request limits, which reset at
+the next UTC minute and day or when the server restarts. Keep them out of source control. They are separate from keys
+for `dev.kavapp.link`, which serves live vehicles and arrivals.
+
+On a server running in `key` mode, set `APP_KEYS` to a private JSON file path. With Docker Compose the default is
+`/private/app-keys.json`, backed by `./private/app-keys.json` on the host. The file is loaded when it changes.
+Manage it from the host with `python3 server/appkeys.py <file> add <name> <note> [per_minute per_day]` (defaults
+120 and 20,000), `list`, `limit <name> <per_minute> <per_day>` and `revoke <name>`.
+The `add` command prints the credential once. Capture it in a file readable only by the intended operator.
 
 ### Signing a phone in
 

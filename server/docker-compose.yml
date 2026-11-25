@@ -25,6 +25,7 @@ services:
       # Riders' shared trips and the alerts' English, in a folder of kav-live's alone (kav-eta is given ./history).
       - TRANSLATIONS=/private/translations.sqlite3
       - SHARED_TRIPS=/private/shared-trips.sqlite3
+      - APP_KEYS=/private/app-keys.json
       # Its copy of the buses on the road for kav-developers.
       - DEVELOPERS=/developers
     volumes:

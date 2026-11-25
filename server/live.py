@@ -12,7 +12,7 @@ same timetable and OpenStreetMap, and this picks the few routes worth showing.
 
 It serves Israel's line alerts too, from a GTFS-Realtime feed (alerts.py), for the phone to match its lines in.
 
-Only Kav is answered: it signs each request with the key it's built with (KAV_APP_KEY here).
+Kav signs each request with its app key (KAV_APP_KEY). Named clients have their own keys (APP_KEYS).
 
 Settings come from the environment: MOT_KEY, MOT_URL, MOT_URL_BACKUP (the ministry's test
 server, used when the main one fails), MOT_CA (the intermediate certificate the ministry leaves
@@ -79,6 +79,7 @@ def inside(lat, lon):
     return south < lat < north and west < lon < east
 PORT = int(os.environ.get("PORT", "8080"))
 APP_KEY = os.environ.get("KAV_APP_KEY", "").encode()
+APP_KEYS = os.environ.get("APP_KEYS", "")
 # Who may use this server (server/selfhost): "key", Kav's own, phones signing with the key the app is built with;
 # "accounts", each phone signed in by a person (accounts.py); "open", anyone.
 ACCESS = os.environ.get("ACCESS", "key").lower()
@@ -3261,8 +3262,8 @@ def kav_times(row, now, ministry=True, trips=None, reached=None):
 def since_kav(row, now, trips=None, reached=None):
     """How much earlier (less than 0) or later than Kav's time the bus got to the stop it names now, where Kav's times
     have that stop ahead of it and before the row's: they're worked out every half minute from the stops reached as
-    the history has them, which lag the snapshot, and its later stops come that much earlier or later. 0 for any
-    other."""
+    the history has them, which lag the snapshot, and its later stops come SINCE_KAV_SHARE of that earlier or later.
+    0 for any other."""
     # Buses only: it was measured on them, and a train names a station before it gets there.
     if (catalog["lines"].get(row[1]) or [None] * 7)[6] not in BUSES:
         return 0
@@ -3280,8 +3281,17 @@ def since_kav(row, now, trips=None, reached=None):
     for place, c, eta in ahead:
         # The place and the code both: the ministry now and then numbers a run's stops unlike the timetable.
         if place == order and str(c) == str(code) and places and place < min(places):
-            return int(at) - eta
+            return round((int(at) - eta) * SINCE_KAV_SHARE)
     return 0
+
+
+# How much of a bus's lead on Kav's time at the stop it reached carries on to the later stops. Nearly every lead is
+# early (a stop is found reached once the bus is there, ahead of Kav's time for it), and a bus that ran early often loses
+# it again before the rider's stop: carried in full, the board showed it due minutes before it came (Noam, 23 Nov,
+# line 11 at Rosh HaAyin "2 min" at 08:39:48, came 08:44:22). Replayed on 22/23 Nov's logs, buses 0-6 min away, half
+# against all: within a minute 71.7-73.5% -> 73.7-74.9%, shown "now" but 2+ min away 1.2-1.4% -> 0.8-0.9%, 2+ min early
+# 0.9-1.1% -> 1.0-1.2%.
+SINCE_KAV_SHARE = 0.5
 
 
 class LiveFeed:
@@ -8263,7 +8273,66 @@ def allowed(path, headers, address, now=None):
             return True
         token = account_store().token(headers.get("X-Kav-Device"), now)
         return token is not None and signed(path, headers.get("X-Kav"), now, token.encode())
-    return signed(path, headers.get("X-Kav"), now)
+    return signed(path, headers.get("X-Kav"), now) or keyed(path, headers.get("X-Kav"), now)
+
+
+# Keys of their own for people building on Kav's server (a copy of the app, an app for another phone): each signs its
+# requests as the app does (signed()), with its own key in place of the app's, so a copy of Kav needs only its key as
+# kav.liveKey. Each can be limited and revoked without touching anyone else's. APP_KEYS is a JSON file of them, read
+# again whenever it changes, so adding or revoking one needs no restart (appkeys.py):
+# {"<name>": {"secret": "...", "note": "...", "per_minute": 120, "per_day": 20000, "revoked": false}}
+APP_KEY_PER_MINUTE = 120
+APP_KEY_PER_DAY = 20000
+app_keys_read = {"at": None, "keys": {}}
+app_key_use = {}  # name -> (minute, its count, day, its count)
+app_key_lock = threading.Lock()
+
+
+def app_keys():
+    """The named keys not revoked, as the file has them now."""
+    if not APP_KEYS:
+        return {}
+    try:
+        at = os.stat(APP_KEYS).st_mtime_ns
+    except OSError:
+        return {}
+    if at != app_keys_read["at"]:
+        try:
+            with open(APP_KEYS, encoding="utf-8") as f:
+                doc = json.load(f)
+            app_keys_read["keys"] = {
+                name: k for name, k in doc.items()
+                if isinstance(k, dict) and isinstance(k.get("secret"), str) and k["secret"]
+                and not k.get("revoked") and all(
+                    type(k.get(field, default)) is int and k.get(field, default) > 0
+                    for field, default in (("per_minute", APP_KEY_PER_MINUTE), ("per_day", APP_KEY_PER_DAY))
+                )
+            }
+            log("app keys:", len(app_keys_read["keys"]), "in use")
+        except (OSError, ValueError, AttributeError) as e:
+            app_keys_read["keys"] = {}
+            log("app keys not read:", repr(e))
+        app_keys_read["at"] = at
+    return app_keys_read["keys"]
+
+
+def keyed(path, mark, now):
+    """Whether a request is signed with one of the named keys, and that key is within its limits."""
+    if not APP_KEYS or not mark:
+        return False
+    with app_key_lock:
+        for name, k in app_keys().items():
+            if not signed(path, mark, now, k["secret"].encode()):
+                continue
+            minute, day = int(now // 60), int(now // 86400)
+            was_minute, in_minute, was_day, in_day = app_key_use.get(name, (minute, 0, day, 0))
+            in_minute = in_minute + 1 if was_minute == minute else 1
+            in_day = in_day + 1 if was_day == day else 1
+            if in_minute > k.get("per_minute", APP_KEY_PER_MINUTE) or in_day > k.get("per_day", APP_KEY_PER_DAY):
+                return False
+            app_key_use[name] = (minute, in_minute, day, in_day)
+            return True
+    return False
 
 
 def signed(path, mark, now=None, key=None):
