@@ -84,7 +84,7 @@ Say it in the fewest words that are still clear. Never a paragraph on a screen.
 
 | Text | Limit |
 |---|---|
-| A row's title, a button, a chip, a tab | Fits on one line in English and in Hebrew on a 360 dp wide screen. Four words or fewer. |
+| A row's title, a button, a chip, a tab | Fits on one line in English and in Hebrew on a 360 dp wide screen. Four words or fewer. Beside an icon, an (i) and a switch there is room for about 18 letters. |
 | A row's subtitle | One line, about 45 characters. |
 | A section header | Three words or fewer. |
 | A note that is always visible (`NoteCard`) | One sentence, about 80 characters, and only for something the rider must know right now (see 2.4). |
