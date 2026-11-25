@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import uk.noammm.kav.BuildConfig
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.PendingBackup
 import uk.noammm.kav.Pip
@@ -236,10 +237,12 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                 ?: T(" · no ads, analytics or account", " · בלי פרסומות, אנליטיקה או חשבון")),
     ) {
         Spacer(Modifier.height(K.gap1))
-        UpdateSection(model)
+        if (BuildConfig.UPDATER) UpdateSection(model)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-            UpdatePrompts()
-            AutomaticUpdates()
+            if (BuildConfig.UPDATER) {
+                UpdatePrompts()
+                AutomaticUpdates()
+            }
             BackupSection(model)
             FixCheck()
             HelpSection()

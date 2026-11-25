@@ -756,7 +756,7 @@ private fun Root() {
     }
     // A new version is asked of GitHub at each opening. Vela's recipe (fixes for Google that need no update) comes from
     // what the background check (Checks) kept, as does a newer week of the timetable, taken in at the next start.
-    LaunchedEffect(model, Openings.count) { model.loadUpdate(app) }
+    LaunchedEffect(model, Openings.count) { if (BuildConfig.UPDATER) model.loadUpdate(app) }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             runCatching { Checks.recipesAtOpen(app) }
@@ -1976,11 +1976,12 @@ object Prefs {
     // Navigation in a small window when Kav is left.
     fun pipNavigation(ctx: Context): Boolean = store(ctx).getBoolean("pipNavigation", true)
     fun setPipNavigation(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("pipNavigation", on).apply()
-    fun updatePrompts(ctx: Context): Boolean = store(ctx).getBoolean("updatePrompts", true)
+    // Both off in the F-Droid build (BuildConfig.UPDATER), which F-Droid updates.
+    fun updatePrompts(ctx: Context): Boolean = BuildConfig.UPDATER && store(ctx).getBoolean("updatePrompts", true)
     fun setUpdatePrompts(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("updatePrompts", on).apply()
     // Kav downloading new versions by itself, to install when the rider says so (Checks, AutoUpdate): on unless turned
     // off, for riders from before it too.
-    fun autoUpdate(ctx: Context): Boolean = store(ctx).getBoolean("autoUpdate", true)
+    fun autoUpdate(ctx: Context): Boolean = BuildConfig.UPDATER && store(ctx).getBoolean("autoUpdate", true)
     fun setAutoUpdate(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("autoUpdate", on).apply()
 
     fun spokenAlerts(ctx: Context): Boolean = store(ctx).getBoolean("spokenAlerts", false)

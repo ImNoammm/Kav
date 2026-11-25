@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import uk.noammm.kav.BuildConfig
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.Prefs
 import uk.noammm.kav.data.KavLive
@@ -29,7 +30,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     var page by rememberSaveable { mutableIntStateOf(0) }
     var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
     var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
-    androidx.activity.compose.BackHandler(enabled = page > 0) { page-- }
+    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 6 && !BuildConfig.UPDATER) 4 else page - 1 }
     // What the last step downloads starts as setup opens, in the background, so it's there by then and the last step
     // doesn't come at all: on Wi-Fi or another unmetered network; on mobile data the timetable only as its own setting
     // allows (Also on mobile data), and the map only once the last step's Download asks for it. The timetable is the
@@ -179,7 +180,12 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap5))
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSetup() }
                 Spacer(Modifier.height(K.gap8))
-                OnboardingButton(T("Next", "הבא")) { page = 5 }
+                if (BuildConfig.UPDATER) OnboardingButton(T("Next", "הבא")) { page = 5 }
+                // The F-Droid build has no updates step (BuildConfig.UPDATER): setup goes on from here as from that step.
+                else AnimatedContent(allThere, transitionSpec = { switching() }, label = "setupNext") { done ->
+                    if (done) OnboardingButton(T("Done", "סיום"), onClick = onDone)
+                    else OnboardingButton(T("Next", "הבא")) { page = 6 }
+                }
             } else if (p == 5) {
                 AutomaticUpdatesStep()
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { UpdatePrompts(checkAbove = false) }

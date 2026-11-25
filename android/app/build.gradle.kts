@@ -12,6 +12,10 @@ val liveKey: String = System.getenv("KAV_LIVE_KEY")?.takeIf { it.isNotBlank() }
     ?: Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use { load(it) } }
         .getProperty("kav.liveKey").orEmpty()
 
+// -PkavFdroid: the build F-Droid makes. Kav's own updater is left out (BuildConfig.UPDATER, src/fdroid's manifest), as
+// F-Droid updates it, and the APK carries no dependency block, which F-Droid's scanner refuses. Off unless asked for.
+val fdroid = project.hasProperty("kavFdroid")
+
 android {
     namespace = "uk.noammm.kav"
     compileSdk = 36
@@ -29,6 +33,12 @@ android {
         buildConfigField("String", "KAV_LIVE_KEY", "\"$liveKey\"")
         // Timing-only log lines of the Rav-Pass ticket reader (TicketReader.timing), for a test build: -PkavTicketTiming=true.
         buildConfigField("boolean", "TICKET_TIMING", (project.findProperty("kavTicketTiming") == "true").toString())
+        buildConfigField("boolean", "UPDATER", (!fdroid).toString())
+    }
+
+    if (fdroid) {
+        for (type in listOf("debug", "release")) sourceSets.getByName(type).manifest.srcFile("src/fdroid/AndroidManifest.xml")
+        dependenciesInfo { includeInApk = false; includeInBundle = false }
     }
 
     buildTypes {
