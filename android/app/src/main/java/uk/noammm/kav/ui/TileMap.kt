@@ -2346,11 +2346,17 @@ fun TileMap(
                         s.addImage(name, image.asAndroidBitmap())
                         images[name] = image
                     }
-                    // Named by neither this update nor the last, an image is off the map: let it go, as a vehicle's image
-                    // is named for its look (LiveScreen) and a new one comes with each change of it.
-                    // A group's mark still fading out keeps its image too.
+                    // Named by neither this update nor the last, an image is off the map, as a vehicle's image is named
+                    // for its look (LiveScreen) and a new one comes with each change of it. A group's mark still fading
+                    // out keeps its image too. They're let go together, once enough of them wait (SPARE_IMAGES) and
+                    // nothing moves the map: letting even one go has the map lay out every tile of every source again,
+                    // its streets and their names too, which on Live came whenever a vehicle's look had changed and
+                    // took the frames of whatever the map was doing then.
                     val fadingOut = groupsShown.first.filter { (shownAlpha[it.id] ?: 0f) > 0f }.mapTo(HashSet()) { it.icon }
-                    for (name in images.keys.filter { it !in g.images && it !in namedLast && it !in fadingOut }) { s.removeImage(name); images.remove(name) }
+                    val unused = images.keys.filter { it !in g.images && it !in namedLast && it !in fadingOut }
+                    if (unused.size > SPARE_IMAGES && !touching.value && !camera.moving && !settling) {
+                        for (name in unused) { s.removeImage(name); images.remove(name) }
+                    }
                     namedLast = g.images.keys.toSet()
                 } else s.addKavImages(g.images)
                 times.begin()
@@ -2938,6 +2944,8 @@ private const val STILL_EVERY_MS = 1_000L
 // The halos' pulse, rememberLivePulse's curve (0.85 to 1.35 and back, 1.4 s each way), by the time it has run.
 // More halos than this on a map and they stop pulsing (TileMap).
 private const val CROWD = 150
+// How many images no longer on a map it keeps before letting them go (a vehicle's mark is about 40 KB).
+private const val SPARE_IMAGES = 64
 // How far from the camera a together update's vehicles still glide and fade, in the map's own reach (half its
 // diagonal): the screen and a margin, so a crowded city has about the vehicles on screen stepped (CROWD); moved or
 // zoomed out past the margin, the map splits them again.
