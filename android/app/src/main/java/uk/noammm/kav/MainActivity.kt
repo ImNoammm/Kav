@@ -103,13 +103,14 @@ import androidx.compose.animation.core.tween
 
 enum class Tab {
     // Ext: the one extension page the rider pinned as a tab (ExtShown.tab), in the bar only while there is one.
-    Directions, Stations, Lines, Live, Ext;
+    Directions, Stations, Lines, Live, Timetable, Ext;
 
     val label: String get() = when (this) {
         Directions -> T("Home", "בית")
         Stations -> T("Stops", "תחנות")
         Lines -> T("Lines", "קווים")
         Live -> T("Live", "בזמן אמת")
+        Timetable -> T("Timetable", "לוח זמנים")
         Ext -> uk.noammm.kav.ui.ExtShown.tab?.label.orEmpty()
     }
 }
@@ -1152,6 +1153,8 @@ private fun Shell(model: KavModel) {
                         Tab.Stations -> StationsScreen(model)
                         Tab.Lines -> LinesScreen(model)
                         Tab.Live -> LiveScreen(model)
+                        // #108: the lines, each opening on its Timetable tab.
+                        Tab.Timetable -> CompositionLocalProvider(LocalTimetableFirst provides true) { LinesScreen(model) }
                         Tab.Ext -> ExtTabScreen(model)
                     }
                 }
@@ -1492,6 +1495,11 @@ internal fun TabGlyph(tab: Tab, tint: Color, side: Dp = 18.dp) {
                 drawRoundRect(tint, Offset(w * (x - .17f), h * (y - .17f)), androidx.compose.ui.geometry.Size(w * .34f, h * .34f),
                     androidx.compose.ui.geometry.CornerRadius(w * .08f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
             } }
+            // A clock face (#108).
+            Tab.Timetable -> {
+                drawCircle(tint, w * .38f, Offset(w * .5f, h * .5f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+                line(.50f, .50f, .50f, .28f); line(.50f, .50f, .66f, .58f)
+            }
             Tab.Live -> {
                 drawCircle(tint, w * .14f, Offset(w * .5f, h * .5f))
                 drawCircle(tint, w * .30f, Offset(w * .5f, h * .5f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
