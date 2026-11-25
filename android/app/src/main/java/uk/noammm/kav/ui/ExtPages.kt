@@ -215,7 +215,7 @@ private fun WrappingToggle(label: String, on: Boolean, subtitle: String? = null,
 
 @Composable
 private fun BlockRow(b: Blocks.Row, act: (Blocks.Action) -> Unit) = ListRow(
-    b.title, subtitle = b.subtitle, value = b.value, subtitleMaxLines = 2,
+    b.title, subtitle = b.subtitle, value = b.value, subtitleMaxLines = Int.MAX_VALUE,
     leading = iconOf(b.icon)?.let { v -> { Icon(v, null, tint = K.textSecondary, modifier = Modifier.size(22.dp)) } },
     onClick = b.action?.let { a -> { act(a) } },
 )

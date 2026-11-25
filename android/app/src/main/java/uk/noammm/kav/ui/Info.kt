@@ -38,11 +38,12 @@ import androidx.compose.animation.togetherWith
 // after the card's, so what's under it follows softly as it opens and closes, the way Trip planning's always did. It looks
 // and sits as SectionHeader does; the (i) overlaps the row rather than making it taller.
 @Composable
-fun InfoHeader(text: String, info: String, modifier: Modifier = Modifier) {
+fun InfoHeader(text: String, info: String, modifier: Modifier = Modifier, headline: Boolean = false) {
     var open by rememberSaveable(text) { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
-        Row(Modifier.fillMaxWidth().padding(start = K.gap4, top = K.gap6, bottom = K.gap2), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, style = K.type.header, modifier = Modifier.weight(1f))
+        val heading = if (headline) Modifier.padding(bottom = K.gap2) else Modifier.padding(start = K.gap4, top = K.gap6, bottom = K.gap2)
+        Row(Modifier.fillMaxWidth().then(heading), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = if (headline) K.type.largeTitle else K.type.header, modifier = Modifier.weight(1f))
             Box(
                 Modifier.overlapsHeight().size(40.dp).clip(CircleShape)
                     .clickable(role = Role.Button, onClickLabel = T("About $text", "על $text")) { open = !open },

@@ -205,12 +205,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             LineBadgeChoice()
             Sub(T("Kav's language", "השפה של Kav"))
             LanguageRow(ctx)
-            InfoHeader(
-                T("Stop names", "שמות תחנות"),
-                T("Only the names of stops, stations and towns. Kav's own language stays as it is.",
-                    "רק שמות התחנות, התחנות והיישובים. השפה של Kav נשארת כפי שהיא."),
-            )
-            StopNamesRow(ctx, explained = false)
+            StopNamesRow(ctx)
             InfoHeader(
                 T("Names on the map", "שמות במפה"),
                 T("Places and streets on the map. Kav's own language stays as it is.",
@@ -2076,22 +2071,19 @@ private fun LanguageRow(ctx: android.content.Context) {
 // The language of stops', stations', towns' and lines' ends' names, apart from Kav's own, and nothing else: as the
 // Ministry of Transport names them in Hebrew, or in English where it has their English names.
 @Composable
-internal fun StopNamesRow(ctx: android.content.Context, modifier: Modifier = Modifier, explained: Boolean = true) {
-    Column(modifier) {
-        // In the order Kav's languages are listed in.
-        KavSegmented(
-            listOf("English", "עברית"), selected = if (StopNames.english) 0 else 1,
-            onSelect = { i -> StopNames.english = i == 0; Prefs.setStopNamesEnglish(ctx, i == 0) },
-        )
-        if (explained) NoteCard(
-            T(
-                "Only the names of stops, stations and towns, as the Ministry of Transport gives them, on the boards, " +
-                    "lines and trips. Kav's own language stays as it is.",
-                "רק שמות התחנות והיישובים, כפי שמשרד התחבורה נותן אותם, בלוחות, בקווים ובנסיעות. השפה של Kav נשארת כפי שהיא.",
-            ),
-            Modifier.padding(top = K.gap2),
-        )
-    }
+internal fun StopNamesRow(ctx: android.content.Context) {
+    InfoHeader(
+        T("Stop names", "שמות תחנות"),
+        T(
+            "Only the names of stops, stations and towns, as the Ministry of Transport gives them, on the boards, " +
+                "lines and trips. Kav's own language stays as it is.",
+            "רק שמות התחנות והיישובים, כפי שמשרד התחבורה נותן אותם, בלוחות, בקווים ובנסיעות. השפה של Kav נשארת כפי שהיא.",
+        ),
+    )
+    KavSegmented(
+        listOf("English", "עברית"), selected = if (StopNames.english) 0 else 1,
+        onSelect = { i -> StopNames.english = i == 0; Prefs.setStopNamesEnglish(ctx, i == 0) },
+    )
 }
 
 // The search picked, by name, for what Settings says it sees.

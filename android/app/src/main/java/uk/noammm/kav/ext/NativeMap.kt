@@ -64,6 +64,9 @@ object NativeMap {
         return got as? KavMap.Look
     }
 
+    // Whether a tap on this shape goes to its extension: only one that listens for taps takes it from the map.
+    fun takesTap(key: String): Boolean = shapes[key]?.let { taps.containsKey(it.identity) } == true
+
     // A tap on one of its shapes, on the main thread with the screen's context.
     fun tapped(key: String, ctx: Context) {
         val s = shapes[key] ?: return

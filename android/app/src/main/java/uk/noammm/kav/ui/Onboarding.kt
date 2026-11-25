@@ -69,36 +69,27 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                     onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l) },
                 )
                 // A question of its own: the names of stops, apart from Kav's language.
-                Text(
-                    T("Stop names", "שמות תחנות"),
-                    style = K.type.caption,
-                    modifier = Modifier.padding(start = K.gap3, top = K.gap3, bottom = K.gap2),
-                )
-                StopNamesRow(ctx, Modifier)
-                Text(
+                StopNamesRow(ctx)
+                InfoHeader(
                     T("Names on the map", "שמות במפה"),
-                    style = K.type.caption,
-                    modifier = Modifier.padding(start = K.gap3, top = K.gap3, bottom = K.gap2),
+                    T("Places and streets on the map. Kav's own language stays as it is.",
+                        "מקומות ורחובות על המפה. השפה של Kav נשארת כפי שהיא."),
                 )
                 MapLabelsRow(ctx)
-                Text(
-                    T("Time format", "תבנית שעה"),
-                    style = K.type.caption,
-                    modifier = Modifier.padding(start = K.gap3, top = K.gap3, bottom = K.gap2),
-                )
+                SectionHeader(T("Time format", "תבנית שעה"))
                 ClockChoice(ctx, Modifier)
                 Spacer(Modifier.height(K.gap6))
                 OnboardingButton(T("Next", "הבא")) { page = 1 }
             } else if (p == 1) {
-                Text(T("Pick a look", "בחרו מראה"), style = K.type.largeTitle)
-                Text(
+                InfoHeader(
+                    T("Pick a look", "בחרו מראה"),
                     T(
                         "OLED black, light or dark, or as your phone is set, transparent or solid on top. " +
                             "The preview changes as you tap, and Settings has this again later.",
                         "שחור OLED, בהיר או כהה, או לפי הטלפון, עם משטחים שקופים או אטומים. " +
                             "התצוגה המקדימה משתנה כשאתם מקישים, ואפשר לשנות זאת שוב בהגדרות.",
                     ),
-                    style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+                    headline = true,
                 )
                 Spacer(Modifier.height(K.gap5))
                 AccentPreview()
@@ -110,15 +101,15 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { Prefs.lookPicked(ctx); page = 2 }
             } else if (p == 2) {
-                Text(T("Pick a color", "בחרו צבע"), style = K.type.largeTitle)
-                Text(
+                InfoHeader(
+                    T("Pick a color", "בחרו צבע"),
                     T(
                         "Kav is gray with one color on top. Slide along the colors, or take a preset; " +
                             "the preview follows as you go, and Settings has this again later.",
                         "Kav אפורה עם צבע אחד מעליה. החליקו לאורך הצבעים או בחרו גוון מוכן; " +
                             "התצוגה המקדימה מתעדכנת תוך כדי, ואפשר לשנות זאת שוב בהגדרות.",
                     ),
-                    style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+                    headline = true,
                 )
                 Spacer(Modifier.height(K.gap5))
                 AccentPreview()
@@ -129,13 +120,13 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { page = 3 }
             } else if (p == 3) {
-                Text(T("Providers", "ספקים"), style = K.type.largeTitle)
-                Text(
+                InfoHeader(
+                    T("Providers", "ספקים"),
                     T(
                         "What Kav shares, and with whom. Settings has all of this again later.",
                         "מה Kav משתפת, ועם מי. אפשר לשנות את כל זה שוב בהגדרות.",
                     ),
-                    style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+                    headline = true,
                 )
                 Spacer(Modifier.height(K.gap3))
                 // The same choices as Settings: where live locations come from, who plans trips, whose timetable lines
@@ -160,15 +151,15 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Spacer(Modifier.height(K.gap8))
                 OnboardingButton(T("Next", "הבא")) { page = 4 }
             } else if (p == 4) {
-                Text(T("What should a plan show?", "מה מסלול יכול לכלול?"), style = K.type.largeTitle)
-                Text(
+                InfoHeader(
+                    T("What should a plan show?", "מה מסלול יכול לכלול?"),
                     T(
                         "Everything is on. Switch off what you never take and the planner " +
                             "leaves it out. This is the same list Settings keeps.",
                         "הכול פעיל. כבו את מה שאתם אף פעם לא נוסעים בו והמתכנן ישמיט אותו. " +
                             "זו אותה רשימה שנמצאת בהגדרות.",
                     ),
-                    style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+                    headline = true,
                 )
                 Spacer(Modifier.height(K.gap3))
                 PlanChoices(model)
@@ -187,7 +178,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                     else OnboardingButton(T("Next", "הבא")) { page = 6 }
                 }
             } else if (p == 5) {
-                AutomaticUpdatesStep()
+                AutomaticUpdates(setup = true)
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { UpdatePrompts(checkAbove = false) }
                 Spacer(Modifier.height(K.gap8))
                 // Everything downloaded already: setup ends here, without its last step.
@@ -203,12 +194,9 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 val state = pack?.state ?: MapPack.State.Ready
                 val week = Timetable.state
                 val files = ctx.applicationContext.filesDir
-                Text(
+                InfoHeader(
                     if (pack != null) T("Download the map and timetable", "הורדת המפה ולוח הזמנים")
                     else T("Download the timetable", "הורדת לוח הזמנים"),
-                    style = K.type.largeTitle,
-                )
-                Text(
                     if (pack != null) T(
                         "Kav keeps its map on your phone instead of loading tiles from a server as " +
                             "you go, so nothing tracks where you look. It's about ${pack.bytes shr 20} MB for all " +
@@ -235,7 +223,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                             "אתם צופים בו. בהגדרות אפשר לשמור אותה בטלפון במקום זאת. מה שיורד עכשיו הוא שבוע היציאות " +
                             "המתוכננות, בערך 6 MB, שנבנה כל לילה מלוח הזמנים של משרד התחבורה ומתעדכן ברקע.",
                     ),
-                    style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+                    headline = true,
                 )
                 Spacer(Modifier.height(K.gap5))
                 // Weight the combined progress by size, downloading the small timetable first.
@@ -335,15 +323,15 @@ internal fun TimetableStep() {
             .verticalScroll(rememberScrollState()).padding(K.gap4),
     ) {
         Spacer(Modifier.height(K.gap6))
-        Text(T("Getting the timetable", "מורידים את לוח הזמנים"), style = K.type.largeTitle)
-        Text(
+        InfoHeader(
+            T("Getting the timetable", "מורידים את לוח הזמנים"),
             T(
                 "Kav no longer comes with its timetable. It downloads the week of scheduled departures, about 6 MB, built " +
                     "each night from the Ministry of Transport's timetable, and keeps it up to date in the background.",
                 "Kav כבר לא מגיעה עם לוח הזמנים. היא מורידה את שבוע היציאות המתוכננות, בערך 6 MB, שנבנה כל לילה " +
                     "מלוח הזמנים של משרד התחבורה, ומעדכנת אותו ברקע.",
             ),
-            style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
+            headline = true,
         )
         Spacer(Modifier.height(K.gap5))
         // The bar and a failure fade into each other, and Try again fades in under them.

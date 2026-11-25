@@ -478,7 +478,11 @@ private fun LiveScreenForSource(model: KavModel) {
     var waited by remember(focus) { mutableStateOf(focus !is LiveFocus.Vehicle) }
     LaunchedEffect(focus) { if (!waited) { delay(700); waited = true } }
     var open by remember { mutableStateOf(focus) }
-    val ready = route.isNotEmpty() && lineStops.isNotEmpty() && (onRoad != null || route.size < 2)
+    // Its bus's details (the Bus row, BusKind), asked for at the tap so they're in the card as it opens: come a moment
+    // later, the row grew the card after the camera had framed the bus above it, and hid it, so the camera moved again.
+    var fleetIn by remember(tripKey) { mutableStateOf(false) }
+    LaunchedEffect(tripKey) { if (tripKey.isNotEmpty()) uk.noammm.kav.data.KavFleet.ask(tripKey); fleetIn = true }
+    val ready = route.isNotEmpty() && lineStops.isNotEmpty() && (onRoad != null || route.size < 2) && fleetIn
     // The vehicle the map's vehicles are split around (the one kept, the rest going with the fade), as the map has it.
     // It waits for the tapped one, or that one would fade out with the rest and come back at once, and the one picked
     // last would stay until it went at once, as if it jumped to the new one.
@@ -864,6 +868,10 @@ private fun LiveMap(
     // Marks closer than this on screen merge, and part again past the farther (LiveGroups).
     val mergeAt = with(LocalDensity.current) { GROUP_MERGE_DP.dp.toPx().toDouble() }
     val splitAt = with(LocalDensity.current) { GROUP_SPLIT_DP.dp.toPx().toDouble() }
+    // A lone vehicle's mark under a group's (closer than their two rings' reach) goes in that group, and groups whose
+    // marks would lie on one another are one.
+    val coverAt = with(LocalDensity.current) { (GROUP_MARK_R + VEHICLE_MARK_R).dp.toPx().toDouble() }
+    val groupAt = with(LocalDensity.current) { (2 * GROUP_MARK_R).dp.toPx().toDouble() }
     val groupReach = with(LocalDensity.current) { (GROUP_MARK_R + 4f).dp.toPx() }
     // How wide a tapped group's vehicles may spread once zoomed in on it: well inside the map's box.
     val groupFit = with(LocalDensity.current) { 200.dp.toPx().toDouble() }
@@ -980,8 +988,15 @@ private fun LiveMap(
         // Where marks would lie on one another, one mark for them all: never the vehicle followed or opened.
         val points = ordered.associate { vehicleMarkId(it.arrival) to GroupPoint(vehicleMarkId(it.arrival), it.arrival.lat, it.arrival.lon) }
         val keep = drawnVehicles.filter { it.tripId == kept || it.tripId == chosen }.mapTo(HashSet()) { vehicleMarkId(it.arrival) }
-        val groups = mapZoom?.let { z -> groupVehicles(points.values.toList(), z.toDouble(), mergeAt, splitAt, keep, grouping.membership) }.orEmpty()
-        grouping.groups = groups; grouping.places = points; grouping.membership = groups.membership()
+        val groups = mapZoom?.let { z -> groupVehicles(points.values.toList(), z.toDouble(), mergeAt, splitAt, keep, grouping.membership, coverPx = coverAt, groupPx = groupAt, cores = grouping.cores) }.orEmpty()
+        grouping.groups = groups; grouping.places = points; grouping.membership = groups.membership(); grouping.cores = groups.cores()
+        if (android.util.Log.isLoggable("KavMap", android.util.Log.DEBUG)) mapZoom?.let { z ->
+            val k = Geo.SIZE * Math.pow(2.0, z.toDouble())
+            var closest = Double.MAX_VALUE
+            for (a in groups.indices) for (b in a + 1 until groups.size) closest = minOf(closest,
+                kotlin.math.hypot(Geo.x(groups[a].lon) - Geo.x(groups[b].lon), Geo.y(groups[a].lat) - Geo.y(groups[b].lat)) * k)
+            android.util.Log.d("KavMap", String.format(java.util.Locale.US, "groups: %d at zoom %.2f, closest two marks %.0f px (%.0f apart at least)", groups.size, z, closest, groupAt))
+        }
         val samples = ordered.associate { vehicleMarkId(it.arrival) to it.arrival.sampleUtc }
         g.copy(markers = markers, images = images).merged(groups) { group ->
             val tint = mapFreshColour(freshnessOf(group.ids.maxOf { samples[it] ?: 0L }, second))
@@ -1021,6 +1036,20 @@ private fun LiveMap(
             images = moving.images + me.images + selection.second, together = true)
             .also { grouping.byLive[it] = GroupsDrawn.Shown(grouping.groups, grouping.places, grouping.membership) }
     }
+    // A merged mark tapped: in as far as it opens (into smaller groups or its vehicles), but never past where they all
+    // still fit on the map; a group no zoom would open is listed instead.
+    fun openGroup(group: VehicleGroup, places: Map<String, GroupPoint>) {
+        val members = group.ids.mapNotNull { places[it] }
+        val deepest = (Geo.MAX_Z + Geo.OVER).toDouble()
+        val opens = openZoom(members, (mapZoom ?: 0f).toDouble(), mergeAt, splitAt, deepest, coverAt, groupAt,
+            group.ids.zip(group.cores).toMap())
+        val z = minOf(opens ?: deepest, fitZoom(members, groupFit))
+        if ((opens != null || z < deepest) && z >= (mapZoom ?: 0f) + 0.25) {
+            zoomTo = MapZoomTo(group.lat, group.lon, z.toFloat())
+            // Grouped at once for where the camera's going, so its marks part as it zooms in, not once it has rested.
+            mapZoom = z.toFloat()
+        } else onGroup(drawnVehicles.filter { vehicleMarkId(it.arrival) in group.ids })
+    }
     TileMap(
         points, modifier, focusKey = focus ?: where,
         recenterOn = center,
@@ -1044,19 +1073,30 @@ private fun LiveMap(
         // Taps go by the groups the map shows: those of the geometry it has taken, not ones worked out since.
         onLiveTaken = { g -> grouping.byLive[g]?.let { grouping.shown = it }; if (g === live) onKept(kept) },
         followRider = withMe && following && focus == null,
+        // The marks drawn under the finger: the nearest that's a vehicle shown or a group (none while a vehicle's
+        // picked) is opened. Anything else (a picked stop's ring, the rider) goes on to the taps by place below.
+        onLiveMarks = marks@{ ids ->
+            for (raw in ids) {
+                val id = raw.substringBefore(':')
+                if (id.startsWith(GROUP_ID)) {
+                    if (chosen != null) continue
+                    val key = id.removePrefix(GROUP_ID)
+                    val drawn = grouping.shown
+                    drawn.groups.firstOrNull { it.key == key }?.let { openGroup(it, drawn.places); return@marks true }
+                    grouping.groups.firstOrNull { it.key == key }?.let { openGroup(it, grouping.places); return@marks true }
+                    continue
+                }
+                val vehicle = (if (chosen == null) shown else shown.filter { it.tripId == chosen }).firstOrNull { vehicleMarkId(it.arrival) == id }
+                if (vehicle != null) { onVehicle(vehicle); return@marks true }
+            }
+            false
+        },
         onTap = tap@{ at, proj ->
             // A merged mark: zoomed in about it until it splits, or its vehicles listed where none can.
             val drawn = grouping.shown
             val group = if (chosen != null) null else groupTapped(drawn.groups, at, groupReach) { la, lo -> proj.point(la, lo) }
             if (group != null) {
-                // In as far as its vehicles part, but never past where they all still fit on the map (a group merged
-                // from groups apart); a group no zoom would open any further is listed instead.
-                val members = group.ids.mapNotNull { drawn.places[it] }
-                val deepest = (Geo.MAX_Z + Geo.OVER).toDouble()
-                val split = splitZoom(members, splitAt * 1.05, deepest)
-                val z = minOf(split ?: deepest, fitZoom(members, groupFit))
-                if ((split != null || z < deepest) && z >= (mapZoom ?: 0f) + 0.5) zoomTo = MapZoomTo(group.lat, group.lon, z.toFloat())
-                else onGroup(drawnVehicles.filter { vehicleMarkId(it.arrival) in group.ids })
+                openGroup(group, drawn.places)
                 return@tap
             }
             // Not a vehicle merged into a group: its own mark isn't drawn.
@@ -1071,6 +1111,7 @@ private fun LiveMap(
                 ?.let(onStop)
         },
         keepZoom = show == LiveShow.STOPS && focusStop != null,
+        refitOnResize = false,
         extOn = "live", name = "Live",
         status = status,
         controls = controls,
@@ -1124,6 +1165,7 @@ private class GroupsDrawn {
     var groups = emptyList<VehicleGroup>()
     var places = emptyMap<String, GroupPoint>()
     var membership = emptyMap<String, String>()
+    var cores = emptyMap<String, String>()
     class Shown(val groups: List<VehicleGroup>, val places: Map<String, GroupPoint>, val membership: Map<String, String>)
     // Each live geometry's groups, and those of the one the map last took in (what it draws, and taps go by).
     val byLive = java.util.WeakHashMap<MapGeometry, Shown>()

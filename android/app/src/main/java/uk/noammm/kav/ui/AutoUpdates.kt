@@ -7,7 +7,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -19,11 +18,11 @@ import uk.noammm.kav.Checks
 import uk.noammm.kav.Prefs
 import uk.noammm.kav.data.Updates
 
-// Kav downloading new versions by itself, to install when the rider says so (AutoUpdate): Settings' switch, and a step of
-// setup that spells it out (explained). On unless turned off; it sends nothing about the rider, as the background check
+// Kav downloading new versions by itself, to install when the rider says so (AutoUpdate): Settings' switch and a setup
+// step. On unless turned off; it sends nothing about the rider, as the background check
 // (Checks) only downloads.
 @Composable
-internal fun AutomaticUpdates(explained: Boolean = false) {
+internal fun AutomaticUpdates(setup: Boolean = false) {
     val ctx = LocalContext.current
     var auto by remember { mutableStateOf(Prefs.autoUpdate(ctx)) }
     var mobile by remember { mutableStateOf(Prefs.updatesOnMobile(ctx)) }
@@ -45,11 +44,9 @@ internal fun AutomaticUpdates(explained: Boolean = false) {
             "שלכם ואת השעה, כמו בכל הורדה. כשזה פועל, עדכנו אותי על גרסאות חדשות לא חל.",
     )
     Column(Modifier.fillMaxWidth()) {
-        if (explained) {
-            SectionHeader(title)
-            NoteCard(info, Modifier.padding(bottom = K.gap2))
-        } else InfoHeader(title, info)
-        ListGroup(Modifier.animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+        InfoHeader(title, info, headline = setup)
+        if (setup) Spacer(Modifier.height(K.gap3))
+        ListGroup(Modifier.padding(horizontal = if (setup) K.gap3 else 0.dp).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
             row {
                 ToggleRow(
                     T("Download updates automatically", "להוריד עדכונים אוטומטית"), auto,
@@ -79,20 +76,4 @@ internal fun AutomaticUpdates(explained: Boolean = false) {
             }
         }
     }
-}
-
-// The setup step: what it does, that nothing about the rider is sent, and its switch, on.
-@Composable
-internal fun AutomaticUpdatesStep() {
-    Text(T("Automatic updates", "עדכונים אוטומטיים"), style = K.type.largeTitle)
-    Text(
-        T(
-            "On: Kav downloads a new version on Wi-Fi and checks it's signed with Kav's own key. Nothing installs until " +
-                "you tap Install now. Settings has this again later.",
-            "פועל: Kav מורידה גרסה חדשה ב-Wi-Fi ובודקת שהיא חתומה במפתח של Kav. שום דבר לא מותקן עד שתקישו " +
-                "להתקין עכשיו. אפשר לשנות את זה שוב בהגדרות.",
-        ),
-        style = K.type.subhead, modifier = Modifier.padding(top = K.gap2),
-    )
-    Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { AutomaticUpdates(explained = true) }
 }

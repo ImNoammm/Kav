@@ -524,6 +524,8 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var heading by mutableStateOf<Float?>(null)
     // A trip's map is on screen before the trip starts: it shows where you are and which way you face.
     var tripMapShown by mutableStateOf(false)
+    // A line's page is open, with its map: the same, for where you are on the line.
+    var lineMapShown by mutableStateOf(false)
 
     var filters by mutableStateOf(ctx?.let { Prefs.filters(it) } ?: ResultFilter.entries.toSet())
         private set
@@ -1100,8 +1102,9 @@ private fun Shell(model: KavModel) {
     // Starting the compass or the location is a few calls into the system that hold the main thread, frames missed,
     // so a map scrolled out of view or a tab left keeps them a while: scrolling back to it starts nothing.
     var tripMapKept by remember { mutableStateOf(false) }
-    LaunchedEffect(model.tripMapShown) {
-        if (model.tripMapShown) tripMapKept = true else { delay(MAP_SENSORS_KEPT_MS); tripMapKept = false }
+    val mapShown = model.tripMapShown || model.lineMapShown
+    LaunchedEffect(mapShown) {
+        if (mapShown) tripMapKept = true else { delay(MAP_SENSORS_KEPT_MS); tripMapKept = false }
     }
     val headingWanted = model.navigating || tripMapKept || model.tab == Tab.Live
     var headingKept by remember { mutableStateOf(false) }
