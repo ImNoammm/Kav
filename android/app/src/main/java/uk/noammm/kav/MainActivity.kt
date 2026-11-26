@@ -1218,7 +1218,7 @@ private fun Shell(model: KavModel) {
             else -> exitAsk = true
         }
     }
-    if (exitAsk) ExitPrompt(onStay = { exitAsk = false }) {
+    if (exitAsk) ExitPrompt(tripKept = model.activeJourney != null, onStay = { exitAsk = false }) {
         exitAsk = false
         (ctx as? ComponentActivity)?.finish()
     }
@@ -1497,15 +1497,16 @@ internal fun SupportPrompt(onDone: () -> Unit) {
     }
 }
 
+// What happens to a trip under way is said only while there is one.
 @Composable
-private fun ExitPrompt(onStay: () -> Unit, onExit: () -> Unit) {
+private fun ExitPrompt(tripKept: Boolean, onStay: () -> Unit, onExit: () -> Unit) {
     Dialog(onDismissRequest = onStay) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.surface1).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
         ) {
             Text(T("Exit Kav?", "לצאת מ־Kav?"), style = K.type.title)
-            Text(T("A trip in progress is kept until you end it.", "נסיעה שמתבצעת נשמרת עד שתסיימו אותה."), fontSize = 14.sp, color = K.dim, lineHeight = 20.sp)
+            if (tripKept) Text(T("A trip in progress is kept until you end it.", "נסיעה שמתבצעת נשמרת עד שתסיימו אותה."), fontSize = 14.sp, color = K.dim, lineHeight = 20.sp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                 KavButton(
                     T("Stay", "השארות"), onStay, Modifier.weight(1f).heightIn(min = 52.dp), style = ButtonStyle.Secondary,
