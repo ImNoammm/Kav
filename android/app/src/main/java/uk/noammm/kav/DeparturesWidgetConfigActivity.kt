@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import uk.noammm.kav.data.Net
 import uk.noammm.kav.data.stopOfKey
 import uk.noammm.kav.ui.K
@@ -42,7 +45,12 @@ class DeparturesWidgetConfigActivity : ComponentActivity() {
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return }
         T.lang = Prefs.lang(this)
         K.look = Prefs.look(this)
-        setContent { Picker() }
+        // The app's language, not the phone's, sets direction here, as in MainActivity.
+        setContent {
+            CompositionLocalProvider(
+                LocalLayoutDirection provides if (T.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+            ) { Picker() }
+        }
     }
 
     @Composable
