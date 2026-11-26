@@ -2,8 +2,7 @@
 <resources>
     <string name="app_name">Kav</string>
     <string name="widget_next_buses">Next buses</string>
-    <string name="widget_no_buses">No buses to show right now</string>
-    <string name="widget_departures_description">The next buses at your saved stop, with live times when available</string>
+    <string name="widget_departures_description">The next buses at a saved stop</string>
     <!-- Android's own accessibility settings show these for Kav's ticket reader (TicketReader.kt). -->
     <string name="ticket_reader_label">Kav: tickets from Rav-Pass or egg</string>
     <string name="ticket_reader_description">Reads only the ticket screens of the payment app you choose in Kav, Rav-Pass or egg (the one that says your ride is paid, and the ticket for inspection when you open it), whenever one is open: the line, the stations, the time, the ticket number, the passengers and the ticket\'s code, so Kav can show your ticket. To read the code it takes a picture of the screen while a ticket screen is open, and lets it go at once. It stays on this phone and is deleted when the ticket ends or when you turn off paying in Kav. Right after a purchase it opens your ticket in that app to read its code, and touches nothing else. On that app\'s other screens it reads only the few lines Kav\'s own explanation names, and nothing in any other app. It can tell which app is in front, and reads only that app\'s screen.</string>

@@ -888,12 +888,14 @@ private fun boardRows(net: Net, stop: Int, t0: Int, live: List<LiveAt>, limit: I
 // A stop's next departures as its board shows them now, for an extension (Kav.departures, ext/KavData.kt): the
 // provider's day where Kav asks one, else the week's, each at its live time where there is one. Each {"line", "to",
 // "mode", "platform", "at", "live", "cancelled"}: at the timetable's time and live the live one (null with none), in
-// seconds since 1970. Off the main thread.
-internal suspend fun boardJson(ctx: android.content.Context, net: Net, stop: Int, limit: Int): org.json.JSONArray {
+// seconds since 1970. reached: told whether the live times' server answered. Off the main thread.
+internal suspend fun boardJson(
+    ctx: android.content.Context, net: Net, stop: Int, limit: Int, reached: (Boolean) -> Unit = {},
+): org.json.JSONArray {
     val nowMs = System.currentTimeMillis()
     val t0 = secOfDay(nowMs)
     val midnight = nowMs / 1000 - t0
-    val (live, trains) = stopLive(net, stop) ?: (emptyList<LiveAt>() to TrainsToday())
+    val (live, trains) = stopLive(net, stop).also { reached(it != null) } ?: (emptyList<LiveAt>() to TrainsToday())
     val code = net.code.getOrElse(stop) { 0 }
     val day = if (Schedules.boards && code > 0) scheduleDay(ctx, code) else null
     val rows = day?.departures?.let { scheduleRows(it, day.midnight, t0, live, limit) } ?: boardRows(net, stop, t0, live, limit)

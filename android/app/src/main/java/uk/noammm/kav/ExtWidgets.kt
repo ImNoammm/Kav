@@ -199,9 +199,20 @@ object ExtWidgets {
     }
 
     // Android 12 and newer pick the views for each size themselves; before, the one held upright.
-    private fun views(app: Context, id: Int, show: Widgets.Show, sizes: List<Size>): RemoteViews =
-        if (Build.VERSION.SDK_INT >= 31 && sizes.size > 1) RemoteViews(sizes.associate { SizeF(it.w.toFloat(), it.h.toFloat()) to draw(app, id, show, it) })
-        else draw(app, id, show, sizes.first())
+    private fun views(app: Context, id: Int, show: Widgets.Show, sizes: List<Size>, own: Own? = null): RemoteViews =
+        if (Build.VERSION.SDK_INT >= 31 && sizes.size > 1) RemoteViews(sizes.associate { SizeF(it.w.toFloat(), it.h.toFloat()) to draw(app, id, show, it, own) })
+        else draw(app, id, show, sizes.first(), own)
+
+    // A widget of Kav's own drawn as an extension's is (DeparturesWidget): its content, whether each row's value is a live
+    // time (green) or the timetable's, and what a tap anywhere on it opens.
+    private class Own(val live: List<Boolean>, val open: PendingIntent)
+
+    fun drawOwn(ctx: Context, id: Int, content: Widgets.Content, live: List<Boolean>, open: PendingIntent) {
+        val app = ctx.applicationContext
+        val mgr = AppWidgetManager.getInstance(app)
+        val sizes = sizes(mgr, id)
+        mgr.updateAppWidget(id, views(app, id, Widgets.Show.Shows(content, false), sizes, Own(live, open)))
+    }
 
     // Kav's colors for a look: the widget's card, its words, the rider's accent and what's drawn on it.
     private class Ink(look: Look, accent: Int) {
@@ -213,6 +224,7 @@ object ExtWidgets {
         val tertiary = p.textTertiary.toArgb()
         val accent = accent
         val accentInk = (if (light) uk.noammm.kav.ui.readable(Color(accent), p.surface) else Color(accent)).toArgb()
+        val realtime = p.realtime.toArgb()
         val onAccent = (if (light) p.text else p.bg).toArgb()
     }
 
@@ -231,7 +243,7 @@ object ExtWidgets {
         return Paint(Ink(Prefs.look(app), accent), null)
     }
 
-    private fun draw(app: Context, id: Int, show: Widgets.Show, size: Size): RemoteViews {
+    private fun draw(app: Context, id: Int, show: Widgets.Show, size: Size, own: Own? = null): RemoteViews {
         val rv = RemoteViews(app.packageName, R.layout.widget_ext)
         val ink = paint(app)
         rv.setInt(R.id.widget_root, "setLayoutDirection", if (T.rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR)
@@ -267,28 +279,28 @@ object ExtWidgets {
             Widgets.Show.SafeMode -> message(kav, T("Kav started without extensions (safe mode).", "‏Kav נפתחה בלי תוספים (מצב בטוח)."), T("Open Kav", "פתיחת Kav"), open(app, id, ROW_WIDGET))
             is Widgets.Show.Off -> message(name(show.name), T("This extension is off.", "התוסף הזה כבוי."), T("Open in Kav", "פתיחה ב-Kav"), open(app, id, ROW_PAGE))
             is Widgets.Show.Waiting -> message(name(show.name), T("Open Kav to load it.", "פתחו את Kav כדי לטעון אותו."), null, open(app, id, ROW_WIDGET))
-            is Widgets.Show.Shows -> content(app, rv, id, show.content, size, ink)
+            is Widgets.Show.Shows -> content(app, rv, id, show.content, size, ink, own)
         }
         return rv
     }
 
     private fun name(s: String) = T.iso(s)
 
-    private fun content(app: Context, rv: RemoteViews, id: Int, c: Widgets.Content, size: Size, ink: Paint) {
+    private fun content(app: Context, rv: RemoteViews, id: Int, c: Widgets.Content, size: Size, ink: Paint, own: Own? = null) {
         rv.setTextViewText(R.id.widget_title, c.title)
         rv.setViewVisibility(R.id.widget_title, if (c.title.isEmpty()) View.GONE else View.VISIBLE)
-        rv.setOnClickPendingIntent(R.id.widget_root, tap(app, id, ROW_WIDGET, c.tap) ?: open(app, id, ROW_WIDGET))
+        rv.setOnClickPendingIntent(R.id.widget_root, own?.open ?: tap(app, id, ROW_WIDGET, c.tap) ?: open(app, id, ROW_WIDGET))
         if (c.rows.isEmpty()) {
             rv.setTextViewText(R.id.widget_message, c.empty ?: T("Nothing to show now", "אין מה להציג עכשיו"))
             rv.setViewVisibility(R.id.widget_message, View.VISIBLE)
             rv.setViewVisibility(R.id.widget_gap, View.GONE)
         }
-        for ((i, r) in c.rows.take(size.rows(c.note != null)).withIndex()) rv.addView(R.id.widget_rows, row(app, id, i, r, size, ink))
+        for ((i, r) in c.rows.take(size.rows(c.note != null)).withIndex()) rv.addView(R.id.widget_rows, row(app, id, i, r, size, ink, own))
         rv.setTextViewText(R.id.widget_note, c.note.orEmpty())
         rv.setViewVisibility(R.id.widget_note, if (c.note == null) View.GONE else View.VISIBLE)
     }
 
-    private fun row(app: Context, id: Int, index: Int, r: Widgets.Row, size: Size, ink: Paint): RemoteViews {
+    private fun row(app: Context, id: Int, index: Int, r: Widgets.Row, size: Size, ink: Paint, own: Own? = null): RemoteViews {
         val v = RemoteViews(app.packageName, R.layout.widget_ext_row)
         v.setTextViewText(R.id.row_title, r.title)
         ink.set(v, R.id.row_title, "setTextColor") { it.text }
@@ -299,7 +311,8 @@ object ExtWidgets {
         ink.set(v, R.id.row_subtitle, "setTextColor") { it.secondary }
         v.setTextViewText(R.id.row_value, r.value.orEmpty())
         v.setViewVisibility(R.id.row_value, if (r.value == null) View.GONE else View.VISIBLE)
-        ink.set(v, R.id.row_value, "setTextColor") { it.accentInk }
+        val live = own?.live?.getOrNull(index)
+        ink.set(v, R.id.row_value, "setTextColor") { if (live == null) it.accentInk else if (live) it.realtime else it.secondary }
         if (r.line != null) {
             v.setTextViewText(R.id.row_line_text, T.ltr(r.line))
             v.setViewVisibility(R.id.row_line, View.VISIBLE)
@@ -310,7 +323,7 @@ object ExtWidgets {
             v.setViewVisibility(R.id.row_icon, View.VISIBLE)
             ink.set(v, R.id.row_icon, "setColorFilter") { it.secondary }
         }
-        tap(app, id, index, r.tap)?.let { v.setOnClickPendingIntent(R.id.row, it) }
+        if (own == null) tap(app, id, index, r.tap)?.let { v.setOnClickPendingIntent(R.id.row, it) }
         return v
     }
 

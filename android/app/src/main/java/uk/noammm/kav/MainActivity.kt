@@ -313,8 +313,9 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         PayEntry.sync(this)
-        // Extensions' home screen widgets drawn again, in the look the rider may have changed.
+        // Extensions' home screen widgets drawn again, in the look the rider may have changed, and the next buses' too.
         ExtWidgets.left(this)
+        DeparturesWidget.redraw(this)
     }
 
     // Kav opened: extensions' home screen widgets asked for their content again.

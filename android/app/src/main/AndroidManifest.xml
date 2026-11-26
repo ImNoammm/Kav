@@ -259,10 +259,11 @@
             </intent-filter>
         </receiver>
 
-        <!-- home-screen widget: the next buses at the first saved stop -->
+        <!-- home-screen widget: the next buses at a saved stop, one chosen for each widget (DeparturesWidget.kt) -->
         <receiver
             android:name=".DeparturesWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_next_buses">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -270,14 +271,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/departures_widget_info" />
         </receiver>
-        <service
-            android:name=".DeparturesWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS" />
         <!-- The widget's host (the launcher) starts this when the widget is placed, so it must be exported;
-             it finishes at once when started without a widget id. -->
+             it finishes at once unless the widget is Kav's own next buses widget. -->
         <activity
             android:name=".DeparturesWidgetConfigActivity"
-            android:exported="true" />
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Kav">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- tickets read from Rav-Pass: each deleted when it ends, also with the reader off and Kav closed -->
         <receiver
