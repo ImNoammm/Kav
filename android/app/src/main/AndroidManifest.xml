@@ -239,6 +239,9 @@
         <service
             android:name=".DeparturesWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <activity
+            android:name=".DeparturesWidgetConfigActivity"
+            android:exported="false" />
 
         <!-- tickets read from Rav-Pass: each deleted when it ends, also with the reader off and Kav closed -->
         <receiver
