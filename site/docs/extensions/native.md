@@ -402,7 +402,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `line.save` | `{"lines": [keys]}` | a line saved or removed: `KavModel.saveLines` | `MainActivity.kt:476` |
 | `settings.open` | `{}` | Home's Settings button: `ui/Home.kt` | `ui/Home.kt:108` |
 | `tab.open` | `{"tab": "directions" \| "stations" \| "lines" \| "live" \| ...}` | a tap on the tab bar: `MainActivity.kt` `TabBar` | `MainActivity.kt:1548` |
-| `settings.page.open` | `{"page"}` | Opens a Settings page by ID. See the Settings parts below. | `ui/Settings.kt:280` |
+| `settings.page.open` | `{"page"}` | Opens a Settings page by ID. See the Settings parts below. | `ui/Settings.kt:253` |
 | `pay.history.open` | `{"source": "home" \| "settings"}` | Opens ride history. Both entry points use the same default action. | `ui/PayHistory.kt:43` |
 | `plan.stop` | `{"end": "from" \| "to", "stop", "name", "place": {"name", "detail", "lat", "lon", "type", "mode"}}` | Sets the start or destination from a ministry or extension stop board and opens the planner. The default uses the coordinates in `place`. | `ui/ExtActions.kt:29` |
 | `live.show` | `{"show": "all" \| "vehicles" \| "stops"}` | Changes the Live map filter. | `ui/LiveScreen.kt:605` |
@@ -495,9 +495,9 @@ when the part next shows.
 | `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) | `ui/Stations.kt:363` |
 | `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:449` |
 | `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1658` |
-| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:277` |
+| `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:250` |
 | `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1241` |
-| `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:291` |
+| `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:264` |
 | `stops.header` | `{}` | The Stops tab heading. | `ui/Stations.kt:218` |
 | `stops.search` | `{"query"}` | Search field and Select on map on the Stops tab. | `ui/Stations.kt:225` |
 | `lines.header` | `{}` | The Lines tab heading in both timetable modes. | `ui/Lines.kt:204` |
@@ -513,14 +513,15 @@ when the part next shows.
 | `pay.history.empty` | `{}` | The notice when the ride history is empty. | `ui/PayHistory.kt:110` |
 | `pay.history.month` | `{"year", "month", "rides"}` | One month heading. January is 1. | `ui/PayHistory.kt:116` |
 | `pay.history.ride` | `{"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}` | One ride. Optional fields are omitted. Time is in milliseconds, fare range in kilometres, and price in agorot. | `ui/PayHistory.kt:127` |
-| `settings.page.trips` | `{"page", "title"}` | The Trips Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.live` | `{"page", "title"}` | The Live times and planners Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.look` | `{"page", "title"}` | The Look and language Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.privacy` | `{"page", "title"}` | The Privacy and sharing Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.extensions` | `{"page", "title"}` | The Extensions Settings page body. | `ui/Settings.kt:352` |
-| `settings.page.kav` | `{"page", "title"}` | The Kav Settings page body. | `ui/Settings.kt:352` |
+| `settings.page.trips` | `{"page", "title"}` | The Trips Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.live` | `{"page", "title"}` | The providers on the Providers and privacy page: live times, trip planning, the timetable, line alerts, how busy and photos. | `ui/Settings.kt:156` |
+| `settings.page.look` | `{"page", "title"}` | The Look Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.language` | `{"page", "title"}` | The Language and time Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.privacy` | `{"page", "title"}` | The Providers and privacy Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.extensions` | `{"page", "title"}` | The Extensions Settings page body. | `ui/Settings.kt:271` |
+| `settings.page.kav` | `{"page", "title"}` | The Kav Settings page body. | `ui/Settings.kt:271` |
 | `results.endpoints` | `{"from", "to", "stops": [{"name", "minutes"}]}` | The endpoint picker, stopovers, swap, and Back. Destination is omitted when unset. | `ui/DirectionsOnline.kt:751` |
 | `results.options` | `{"at", "way", "order"}` | The time and sort controls above results. Values match the corresponding actions. | `ui/DirectionsOnline.kt:790` |
 | `results.time.shift` | `{"firstDeparture"}` | The Earlier/Later row and the displayed time of the first departure. | `ui/DirectionsOnline.kt:808` |
@@ -556,7 +557,8 @@ when the part next shows.
 in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
 after `trip.timeline`, `stop` at the top of `stop.board`, `results` inside each `results.route` card.
 
-The Settings page IDs are `trips`, `paying`, `live`, `look`, `map`, `privacy`, `extensions`, and `kav`.
+The Settings page IDs are `trips`, `paying`, `privacy`, `look`, `language`, `map`, `extensions`, and `kav`. `live` opens
+`privacy`, where the providers are.
 Ticket parts supply display metadata. The passenger names and ticket codes stay in Kav's ticket view.
 
 ### The trip notification's buttons

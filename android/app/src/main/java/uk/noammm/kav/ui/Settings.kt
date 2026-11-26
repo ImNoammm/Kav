@@ -100,7 +100,8 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     // Each part is a row saying what it's set to, and opens on its own page.
     var page by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(active) { if (!active) { page = null; choosing = false } }
-    LaunchedEffect(SettingsNav.wanted) { SettingsNav.wanted?.let { page = it; SettingsNav.wanted = null } }
+    // "live" names the providers, which are on the privacy page.
+    LaunchedEffect(SettingsNav.wanted) { SettingsNav.wanted?.let { page = if (it == "live") "privacy" else it; SettingsNav.wanted = null } }
     androidx.activity.compose.BackHandler(page != null) { page = null }
     // The header's Back is the phone's: a page that has gone a step in (Extensions, to a source or an extension) steps out first.
     val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -110,24 +111,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     }
     val waiting = model.update != null && Shown.updatePrompts
 
-    part(
-        "live",
-        T("Live times and planners", "זמני הגעה בזמן אמת ומתכננים"),
-        serverUses(),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-            LiveSource()
-            PlanningSource()
-            EveryPlannerChoice()
-            AlertsChoice()
-            CrowdChoice()
-            TimetableSource()
-            TimetableUpdates()
-            ShareServerChoice()
-        }
-    }
-
-    // Everything about a trip, from what a plan may show to its alerts.
+    // Everything about a trip, from what a plan may show to its alerts and sharing it.
     val offered = filtersOf(KavPlan.source)
     val ways = offered.count { it in model.filters }
     var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
@@ -139,11 +123,15 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             if (ways == offered.size) T("Every way of getting there", "כל הדרכים להגיע")
             else T("$ways of ${offered.size} ways of getting there", "$ways מתוך ${offered.size} דרכים להגיע"),
             if (spoken) T("alerts said out loud", "התראות בקול") else T("alerts on the screen", "התראות על המסך"),
+            Prefs.linkStyle(ctx).expiryDays.let { T("links last $it days", "קישורים ל-$it ימים") },
         ).joinToString(" · "),
     ) {
         PlanChoices(model)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it })
+            // Sharing a trip: where its link is made, and how the link looks and how long it lasts.
+            ShareServerChoice()
+            LinkCustomization()
         }
     }
 
@@ -161,42 +149,30 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSettings() }
     }
 
-    part(
-        "privacy",
-        T("Privacy and sharing", "פרטיות ושיתוף"),
-        listOf(
-            searchName().let { who ->
-                when {
-                    !Prefs.privateSearch(ctx) -> T("$who sees where you are", "$who רואה איפה אתם")
-                    model.seen == Seen.CITY -> T("$who sees your town", "$who רואה את היישוב שלכם")
-                    model.seen == Seen.PLACE -> T("$who sees a place you picked", "$who רואה מקום שבחרתם")
-                    else -> T("$who sees no location", "$who לא רואה מיקום")
-                }
-            },
-            if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
-        ).filterNotNull().joinToString(" · "),
-    ) {
+    // Who Kav asks for what, then what search sees, then the proxy all of it can go through: setup's step in the same
+    // order. The providers are a part of their own for extensions, settings.page.live.
+    val providersTitle = T("Providers and privacy", "ספקים ופרטיות")
+    part("privacy", providersTitle, providersSummary(model)) {
+        KavPart("settings.page.live", "live", { org.json.JSONObject().put("page", "live").put("title", providersTitle) }, inset = K.gap3) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
+        }
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             PrivacyRows(model) { choosing = true }
-            StopPhotoChoice()
             ProxyChoice()
-            LinkCustomization()
         }
     }
 
     part(
         "look",
-        T("Look and language", "מראה ושפה"),
+        T("Look", "מראה"),
         listOfNotNull(
             if (K.followsSystem) T("System", "מערכת")
             else when (K.look) { Look.OLED -> "OLED"; Look.LIGHT -> T("Light", "בהיר"); Look.DARK -> T("Dark", "כהה") },
             if (!liquidGlassReady) null else if (K.liquid) T("transparent", "שקוף") else T("solid", "אחיד"),
-            T.lang.label,
-            if (Shown.twelveHour) T("12-hour clock", "שעון 12 שעות") else T("24-hour clock", "שעון 24 שעות"),
         ).joinToString(" · "),
     ) {
-        // In setup's order: the preview, the look and its glass, the colour, the line badges, then the languages. A theme,
-        // once one is installed, comes first: it can set the rest.
+        // In setup's order: the preview, the look and its glass, the color, the line badges. A theme, once one is
+        // installed, comes first: it can set the rest.
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             ThemeChoice()
             AccentPreview()
@@ -204,14 +180,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             Sub(T("Color", "צבע"))
             AccentPicker { Prefs.setAccent(ctx, it.toArgb()) }
             LineBadgeChoice()
-            Sub(T("Kav's language", "השפה של Kav"))
-            LanguageRow(ctx)
-            StopNamesRow(ctx)
-            Sub(T("Names on the map", "שמות במפה"))
-            MapLabelsRow(ctx)
-            Sub(T("Time format", "תבנית שעה"))
-            ClockChoice(ctx)
         }
+    }
+
+    part("language", T("Language and time", "שפה ושעה"), languageSummary()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LanguageAndTime(ctx) }
     }
 
     part("map", T("Map", "מפה"), mapSummary()) {
@@ -328,9 +301,10 @@ internal fun SeenPlacePicker(model: KavModel, open: Boolean, onClose: () -> Unit
 
 private class SettingsPart(val id: String, val title: String, val summary: String, val summaryColor: Color?, val content: @Composable ColumnScope.() -> Unit)
 
-// Trips first, then how Kav looks and behaves, then Kav itself.
+// Riding first (what is changed most), then how Kav looks, then Kav itself: setup has the same cards, the look's first.
 private val SETTINGS_GROUPS = listOf(
-    listOf("trips", "paying", "live", "look", "map", "privacy"),
+    listOf("trips", "paying", "privacy"),
+    listOf("look", "language", "map"),
     listOf("extensions", "kav"),
 )
 
@@ -492,7 +466,7 @@ internal fun OnTheWayChoices(
     }
 }
 
-// How bus lines look: in Look and colour, and the colour step of setting Kav up.
+// How bus lines look: in Look, and the color step of setting Kav up.
 @Composable
 internal fun LineBadgeChoice() {
     val ctx = LocalContext.current
@@ -610,7 +584,7 @@ internal fun mapName(t: MapFile.Type) = when (t) {
     else -> t.name.lowercase().replaceFirstChar { it.uppercase() }
 }
 
-// What the map is, where it comes from and the language of its names, for Settings' list.
+// What the map is and where it comes from, for Settings' list.
 @Composable
 private fun mapSummary(): String {
     val type = MapFile.type
@@ -624,7 +598,6 @@ private fun mapSummary(): String {
             p.pack.state is MapPack.State.Ready -> T("on your phone", "בטלפון")
             else -> T("not downloaded yet", "עוד לא הורדה")
         },
-        if (MapFile.labels == Lang.HE) T("names in Hebrew", "שמות בעברית") else T("names in English", "שמות באנגלית"),
     ).joinToString(" · ")
 }
 
@@ -1702,7 +1675,7 @@ private fun LinkCustomization() {
                 { save(style.copy(theme = themes[it])) })
         }
     }
-    Sub(T("On the page", "בעמוד"))
+    Sub(T("On the shared page", "בעמוד המשותף"))
     Column(Modifier.fillMaxWidth().panel(K.rCard)) {
         // Laid out as the app rows under it, with the handle's room left empty, so the names and switches line up; the names
         // start where the section's header and Settings' other rows do.
@@ -1836,9 +1809,10 @@ internal fun TimetableUpdates() {
     }
 }
 
-// The section's summary line: where each part comes from.
+// Providers and privacy's summary: who answers live times and trips (and the timetable when it isn't the week from
+// Kav), then what search sees and the proxy.
 @Composable
-private fun serverUses(): String {
+private fun providersSummary(model: KavModel): String {
     val ctx = LocalContext.current
     fun named(at: String?) = when (at) {
         null -> T("unavailable", "לא זמין")
@@ -1851,11 +1825,62 @@ private fun serverUses(): String {
     val trips = first?.takeIf(uk.noammm.kav.ext.Extensions::isAddress)?.let(KavPlan::tabName)
         ?: if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
     val timetable = if (Schedules.source.provider) sourceName(Schedules.source)
-        else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else "Kav"
-    // Where links are made, once there's a choice of it (ShareServerChoice).
-    val links = if (KavLive.ownServer.isEmpty()) "" else " · " + T("links: ", "קישורים: ") + named(TripShare.server)
-    return T("Live: ", "זמן אמת: ") + live + " · " + T("trips: ", "מסלולים: ") + trips + " · " +
-        T("timetable: ", "לוח זמנים: ") + timetable + links
+        else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else null
+    return listOfNotNull(
+        if (live == trips) T("Live and trips: ", "זמן אמת ומסלולים: ") + live
+        else T("Live: ", "זמן אמת: ") + live + " · " + T("trips: ", "מסלולים: ") + trips,
+        timetable?.let { T("timetable: ", "לוח זמנים: ") + it },
+        searchName().let { who ->
+            when {
+                !Prefs.privateSearch(ctx) -> T("$who sees where you are", "$who רואה איפה אתם")
+                model.seen == Seen.CITY -> T("$who sees your town", "$who רואה את היישוב שלכם")
+                model.seen == Seen.PLACE -> T("$who sees a place you picked", "$who רואה מקום שבחרתם")
+                else -> T("$who sees no location", "$who לא רואה מיקום")
+            }
+        },
+        if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
+    ).joinToString(" · ")
+}
+
+// Who Kav asks for live times, trips, the timetable, line alerts, how busy, and photos: Providers and privacy's first
+// half, in Settings and in setup.
+@Composable
+internal fun Providers() {
+    LiveSource()
+    PlanningSource()
+    EveryPlannerChoice()
+    TimetableSource()
+    TimetableUpdates()
+    AlertsChoice()
+    CrowdChoice()
+    StopPhotoChoice()
+}
+
+// Language and time's summary: Kav's language, the names' languages, the clock.
+@Composable
+private fun languageSummary(): String {
+    fun inLang(he: Boolean) = if (he) T("in Hebrew", "בעברית") else T("in English", "באנגלית")
+    val stops = !StopNames.english
+    val map = MapFile.labels == Lang.HE
+    return listOf(
+        T.lang.label,
+        if (stops == map) T("stops and map ", "תחנות ומפה ") + inLang(stops)
+        else T("stops ", "תחנות ") + inLang(stops) + " · " + T("map ", "מפה ") + inLang(map),
+        if (Shown.twelveHour) T("12-hour clock", "שעון 12 שעות") else T("24-hour clock", "שעון 24 שעות"),
+    ).joinToString(" · ")
+}
+
+// Kav's language, the languages of stops' and the map's names, and the clock, each under its own label: setup's first
+// step and Settings' page look the same.
+@Composable
+internal fun LanguageAndTime(ctx: android.content.Context) {
+    Sub(T("Kav's language", "השפה של Kav"))
+    LanguageRow(ctx)
+    StopNamesRow(ctx)
+    Sub(T("Names on the map", "שמות במפה"))
+    MapLabelsRow(ctx)
+    Sub(T("Time format", "תבנית שעה"))
+    ClockChoice(ctx)
 }
 
 @Composable

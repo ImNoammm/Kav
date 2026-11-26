@@ -29,7 +29,7 @@ when tilted. Supported Nothing phones also offer Glyph alerts and trip progress 
 
 ## Line alerts
 
-Detours, delays and moved stops on your rides are a choice of their own (Settings › Live times and planners › Detours
+Detours, delays and moved stops on your rides are a choice of their own (Settings › Providers and privacy › Detours
 and alerts), off until you turn them on:
 
 - **Google**: Google Maps, asked from your phone about each ride of a trip you open, at most every five minutes. Google
@@ -41,13 +41,13 @@ and alerts), off until you turn them on:
 ## How busy
 
 How busy the next bus or train usually is at that hour, as Google Maps predicts it, on trips, in navigation and on a
-line's page. It's on unless you turn it off, in setup or in Settings › Live times and planners › How busy. Kav asks Google from your
+line's page. It's on unless you turn it off, in setup or in Settings › Providers and privacy › How busy. Kav asks Google from your
 phone about the stop you board at, at most every ten minutes, so Google sees that stop and your IP address. It's Google's
 prediction for the line at that hour, not a count of who's on board.
 
 ## Your own proxy
 
-Settings › Privacy and sharing › Proxy sends everything Kav asks for through an HTTP or SOCKS5 proxy of yours: Kav's
+Settings › Providers and privacy › Proxy sends everything Kav asks for through an HTTP or SOCKS5 proxy of yours: Kav's
 server, Google, the planners, the maps, and the pages Kav shows (they can log in to an HTTP proxy, not to a SOCKS5 one).
 Addresses on your own network are never sent to it. Save and try checks it carries a request before you rely on it.
 

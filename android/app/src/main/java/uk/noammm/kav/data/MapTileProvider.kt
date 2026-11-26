@@ -122,7 +122,7 @@ class GovMap(private val layers: List<Layer>, override val lightGround: Boolean)
     }
 }
 
-// The map's own names in the language chosen for them, apart from Kav's (Settings, Look and language). Only labels that
+// The map's own names in the language chosen for them, apart from Kav's (Settings, Language and time). Only labels that
 // show a name change: house numbers, road numbers and the like keep what they show.
 object MapLabels {
     enum class Schema { PROTOMAPS, OPENMAPTILES }

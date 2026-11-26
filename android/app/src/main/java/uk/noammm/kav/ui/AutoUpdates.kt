@@ -41,7 +41,7 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
             InfoHeader(T("Updates", "עדכונים"), info, headline = true)
             Spacer(Modifier.height(K.gap3))
         }
-        ListGroup(Modifier.padding(horizontal = if (setup) K.gap3 else 0.dp).padding(top = if (setup) 0.dp else K.gap3).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+        ListGroup(Modifier.padding(top = if (setup) 0.dp else K.gap3).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
             if (!setup) row { UpdatePromptsRow() }
             row {
                 ToggleRow(

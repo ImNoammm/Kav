@@ -89,7 +89,7 @@ internal object ExtUi {
     var wanted by mutableStateOf<String?>(null)
     // The source cards open on the main page, by key, while Kav runs (null: the first one).
     var opened by mutableStateOf<String?>(null)
-    // The Settings page a step was opened from (Look and language's themes): Back from that step returns there.
+    // The Settings page a step was opened from (Look's themes): Back from that step returns there.
     var returnTo by mutableStateOf<String?>(null)
     fun changed() { tick++ }
 }
@@ -440,7 +440,7 @@ internal fun ThemeList(hub: Hub, onOpen: (String) -> Unit) {
     }
 }
 
-// Look and language's themes, once one is installed: the same list, and a theme's page opens in Extensions with Back
+// Look's themes, once one is installed: the same list, and a theme's page opens in Extensions with Back
 // returning here. Nothing at all with none installed.
 @Composable
 internal fun ThemeChoice() {

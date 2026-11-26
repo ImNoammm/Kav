@@ -212,7 +212,7 @@ is missing or of the wrong kind, `sections` or `blocks` isn't a list, an action 
 ## Themes
 
 A theme is a package that says `"kind": "theme"` in its manifest. Kav calls it a theme everywhere, lists it apart
-from extensions (Settings › Look and language, once a theme is installed, and Settings › Extensions › Themes), and
+from extensions (Settings › Look, once a theme is installed, and Settings › Extensions › Themes), and
 applies one at a time: applying one takes any other off, and "Kav" goes back to Kav's own look. Sources host themes
 as they host extensions, in the same bundle or a bundle of their own, and the community list takes them the same way.
 
