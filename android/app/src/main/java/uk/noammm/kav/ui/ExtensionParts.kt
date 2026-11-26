@@ -561,7 +561,7 @@ private fun partWords(name: String) = when (name) {
     "settings.page.look" -> T("look settings", "הגדרות מראה")
     "settings.page.language" -> T("language and time settings", "הגדרות שפה ושעה")
     "settings.page.map" -> T("map settings", "הגדרות מפה")
-    "settings.page.privacy" -> T("provider and privacy settings", "הגדרות ספקים ופרטיות")
+    "settings.page.privacy" -> T("privacy settings", "הגדרות פרטיות")
     "settings.page.extensions" -> T("extension settings", "הגדרות תוספים")
     "settings.page.kav" -> T("Kav settings", "הגדרות Kav")
     "pay.history.header" -> T("the ride history header", "כותרת היסטוריית הנסיעות")

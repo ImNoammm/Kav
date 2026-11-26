@@ -30,7 +30,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     var page by rememberSaveable { mutableIntStateOf(0) }
     var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
     var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
-    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 7 && !BuildConfig.UPDATER) 5 else page - 1 }
+    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 8 && !BuildConfig.UPDATER) 6 else page - 1 }
     // What the last step downloads starts as setup opens, in the background, so it's there by then and the last step
     // doesn't come at all: on Wi-Fi or another unmetered network; on mobile data the timetable only as its own setting
     // allows (Also on mobile data), and the map only once the last step's Download asks for it. The timetable is the
@@ -50,13 +50,13 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     val allThere = mapNow is MapPack.State.Ready && weekNow is Timetable.State.Ready
 
     // Settings' groups in Settings' order: Language and time first (every later step reads in it), then how Kav looks
-    // (Look, Color, Map), then riding (Trips with paying, Providers and privacy), then updates and the download.
+    // (Look, Color, Map), then riding (Trips with paying, Providers), then Privacy, then updates and the download.
     val next = { page += 1 }
     // Everything downloaded already: setup ends with the last choice, without the download step.
     val doneOrNext: @Composable () -> Unit = {
         AnimatedContent(allThere, transitionSpec = { switching() }, label = "setupNext") { done ->
             if (done) OnboardingButton(T("Done", "סיום"), onClick = onDone)
-            else OnboardingButton(T("Next", "הבא")) { page = 7 }
+            else OnboardingButton(T("Next", "הבא")) { page = 8 }
         }
     }
     AnimatedContent(
@@ -65,7 +65,8 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     ) { p ->
         VeilMaps()
         when (p) {
-            0 -> SetupStep(T("Language and time", "שפה ושעה"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
+            // A fresh install starts in Hebrew: the title is in both languages, Hebrew first, whichever Kav is in.
+            0 -> SetupStep("שפה ושעה", under = "Language and time", button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LanguageAndTime(ctx) }
             }
             // The preview shows each choice, so the step needs no explanation.
@@ -95,8 +96,12 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 }
             }
             // The rows of Settings' page, in its order.
-            5 -> SetupStep(
-                T("Providers and privacy", "ספקים ופרטיות"),
+            5 -> SetupStep(T("Providers", "ספקים"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
+            }
+            // Settings' page without private search, which needs Settings' place picker (SeenPlacePicker).
+            6 -> SetupStep(
+                T("Privacy", "פרטיות"),
                 T(
                     "What Kav shares, and with whom. Settings has all of this again later.",
                     "מה Kav משתפת, ועם מי. אפשר לשנות את כל זה שוב בהגדרות.",
@@ -105,13 +110,13 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 button = { if (BuildConfig.UPDATER) OnboardingButton(T("Next", "הבא"), onClick = next) else doneOrNext() },
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    Providers()
                     PlaceSearchChoice()
+                    StopPhotoChoice()
                     ProxyChoice()
                 }
             }
             // The step's title, with its (i), is AutomaticUpdates' own.
-            6 -> SetupStep(null, button = doneOrNext) {
+            7 -> SetupStep(null, button = doneOrNext) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
                     AutomaticUpdates(setup = true)
                     UpdatePrompts()
@@ -206,16 +211,21 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
 
 // One step of setup: its title (with an (i) when there's more to say) and its choices scroll, and its button stays at
 // the bottom, in the same place on every step. The choices sit as on Settings' pages; null title: the content's first
-// part is the title (Updates).
+// part is the title (Updates); under: a second line of title, quieter.
 @Composable
-private fun SetupStep(title: String?, info: String? = null, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun SetupStep(
+    title: String?, info: String? = null, under: String? = null, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit,
+) {
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = K.gap1)) {
             Spacer(Modifier.height(K.gap6))
             if (title != null) {
                 val at = Modifier.padding(horizontal = K.gap3)
                 if (info != null) InfoHeader(title, info, at, headline = true)
-                else Text(title, style = K.type.largeTitle, modifier = at.padding(bottom = K.gap2))
+                else {
+                    Text(title, style = K.type.largeTitle, modifier = if (under == null) at.padding(bottom = K.gap2) else at)
+                    if (under != null) Text(under, style = K.type.largeTitle, color = K.textTertiary, modifier = at.padding(bottom = K.gap2))
+                }
                 Spacer(Modifier.height(K.gap3))
             }
             content()

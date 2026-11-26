@@ -438,7 +438,7 @@ def area_name(area):
 
 def scan_path():
     """Where a phone scans the server's code: Kav's own names for the way there (Settings.kt)."""
-    return "Settings › Providers and privacy › My own › Scan the server's QR code"
+    return "Settings › Providers › My own › Scan the server's QR code"
 
 
 def learn(anchor, label="Learn more"):

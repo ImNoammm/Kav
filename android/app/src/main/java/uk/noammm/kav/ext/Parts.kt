@@ -11,7 +11,6 @@ import kav.kavapp.api.Kav
 // The four cards of API 3 (Kav.card, Slots) sit where they always did, each beside one of these: "home" after
 // home.suggestions, "trip" after trip.timeline, "stop" at the top of stop.board, "results" inside results.route's card.
 object Parts {
-    // "live" is the providers, the first half of the privacy page; opened by name, it opens that page.
     val SETTINGS_PAGES = listOf("trips", "paying", "live", "look", "language", "map", "privacy", "extensions", "kav")
 
     // Every part, with what it is told (docs/native.md lists each with its JSON and where Kav draws it).

@@ -100,8 +100,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     // Each part is a row saying what it's set to, and opens on its own page.
     var page by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(active) { if (!active) { page = null; choosing = false } }
-    // "live" names the providers, which are on the privacy page.
-    LaunchedEffect(SettingsNav.wanted) { SettingsNav.wanted?.let { page = if (it == "live") "privacy" else it; SettingsNav.wanted = null } }
+    LaunchedEffect(SettingsNav.wanted) { SettingsNav.wanted?.let { page = it; SettingsNav.wanted = null } }
     androidx.activity.compose.BackHandler(page != null) { page = null }
     // The header's Back is the phone's: a page that has gone a step in (Extensions, to a source or an extension) steps out first.
     val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -129,8 +128,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         PlanChoices(model)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it })
-            // Sharing a trip: where its link is made, and how the link looks and how long it lasts.
-            ShareServerChoice()
+            // Sharing a trip: how its link looks and how long it lasts.
             LinkCustomization()
         }
     }
@@ -149,17 +147,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSettings() }
     }
 
-    // Who Kav asks for what, then what search sees, then the proxy all of it can go through: setup's step in the same
-    // order. The providers are a part of their own for extensions, settings.page.live.
-    val providersTitle = T("Providers and privacy", "ספקים ופרטיות")
-    part("privacy", providersTitle, providersSummary(model)) {
-        KavPart("settings.page.live", "live", { org.json.JSONObject().put("page", "live").put("title", providersTitle) }, inset = K.gap3) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
-        }
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-            PrivacyRows(model) { choosing = true }
-            ProxyChoice()
-        }
+    // Who Kav asks for what: setup's step in the same order.
+    part("live", T("Providers", "ספקים"), providersSummary()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
     }
 
     part(
@@ -189,6 +179,29 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
 
     part("map", T("Map", "מפה"), mapSummary()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices() }
+    }
+
+    // What search sees, photos, and the proxy everything can go through.
+    part(
+        "privacy",
+        T("Privacy", "פרטיות"),
+        listOfNotNull(
+            searchName().let { who ->
+                when {
+                    !Prefs.privateSearch(ctx) -> T("$who sees where you are", "$who רואה איפה אתם")
+                    model.seen == Seen.CITY -> T("$who sees your town", "$who רואה את היישוב שלכם")
+                    model.seen == Seen.PLACE -> T("$who sees a place you picked", "$who רואה מקום שבחרתם")
+                    else -> T("$who sees no location", "$who לא רואה מיקום")
+                }
+            },
+            if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
+        ).joinToString(" · "),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
+            PrivacyRows(model) { choosing = true }
+            StopPhotoChoice()
+            ProxyChoice()
+        }
     }
 
     // Third-party extensions, their sources, and safe mode (ExtensionsScreen.kt).
@@ -303,9 +316,9 @@ private class SettingsPart(val id: String, val title: String, val summary: Strin
 
 // Riding first (what is changed most), then how Kav looks, then Kav itself: setup has the same cards, the look's first.
 private val SETTINGS_GROUPS = listOf(
-    listOf("trips", "paying", "privacy"),
+    listOf("trips", "paying", "live"),
     listOf("look", "language", "map"),
-    listOf("extensions", "kav"),
+    listOf("privacy", "extensions", "kav"),
 )
 
 @Composable
@@ -1809,11 +1822,9 @@ internal fun TimetableUpdates() {
     }
 }
 
-// Providers and privacy's summary: who answers live times and trips (and the timetable when it isn't the week from
-// Kav), then what search sees and the proxy.
+// Providers' summary: who answers live times and trips, the timetable when it isn't the week from Kav, and links.
 @Composable
-private fun providersSummary(model: KavModel): String {
-    val ctx = LocalContext.current
+private fun providersSummary(): String {
     fun named(at: String?) = when (at) {
         null -> T("unavailable", "לא זמין")
         KavLive.KAV_SERVER -> T("Kav's server", "השרת של Kav")
@@ -1830,20 +1841,13 @@ private fun providersSummary(model: KavModel): String {
         if (live == trips) T("Live and trips: ", "זמן אמת ומסלולים: ") + live
         else T("Live: ", "זמן אמת: ") + live + " · " + T("trips: ", "מסלולים: ") + trips,
         timetable?.let { T("timetable: ", "לוח זמנים: ") + it },
-        searchName().let { who ->
-            when {
-                !Prefs.privateSearch(ctx) -> T("$who sees where you are", "$who רואה איפה אתם")
-                model.seen == Seen.CITY -> T("$who sees your town", "$who רואה את היישוב שלכם")
-                model.seen == Seen.PLACE -> T("$who sees a place you picked", "$who רואה מקום שבחרתם")
-                else -> T("$who sees no location", "$who לא רואה מיקום")
-            }
-        },
-        if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
+        // Where links are made, once there's a choice of it (ShareServerChoice).
+        if (KavLive.ownServer.isEmpty()) null else T("links: ", "קישורים: ") + named(TripShare.server),
     ).joinToString(" · ")
 }
 
-// Who Kav asks for live times, trips, the timetable, line alerts, how busy, and photos: Providers and privacy's first
-// half, in Settings and in setup.
+// Who Kav asks for live times, trips, the timetable, line alerts and how busy, and where a shared trip's link is made:
+// the Providers page, in Settings and in setup.
 @Composable
 internal fun Providers() {
     LiveSource()
@@ -1853,7 +1857,7 @@ internal fun Providers() {
     TimetableUpdates()
     AlertsChoice()
     CrowdChoice()
-    StopPhotoChoice()
+    ShareServerChoice()
 }
 
 // Language and time's summary: Kav's language, the names' languages, the clock.

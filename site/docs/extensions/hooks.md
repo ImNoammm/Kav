@@ -374,7 +374,7 @@ Deadline: 30 seconds.
 
 Each extension planner the rider switches on gets a tab of its own on the results, beside Kav's: its key is
 `ext:<publisher>/<dataset>` and its label is your extension's name. A search asks every tab's planner at once, so a
-tab opens on its routes as soon as they're in. In Settings › Providers and privacy › Routes from every planner the
+tab opens on its routes as soon as they're in. In Settings › Providers › Routes from every planner the
 rider orders the tabs, hides one, and picks the tab results open on; Kav's own tab can be hidden while an extension's
 is left. While your extension is switched off its tab stays and says it didn't answer, so the rider is never shown
 another planner's routes in its place. A rider who had chosen one extension's planner before tabs keeps it: it gets its
