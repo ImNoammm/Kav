@@ -259,6 +259,26 @@
             </intent-filter>
         </receiver>
 
+        <!-- home-screen widget: the next buses at the first saved stop -->
+        <receiver
+            android:name=".DeparturesWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/departures_widget_info" />
+        </receiver>
+        <service
+            android:name=".DeparturesWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <!-- The widget's host (the launcher) starts this when the widget is placed, so it must be exported;
+             it finishes at once when started without a widget id. -->
+        <activity
+            android:name=".DeparturesWidgetConfigActivity"
+            android:exported="true" />
+
         <!-- tickets read from Rav-Pass: each deleted when it ends, also with the reader off and Kav closed -->
         <receiver
             android:name=".TicketEnd"
