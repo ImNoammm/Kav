@@ -1822,6 +1822,11 @@ object Prefs {
     } catch (e: Exception) { emptyList() }
 
     fun savedStops(ctx: Context): List<String> = strings(ctx, "savedStops")
+    // The saved stop each home-screen widget shows, by its widget id (#118): chosen as the widget is placed;
+    // without a choice the first saved stop is shown, as before.
+    fun widgetStop(ctx: Context, id: Int): String? = store(ctx).getString("widgetStop.$id", null)
+    fun setWidgetStop(ctx: Context, id: Int, key: String) { store(ctx).edit().putString("widgetStop.$id", key).apply() }
+    fun dropWidgetStop(ctx: Context, id: Int) { store(ctx).edit().remove("widgetStop.$id").apply() }
     fun setSavedStops(ctx: Context, keys: List<String>) =
         store(ctx).edit().putString("savedStops", org.json.JSONArray(keys).toString()).apply()
 
