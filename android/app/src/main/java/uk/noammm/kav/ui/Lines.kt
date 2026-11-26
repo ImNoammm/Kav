@@ -3,6 +3,8 @@ package uk.noammm.kav.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -1668,6 +1670,19 @@ private fun LinePage(
             else -> line?.takeIf { it.from.isNotBlank() && it.to.isNotBlank() }?.let { twoEnds(providerEnd(it.from), providerEnd(it.to)) }
         }
         ScreenHeader(ends ?: (T("Line ", "קו ") + number), back = onBack)
+        // Under its title the whole page scrolls: the line's header, its ways, the live card and the map scroll away first,
+        // then the stops, which have the whole screen once they are all that's left.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        val pageHeight = maxHeight
+        val page = rememberScrollState()
+        val headerFirst = remember(page) {
+            object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource) =
+                    if (available.y < 0 && page.canScrollForward) androidx.compose.ui.geometry.Offset(0f, -page.dispatchRawDelta(-available.y))
+                    else androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+        Column(Modifier.fillMaxSize().nestedScroll(headerFirst).verticalScroll(page)) {
         // What the line's header part is told (ExtParts.kt): its number and operator.
         KavPart("line.header", route to line, lineAbout) {
         Row(
@@ -1754,18 +1769,20 @@ private fun LinePage(
             else -> 0
         }
         AnimatedContent(
-            state, Modifier.fillMaxSize(),
+            state, Modifier.fillMaxWidth(),
             transitionSpec = { fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(150)) },
             label = "linePage",
         ) { s ->
             when (s) {
                 1 -> NoteCard(T("This line has no trips in the coming days.", "אין לקו הזה נסיעות בימים הקרובים."), Modifier.padding(K.gap4))
                 2 -> NoteCard(unreachable(source, T("Try again in a moment.", "נסו שוב בעוד רגע.")), Modifier.padding(K.gap4))
-                3 -> LoadingBlock(
-                    if (route >= 0) T("Loading stops", "טוענים תחנות")
-                    else T("Loading the line from ${sourceName(source)}", "טוענים את הקו מ${sourceName(source)}"),
-                )
-                else -> Column(Modifier.fillMaxSize()) {
+                3 -> Box(Modifier.height(pageHeight)) {
+                    LoadingBlock(
+                        if (route >= 0) T("Loading stops", "טוענים תחנות")
+                        else T("Loading the line from ${sourceName(source)}", "טוענים את הקו מ${sourceName(source)}"),
+                    )
+                }
+                else -> Column(Modifier.fillMaxWidth()) {
                     val shown = rows.orEmpty()
                     if (shown.isNotEmpty()) {
                         // The line's next departures and how busy it is lead, under its name; whether it's live goes under
@@ -1839,7 +1856,7 @@ private fun LinePage(
                     // Another way's stops go as its road starts to change, and its own come once the road and the map have
                     // moved (WAY_SWITCH_MS), with the map's circles; the provider's taking the week's place don't move.
                     AnimatedContent(
-                        PageList(listKey, pick, way, shown, keys), Modifier.fillMaxSize(),
+                        PageList(listKey, pick, way, shown, keys), Modifier.fillMaxWidth().height(pageHeight),
                         transitionSpec = { fadeIn(tween(220, delayMillis = WAY_SWITCH_MS)) togetherWith fadeOut(tween(120)) },
                         contentKey = { it.key }, label = "way",
                     ) { l ->
@@ -1849,6 +1866,8 @@ private fun LinePage(
                     }
                 }
             }
+        }
+        }
         }
     }
 }
