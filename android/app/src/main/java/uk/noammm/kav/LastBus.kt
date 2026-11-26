@@ -82,7 +82,7 @@ object LastBus {
                 val route = net.tripRoute[trip]
                 var days = 0
                 for (d in 0..6) if (net.runsOn(trip, d)) days = days or (1 shl d)
-                out.add(LastRide.Row(net.rShort[route], net.name[net.tripLast(trip)], days, net.stDep[st]))
+                out.add(LastRide.Row(net.rShort[route], net.name[net.tripLast(trip)], days, net.stDep[st].toLong()))
             }
         }
         return out
