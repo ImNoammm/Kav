@@ -1874,15 +1874,16 @@ private fun languageSummary(): String {
 }
 
 // One language for Kav, stop names and the map's names, or Custom, which opens the three apart; then, in Settings, the
-// clock, the phone's own until one is picked. Setup's first step is the same without it.
+// clock, the phone's own until one is picked. Setup's language sheet is the same without the clock, and without the
+// language's header, which the sheet's title already says.
 @Composable
-internal fun LanguageAndTime(ctx: android.content.Context, clock: Boolean = true) {
+internal fun LanguageAndTime(ctx: android.content.Context, setup: Boolean = false) {
     // The language being switched to counts as Kav's at once, so a tap on it never shows the three apart on the way.
     val preset = Presets.language(T.wanted ?: T.lang, StopNames.english, MapFile.labels)
     var picked by rememberSaveable { mutableStateOf<Boolean?>(null) }
     val custom = Presets.custom(picked, preset != null)
     val langs = Presets.languagesFrom(T.lang)
-    Sub(T("Language", "שפה"))
+    if (!setup) Sub(T("Language", "שפה"))
     KavSegmented(
         langs.map { it.label } + T("Custom", "מותאם אישית"),
         selected = if (custom) langs.size else langs.indexOf(preset),
@@ -1902,7 +1903,7 @@ internal fun LanguageAndTime(ctx: android.content.Context, clock: Boolean = true
         Sub(T("Names on the map", "שמות במפה"))
         MapLabelsRow(ctx)
     }
-    if (clock) {
+    if (!setup) {
         Sub(T("Time format", "תבנית שעה"))
         ClockChoice(ctx)
     }

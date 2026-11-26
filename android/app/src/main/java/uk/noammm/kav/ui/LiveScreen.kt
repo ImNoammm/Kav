@@ -65,6 +65,7 @@ import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.nearestStops
 import uk.noammm.kav.data.shownName
 import uk.noammm.kav.hasLocationPermission
+import uk.noammm.kav.locationAskedThisRun
 import uk.noammm.kav.loadNet
 import uk.noammm.kav.requestLocationOnce
 import uk.noammm.kav.trackLocation
@@ -207,7 +208,7 @@ private fun LiveScreenForSource(model: KavModel) {
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(Unit) {
-        if (!locGranted && model.here == null) ask.launch(LOCATION_PERMISSIONS)
+        if (!locGranted && model.here == null && !locationAskedThisRun) ask.launch(LOCATION_PERMISSIONS)
     }
     // Where you are at once, from what the phone already knows, then every fix while the map is on screen: one fix
     // every two minutes left you where you had been as you walked or rode. A trip under way follows you already.

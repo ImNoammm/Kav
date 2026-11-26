@@ -129,7 +129,7 @@ private fun ReleasePrompt(
 }
 
 @Composable
-private fun AppIcon(size: androidx.compose.ui.unit.Dp) {
+internal fun AppIcon(size: androidx.compose.ui.unit.Dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(size / 4)), contentAlignment = Alignment.Center) {
         Image(
             painterResource(R.drawable.ic_launcher_background), contentDescription = null,

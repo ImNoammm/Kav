@@ -911,7 +911,7 @@ private fun Shell(model: KavModel) {
         if (granted.values.any { it }) requestLocationOnce(ctx) { model.locate(it.first, it.second) }
     }
     LaunchedEffect(Unit) {
-        if (!hasPreciseLocation(ctx)) askLocation.launch(LOCATION_PERMISSIONS)
+        if (!hasPreciseLocation(ctx) && !locationAskedThisRun) askLocation.launch(LOCATION_PERMISSIONS)
     }
     val shellLifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(shellLifecycle) {
@@ -1580,6 +1580,10 @@ fun hasPreciseLocation(ctx: Context): Boolean =
         PackageManager.PERMISSION_GRANTED
 
 val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+
+// Setup's welcome asked for the location: whatever the answer, Kav doesn't ask again until it's next opened, and a
+// rider who said no gets Live's own Use my location.
+internal var locationAskedThisRun = false
 
 private const val GOOD_FIX_M = 50f
 private const val ROUGH_FIX_M = 75f

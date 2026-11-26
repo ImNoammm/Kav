@@ -937,7 +937,7 @@ fun BottomSheet(
                     .animateEnterExit(
                         enter = androidx.compose.animation.slideInVertically(
                             androidx.compose.animation.core.spring(
-                                dampingRatio = 0.9f,
+                                dampingRatio = 1f,
                                 stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
                             ),
                         ) { it },
