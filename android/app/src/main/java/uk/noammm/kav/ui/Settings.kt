@@ -79,7 +79,7 @@ import uk.noammm.kav.data.GoogleCrowd
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Place
-import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.animation.togetherWith
@@ -1967,7 +1967,7 @@ internal fun PrivacyRows(model: KavModel, onChoose: () -> Unit) {
         }
         row {
             ToggleRow(T("Exact house numbers", "מספרי בתים מדויקים"), house, {
-                Icon(Icons.Rounded.Home, null, tint = toggleInk(house), modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Home, null, tint = toggleInk(house), modifier = Modifier.size(20.dp))
             }, info = T(
                 "When you type a street, number and town, Kav also asks GovMap, the Survey of Israel's map, and uses its point if the search's is far off. GovMap gets what you type, never your location.",
                 "‏Kav שואלת גם את GovMap, המפה של המרכז למיפוי ישראל, כשאתם מקלידים רחוב, מספר ועיר, ומשתמשת בנקודה שלה אם זו של החיפוש רחוקה. GovMap מקבלת את מה שאתם מקלידים, אף פעם לא את המיקום שלכם.",
