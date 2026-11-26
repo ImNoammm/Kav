@@ -1616,9 +1616,12 @@ private fun LinePage(
     fun getOffOwn(stops: List<PageStop>, i: Int) {
         val at = model.here?.takeIf { model.hereFresh }
         val road = shape
+        val buses = live.vehicles.filter { it.hasLocation }.mapNotNull { v -> KavLive.firstOf(v.vehicleId)?.let { it to (v.lat to v.lon) } }
         scope.launch {
             val built = withContext(Dispatchers.Default) {
-                OnBoard.trip(net, lineRoutes, stops.map { it.week }, i, at, System.currentTimeMillis() / 1000, road)
+                // The live bus at or just behind the rider, when there is one, is the one they're on.
+                val first = at?.let { OnBoard.liveBus(road, it, buses) }
+                OnBoard.trip(net, lineRoutes, stops.map { it.week }, i, at, System.currentTimeMillis() / 1000, road, first = first)
             }
             if (built == null) {
                 android.widget.Toast.makeText(ctx, T("No trip of this line gets there now.", "אין עכשיו נסיעה של הקו הזה שמגיעה לשם."),

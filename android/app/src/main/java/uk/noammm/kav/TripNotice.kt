@@ -42,6 +42,7 @@ import uk.noammm.kav.ui.minsLeft
 import uk.noammm.kav.ui.minutesToAlight
 import uk.noammm.kav.ui.leavesNow
 import uk.noammm.kav.ui.platformChange
+import uk.noammm.kav.ui.rideTimes
 import uk.noammm.kav.ui.riderTrip
 import uk.noammm.kav.ui.modeName
 import uk.noammm.kav.ui.pathLength
@@ -241,8 +242,9 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
             val bus = riderTrip(ride, r, live, now)?.let { trip ->
                 ride.stops.asReversed().firstNotNullOfOrNull { stop -> r.live[Transit.ArrivalKey(stop, trip)]?.takeIf { it.rtUtc > 0 } }
             }
-            // Whether the time left goes by the bus's live times or by the timetable alone, as the trip screen says it.
-            val timed = if (bus != null)
+            // Whether the time left goes by the bus's live times (or the rider aboard it) or by the timetable alone, as the
+            // trip screen says it: the same stop times the minutes come from.
+            val timed = if (rideTimes(ride, r, riderTrip(ride, r, live, now), emptyMap(), live, now).lastOrNull()?.live == true)
                 T("Live", "בזמן אמת") else T("Scheduled", "מתוזמן")
             Say(
                 "$soon · ${place(ride.toStop)}",
