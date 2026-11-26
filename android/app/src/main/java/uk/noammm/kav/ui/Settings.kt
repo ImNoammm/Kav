@@ -497,21 +497,6 @@ internal fun LineBadgeChoice() {
         listOf("Kav", T("Strip", "פס")), badges.indexOf(K.lineBadgeAppearance),
         { i -> K.lineBadgeAppearance = badges[i]; Prefs.setLineBadges(ctx, badges[i]) },
     )
-    androidx.compose.animation.AnimatedContent(
-        K.lineBadgeAppearance, Modifier.fillMaxWidth().padding(top = K.gap3),
-        transitionSpec = {
-            (androidx.compose.animation.fadeIn(tween(220, delayMillis = 60)) +
-                androidx.compose.animation.scaleIn(tween(220, delayMillis = 60), initialScale = .9f)) togetherWith
-                androidx.compose.animation.fadeOut(tween(150))
-        },
-        label = "badgeLook",
-    ) { look ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap3, Alignment.CenterHorizontally)) {
-            for ((number, operator) in listOf("480" to 3, "69" to 5, "1" to 15)) {
-                LinePlateBadge(number, Mode.BUS, operatorPlate(Operators.ofGtfs(operator)), look = look)
-            }
-        }
-    }
 }
 
 // Whether Kav tells of new versions on its own: a row of the updates' card in Settings (AutomaticUpdates), and a card

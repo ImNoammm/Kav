@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,12 +49,13 @@ class AccentPreset(private val nameEn: String, private val nameHe: String, val h
     val color: Color get() = Color.hsv(hue, sat, 1f)
 }
 
+// In the slider's order: by hue, from its start.
 val AccentPresets = listOf(
-    AccentPreset("Blue", "כחול", 219f, .40f),
+    AccentPreset("Amber", "ענבר", 44f, .48f),
     AccentPreset("Green", "ירוק", 140f, .38f),
     AccentPreset("Teal", "טורקיז", 178f, .42f),
+    AccentPreset("Blue", "כחול", 219f, .40f),
     AccentPreset("Violet", "סגול", 262f, .34f),
-    AccentPreset("Amber", "ענבר", 44f, .48f),
     AccentPreset("Pink", "ורוד", 338f, .36f),
 )
 
@@ -105,6 +108,8 @@ fun AccentPicker(modifier: Modifier = Modifier, onChange: (Color) -> Unit) {
             drawCircle(Color.White, 12.dp.toPx(), at, style = Stroke(2.5.dp.toPx()))
         }
         Spacer(Modifier.height(K.gap4))
+        // Left to right in Hebrew too, as the slider over them is.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(horizontalArrangement = Arrangement.spacedBy(K.gap3), verticalAlignment = Alignment.CenterVertically) {
             AccentPresets.forEach { p ->
                 val selected = hsvOf(p.color).let { it[1] < .02f && hsv[1] < .02f || (kotlin.math.abs(it[0] - hsv[0]) < 2f && kotlin.math.abs(it[1] - hsv[1]) < .02f) }
@@ -118,6 +123,7 @@ fun AccentPicker(modifier: Modifier = Modifier, onChange: (Color) -> Unit) {
                         },
                 )
             }
+        }
         }
     }
 }

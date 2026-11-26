@@ -2050,15 +2050,15 @@ object Prefs {
     internal const val SYSTEM_LOOK = "system"
     private val looks = Look.entries.map { it.name.lowercase() } + SYSTEM_LOOK
 
-    // The look a stored choice gives: System's is OLED while the phone is dark and Light while it isn't; none stored, OLED.
+    // The look a stored choice gives: System's, also when none is stored, is OLED while the phone is dark and Light while it isn't.
     internal fun lookOf(stored: String?, night: Boolean): Look =
-        if (stored == SYSTEM_LOOK) (if (night) Look.OLED else Look.LIGHT)
+        if (stored == null || stored == SYSTEM_LOOK) (if (night) Look.OLED else Look.LIGHT)
         else Look.entries.firstOrNull { it.name.lowercase() == stored } ?: Look.OLED
     internal fun night(uiMode: Int): Boolean =
         (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
 
     fun look(ctx: Context): Look = lookOf(store(ctx).getString("look", null), night(ctx.resources.configuration.uiMode))
-    fun followsSystem(ctx: Context): Boolean = store(ctx).getString("look", null) == SYSTEM_LOOK
+    fun followsSystem(ctx: Context): Boolean = store(ctx).getString("look", null).let { it == null || it == SYSTEM_LOOK }
     // null: System.
     fun setLook(ctx: Context, look: Look?) = store(ctx).edit().putString("look", look?.name?.lowercase() ?: SYSTEM_LOOK).apply()
 
@@ -2265,6 +2265,8 @@ object Prefs {
             e.remove("pickSupport")
             ctx.getSharedPreferences("notice", Context.MODE_PRIVATE).edit().remove("supportWaits").apply()
         }
+        // System is the look until one is picked (lookOf()); a rider from before who never picked one had OLED and keeps it.
+        if (version < 9 && s.getBoolean("onboarded", false) && !s.contains("look")) e.putString("look", Look.OLED.name.lowercase())
         e.putInt("prefsVersion", 9).apply()
     }
 
