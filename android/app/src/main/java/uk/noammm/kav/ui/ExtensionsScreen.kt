@@ -564,7 +564,7 @@ private fun ExtSwitches(hub: Hub, s: Hub.Source, onExtension: (String) -> Unit, 
     if (extensions) all.filter { !it.manifest.isTheme }.forEach { i ->
         key(i.identity) {
             val trouble = troubleOf(hub, i)
-            ExtSwitchRow(i.displayName, trouble ?: rowWords(i.manifest), trouble != null,
+            ExtSwitchRow(i.displayName, trouble ?: rowWords(i.manifest, if (hasSettings(i)) ROW_ROOM_WITH_SETTINGS else ROW_ROOM), trouble != null,
                 { ExtTile(hub.registry.iconFile(i.identity), null, i.manifest.contributions.map { it.capability } + i.manifest.adds, 40.dp) },
                 hub.active(i), false, { onExtension(i.identity) }, hasSettings(i)) { switchOn(ctx, hub, i.identity, it) }
         }

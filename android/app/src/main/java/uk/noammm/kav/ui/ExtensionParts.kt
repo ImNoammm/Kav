@@ -665,15 +665,20 @@ private fun noteOf(l: ExtUses.Line): String? = l.note?.let { (en, he) -> (if (T.
 // capabilities its listing or manifest names. As many as fit a line, then how many more, so nothing is cut.
 // An installed extension's row line: what it adds (its manifest's parts, its tab, settings it declares, and what it says
 // it adds), else its own short description.
-internal fun rowWords(m: uk.noammm.kav.ext.Manifest): String {
+internal fun rowWords(m: uk.noammm.kav.ext.Manifest, room: Int = ROW_ROOM): String {
     val decl = runCatching { PageSpecs.of(m) }.getOrNull()
     val tab = decl?.tabs?.isNotEmpty() == true
     // Its own screens go without saying once one of them is a tab.
     val caps = m.contributions.map { it.capability }.filter { !(tab && it == PageSpecs.PAGE) }
-    return listingWords(caps, m.adds.filter { it != "settings" }, tab).ifEmpty { T.iso(m.description.substringBefore(". ")) }
+    return listingWords(caps, m.adds.filter { it != "settings" }, tab, room).ifEmpty { T.iso(m.description.substringBefore(". ")) }
 }
 
-internal fun listingWords(capabilities: List<String>, adds: List<String> = emptyList(), tab: Boolean = false): String {
+// How many characters of these words fit one line beside a row's switch on a 360 dp wide screen, in either language, and
+// beside its settings button too.
+internal const val ROW_ROOM = 27
+internal const val ROW_ROOM_WITH_SETTINGS = 16
+
+internal fun listingWords(capabilities: List<String>, adds: List<String> = emptyList(), tab: Boolean = false, room: Int = ROW_ROOM): String {
     // Its maps first (what a rider sees most), then what the manifest's parts are, its tab, then settings.
     val all = adds.filter { it != "settings" }.map(::addWord) + capabilities.distinct().map {
         when (it) {
@@ -697,16 +702,16 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
     } + listOfNotNull(
         if (tab) T("Tab", "לשונית") else null,
     )
-    // As many as fit one line beside the row's switch on a 360 dp wide screen, in either language (27 characters, the
-    // dots between them counted), with no count of the rest.
+    // As many as fit one line (room, the dots between them counted), with no count of the rest; each kept whole, so a
+    // narrower screen breaks the line between them, never inside one.
     var shown = 0
     var length = 0
     for (w in all) {
         val more = if (shown > 0) w.length + 3 else w.length
-        if (shown >= 3 || (shown > 0 && length + more > 27)) break
+        if (shown >= 3 || (shown > 0 && length + more > room)) break
         shown++; length += more
     }
-    return all.take(shown).joinToString(" · ") { T.iso(it) }
+    return all.take(shown).joinToString(" · ") { T.iso(it.replace(' ', '\u00A0')) }
 }
 
 // A line's short label, for the list of what an extension can do: Kav's words, a few of them.
