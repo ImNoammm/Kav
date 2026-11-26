@@ -2356,3 +2356,4 @@ object Prefs {
         LineBadgeAppearance.of(store(ctx).getString("lineBadgeAppearance", null))
     fun setLineBadges(ctx: Context, a: LineBadgeAppearance) = store(ctx).edit().putString("lineBadgeAppearance", a.name).apply()
 }
+
