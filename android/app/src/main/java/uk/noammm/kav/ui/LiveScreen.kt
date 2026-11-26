@@ -1348,7 +1348,7 @@ private fun LiveList(
                     Text(
                         v.line?.destination?.ifBlank { null }?.let { T("to ${shownName(it)}", "אל ${shownName(it)}") }
                             ?: if (v.pending) T("Looking up the line…", "מאתרים את הקו…") else T("Line ${v.number}", "קו ${v.number}"),
-                        style = K.type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = K.type.body,
                     )
                     // Where it is rolls to the new distance or time at each refresh.
                     LiveText(

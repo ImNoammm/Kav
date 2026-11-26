@@ -756,6 +756,9 @@ private fun PlaceRow(p: Transit.Place, here: Pair<Double, Double>?, first: Boole
         leading = { Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { PlaceGlyph(p.type, p.mode) } },
         onClick = onClick,
         chevron = false,
+        // A place's name and address are the search's, shown whole.
+        subtitleMaxLines = Int.MAX_VALUE,
+        titleMaxLines = Int.MAX_VALUE,
     )
 }
 

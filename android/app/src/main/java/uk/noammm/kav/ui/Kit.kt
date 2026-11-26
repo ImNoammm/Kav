@@ -435,6 +435,8 @@ fun ListRow(
     subtitleMaxLines: Int = 1,
     subtitleColor: Color? = null,
     info: String? = null,
+    // Text from outside Kav (a place's name) wraps whole rather than being cut (DESIGN.md 2.6).
+    titleMaxLines: Int = 1,
 ) {
     if (info != null) {
         var open by rememberSaveable(title) { mutableStateOf(false) }
@@ -442,7 +444,7 @@ fun ListRow(
             ListRow(
                 title, modifier, subtitle, value, leading,
                 trailing = { InfoButton(open, title, Modifier.overlapsToMark(18.dp)) { open = !open }; trailing?.invoke() },
-                onClick, chevron, titleColor, subtitleMaxLines, subtitleColor,
+                onClick, chevron, titleColor, subtitleMaxLines, subtitleColor, titleMaxLines = titleMaxLines,
             )
             InfoNote(open, info, Modifier.padding(start = K.gap4, end = K.gap4, bottom = K.gap3))
         }
@@ -459,7 +461,7 @@ fun ListRow(
     ) {
         leading?.invoke()
         Column(Modifier.weight(1f)) {
-            Text(title, style = K.type.body, color = titleColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = K.type.body, color = titleColor, maxLines = titleMaxLines, overflow = TextOverflow.Ellipsis)
             subtitle?.let { Text(it, style = K.type.subhead, color = subtitleColor ?: Color.Unspecified, maxLines = subtitleMaxLines, overflow = TextOverflow.Ellipsis) }
         }
         // A value that comes later (a distance once you're found) fades in, and a new one rolls over the old.
