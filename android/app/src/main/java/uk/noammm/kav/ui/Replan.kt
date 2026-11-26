@@ -303,10 +303,11 @@ internal fun planFailure(
     return null
 }
 
+// A ride's name, "Bus 7", kept whole: a line break never falls inside it.
 private fun rideName(ride: Transit.Leg, r: Transit.Resolved): String {
     val number = ride.shortName.ifBlank { r.line(ride.lineId)?.number.orEmpty() }
     val mode = modeName(legMode(ride, r))
-    return if (number.isBlank()) mode else "$mode $number"
+    return (if (number.isBlank()) mode else "$mode $number").replace(' ', '\u00A0')
 }
 
 internal fun failureTitle(f: Failure, r: Transit.Resolved): String {
@@ -334,7 +335,7 @@ internal fun failureText(f: Failure, r: Transit.Resolved, now: Long): String? {
         else T("You get there at ${time(f.arrive)}, after $line leaves at ${time(f.leaves)}",
             "הגעה ב-${time(f.arrive)}, אחרי היציאה של $line ב-${time(f.leaves)}")
     }
-    return listOfNotNull(change, next).joinToString(". ").ifEmpty { null }
+    return listOfNotNull(change, next).joinToString("") { "$it. " }.trimEnd().ifEmpty { null }
 }
 
 // The trip alert for a plan that stopped working, once per failure; the app's card has the new route.
