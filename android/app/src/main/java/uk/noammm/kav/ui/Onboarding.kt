@@ -56,7 +56,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
         }
     }
     val next: @Composable () -> Unit = { OnboardingButton(T("Next", "הבא")) { leave(); page += 1 } }
-    // Continue asks for the location, once, and goes on whatever the answer is.
+    // Let's get started asks for the location, once, and goes on whatever the answer is.
     val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
@@ -64,7 +64,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
         page += 1
     }
     val welcomed: @Composable () -> Unit = {
-        OnboardingButton(T("Continue", "המשך")) {
+        OnboardingButton(T("Let's get started", "בואו נתחיל")) {
             if (uk.noammm.kav.hasPreciseLocation(ctx) || uk.noammm.kav.locationAskedThisRun) page += 1
             else { uk.noammm.kav.locationAskedThisRun = true; askLocation.launch(uk.noammm.kav.LOCATION_PERMISSIONS) }
         }
@@ -140,7 +140,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
 // The parts of setup, in their order.
 private enum class SetupPart { WELCOME, LOOK, PAYING }
 
-// Kav's icon, what it does and what it does with the location, and Continue in the same place as every step's button.
+// Kav's icon, a welcome and what it does with the location, and Let's get started in the same place as every step's button.
 // A fresh install starts in Hebrew; the chip at the top shows the language and opens the choice in a sheet. The clock
 // is the phone's own (Settings can change it).
 @Composable
@@ -164,7 +164,7 @@ private fun WelcomeStep(button: @Composable () -> Unit) {
                     AppIcon(96.dp)
                     Spacer(Modifier.height(K.gap6))
                     Text(
-                        T("Live buses and trains near you", "אוטובוסים ורכבות בזמן אמת, קרוב אליכם"),
+                        T("Welcome to Kav", "ברוכים הבאים ל-Kav"),
                         style = K.type.largeTitle, textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(K.gap3))
