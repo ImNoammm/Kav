@@ -345,7 +345,8 @@ internal fun dayLabel(today: Calendar, offset: Int): String {
 
 // A kept time as the first list shows it, in the rider's clock: "Arrive by 08:00", "Depart at 7:30 PM".
 internal fun savedLabel(t: SavedTime): String {
-    val time = T.ltr(hhmm(t.hour * 3600 + t.minute * 60))
+    // A 12-hour time is already one piece (hhmm).
+    val time = hhmm(t.hour * 3600 + t.minute * 60).let { if (Shown.twelveHour) it else T.ltr(it) }
     return if (t.type == Transit.TIME_ARRIVAL) T("Arrive by $time", "הגעה עד $time") else T("Depart at $time", "יציאה בשעה $time")
 }
 
