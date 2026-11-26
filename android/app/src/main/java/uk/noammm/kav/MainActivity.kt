@@ -2251,10 +2251,11 @@ object Prefs {
             ctx.getSharedPreferences("notice", Context.MODE_PRIVATE).edit().remove("supportWaits").apply()
         }
         // System is the look until one is picked (lookOf()); a rider from before who never picked one had OLED and keeps it.
-        if (version < 9 && s.getBoolean("onboarded", false) && !s.contains("look")) e.putString("look", Look.OLED.name.lowercase())
+        // These two also run on a phone that had a test build already at 9.
+        if (version < 10 && s.getBoolean("onboarded", false) && !s.contains("look")) e.putString("look", Look.OLED.name.lowercase())
         // Service alerts are always on, and a small window always allowed: their switches, under any name an older Kav
         // kept them by, go.
-        if (version < 9) {
+        if (version < 10) {
             s.all.keys.filter { it.endsWith("Alerts") && it != "lineAlerts" && it != "spokenAlerts" }.forEach(e::remove)
             e.remove("pipNavigation")
         }
