@@ -513,6 +513,14 @@ private fun operatorLabel(name: String): String = when (name) {
     else -> name
 }
 
+// A line row's ends as pieces that wrap only between them: the start, then the arrow with the end, so a name that doesn't
+// fit beside the other moves to the next line whole instead of breaking in the middle. Each name is isolated, so its own
+// language orders its words; the pieces follow the layout, start first, whatever language the names are in.
+internal fun lineSpanPieces(a: String, b: String, both: Boolean): List<String> =
+    if (a == b) listOf("\u2068$a\u2069")
+    else listOf("\u2068$a\u2069", (if (both) "↔" else T("→", "←")) + "\u00A0\u2068$b\u2069")
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LineSpan(net: Net, row: LineRow, twins: Map<String, Boolean>, modifier: Modifier = Modifier) {
     if (row.a < 0) {
@@ -527,16 +535,13 @@ private fun LineSpan(net: Net, row: LineRow, twins: Map<String, Boolean>, modifi
         null -> shownEnd(net, s)
     }
     val (a, b) = if (shownEnd(net, row.a) == shownEnd(net, row.b)) shownEnd(net, row.a).let { it to it } else end(row.a) to end(row.b)
-    val text = when {
-        a == b -> "\u2068$a\u2069"
-        row.both -> "\u2068$a\u2069 ↔ \u2068$b\u2069"
-        else -> T("\u2068$a\u2069 → \u2068$b\u2069", "\u2068$a\u2069 ← \u2068$b\u2069")
-    }
     // A row told apart by a longer end has a line more, so the longer end isn't cut off.
     val longer = a != shownEnd(net, row.a) || b != shownEnd(net, row.b)
-    Text(
-        text, style = K.type.bodyStrong, maxLines = if (longer) 3 else 2, overflow = TextOverflow.Ellipsis, modifier = modifier,
-    )
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
+        for (piece in lineSpanPieces(a, b, row.both)) {
+            Text(piece, style = K.type.bodyStrong, maxLines = if (longer) 3 else 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 // A line as the stop boards show it: its plate, with the mode's mark and the number, at least as wide as a three-digit
