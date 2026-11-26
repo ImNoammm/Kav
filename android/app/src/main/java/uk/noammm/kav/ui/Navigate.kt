@@ -95,6 +95,8 @@ internal sealed class Step {
         // The first ride, when the trip starts at its stop with no walk to it, with its wait and leg: the card then names
         // that stop, its number and platform, as a walk's card does.
         val board: Transit.Leg? = null, val boardWait: Transit.Leg? = null, val boardLeg: Int = -1,
+        // #117: the walk to the first ride, when the route begins with one, for the time to leave.
+        val leave: LeavePlan? = null,
     ) : Step()
     class Walk(
         val leg: Transit.Leg, val toStop: Int, val toRide: Transit.Leg?,
@@ -129,7 +131,7 @@ internal fun buildSteps(trip: Transit.Itinerary, fromLabel: String, toLabel: Str
     val all = trip.legs
     val whole = all.flatMap { it.shape }
     val out = ArrayList<Step>()
-    out.add(Step.Start(fromLabel, trip.dep, all.firstOrNull { it.shape.isNotEmpty() }?.shape ?: whole))
+    out.add(Step.Start(fromLabel, trip.dep, all.firstOrNull { it.shape.isNotEmpty() }?.shape ?: whole, leave = leavePlan(trip)))
 
     all.forEachIndexed { i, l ->
         when (l.kind) {
@@ -666,7 +668,17 @@ internal fun StepCard(
                 )
                 Spacer(Modifier.height(K.gap2))
             } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(T("Leave at ${hm.format(Date(step.time * 1000))}", "יציאה בשעה ${hm.format(Date(step.time * 1000))}"), fontSize = 12.sp, color = K.dim)
+            val leave = step.leave
+            if (leave != null && leaveNowDue(leave, r, chosen, now)) {
+                // #117: the time has come, and it stands out.
+                Text(
+                    T("Leave now", "צאו עכשיו"), style = K.type.headline, color = K.onAccent,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.accent).padding(horizontal = K.gap3, vertical = K.gap2),
+                )
+            } else {
+                val at = if (leave != null) leaveAt(leave, r, chosen) else step.time
+                Text(T("Leave at ${hm.format(Date(at * 1000))}", "יציאה בשעה ${hm.format(Date(at * 1000))}"), fontSize = 12.sp, color = K.dim)
+            }
             // A trip starting at its station: the train is paid at the gates, before its waiting card.
             if (pay && board != null && step.boardLeg >= 0 && RavPass.section(board, r) == RavPass.Section.TRAIN) {
                 RidePay(boardingChoice(board, step.boardWait, chosen[step.boardLeg] ?: 0).first, r)
