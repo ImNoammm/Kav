@@ -208,8 +208,9 @@ internal fun HomeScreen(
 // The name a trip planned from the rider's own position is saved with (DirectionsOnline), in either language.
 internal val SAVED_STARTS = setOf("Saved start", "נקודת ההתחלה השמורה")
 
-// A start's name as shown: the saved one is a point with no name of its own, as one pinned on the map is.
-internal fun shownStart(name: String): String = if (name in SAVED_STARTS) T("Pinned location", "מיקום מסומן") else name
+// Where a recent trip is planned from again: its start, or where the rider is now for one planned from where they were,
+// as its row says.
+internal fun recentStart(trip: RecentTrip): Transit.Place? = trip.from?.takeUnless { it.name in SAVED_STARTS }
 
 // A recent trip's row: its separator starts under the text, past the clock.
 private val RECENT_INSET = K.gap4 + 24.dp + K.gap3

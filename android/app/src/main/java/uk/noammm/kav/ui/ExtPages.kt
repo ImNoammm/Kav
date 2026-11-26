@@ -167,8 +167,7 @@ class ExtTripLinks(val onTrip: (RecentTrip) -> Unit, val onResume: () -> Unit)
 private fun linksFor(model: KavModel) = ExtTripLinks(
     onTrip = { t ->
         ExtPageNav.close(model)
-        model.pendingFrom = t.from
-        model.pendingTo = t.to
+        model.pendingRecent = t
         model.tab = Tab.Directions
     },
     // The trip's resume card is on Home.

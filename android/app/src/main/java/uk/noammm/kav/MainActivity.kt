@@ -442,6 +442,8 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
 
     var pendingFrom by mutableStateOf<Transit.Place?>(null)
     var pendingTo by mutableStateOf<Transit.Place?>(null)
+    // A recent trip tapped outside Home (an extension's trips block), planned again as Home's own are.
+    var pendingRecent by mutableStateOf<RecentTrip?>(null)
     var pendingLink by mutableStateOf<TripLink.Plan?>(null)
     fun openLinkOwn(plan: TripLink.Plan) {
         pendingLink = plan

@@ -97,7 +97,7 @@ internal fun startedNow(trip: Transit.Itinerary, now: Long): Transit.Itinerary {
     )
 }
 
-private fun endpointName(p: Place?) = if (isHere(p)) hereName() else p?.name?.let(::shownStart)
+private fun endpointName(p: Place?) = if (isHere(p)) hereName() else p?.name
 
 // Whether the rider is where the trip starts as they begin it: by a fresh position when there is one, else by the trip
 // being planned from where they are.
@@ -289,6 +289,15 @@ fun DirectionsOnline(model: KavModel) {
         showResults = false
         if (backToBoard) { backToBoard = false; model.tab = uk.noammm.kav.Tab.Stations }
     }
+    fun planRecent(t: RecentTrip) {
+        recent = t
+        hereOrigin = null; stopovers = t.stopovers; linkError = null; fromPlace = recentStart(t); toPlace = t.to
+        departAt = 0L; timeType = Transit.TIME_DEPARTURE
+        linkTrip = null; lastLink = null
+        planAgain++
+        showResults = true
+    }
+    LaunchedEffect(model.pendingRecent) { model.pendingRecent?.let { model.pendingRecent = null; planRecent(it) } }
     LaunchedEffect(model.pendingFrom, model.pendingTo) {
         if (model.pendingFrom != null || model.pendingTo != null) {
             hereOrigin = null; stopovers = emptyList(); showResults = true
@@ -420,7 +429,7 @@ fun DirectionsOnline(model: KavModel) {
             val types = routeTypesFor(filters)
             val taxi = ResultFilter.TAXI in filters
             // A recent trip an extension planned is planned again by that extension only: if it's gone, it says so.
-            val pinned = recent?.takeIf { it.to === toPlace && it.from === fromPlace && it.planner.isNotEmpty() }
+            val pinned = recent?.takeIf { it.to === toPlace && recentStart(it) === fromPlace && it.planner.isNotEmpty() }
                 ?.let { uk.noammm.kav.ext.Extensions.address(it.planner) }
             val kav = if (link == null && tabs.size > 1 && pinned == null) {
                 every.routes(listOf(fromLL, toLL, departAt, timeType, filters, stopovers, planAgain, settings), planner, tabs,
@@ -484,7 +493,7 @@ fun DirectionsOnline(model: KavModel) {
             val again = againTrip
             val match = named?.let { raw.firstOrNull { exactTrip(it, named) } ?: raw.firstOrNull { sameLines(it, named) } }
                 ?: again?.let { raw.filter { sameLines(it, again) }.minByOrNull { it.dep } }
-            val fromName = fromPlace?.name?.let(::shownStart) ?: hereName()
+            val fromName = fromPlace?.name ?: hereName()
             val toName = toPlace?.name ?: T("Destination", "יעד")
             if (match != null) {
                 open = OpenTrip(match, resolved, fromName, toName, stopovers = stopovers)
@@ -686,14 +695,7 @@ fun DirectionsOnline(model: KavModel) {
                 showResults = true
             },
             onSetFavourite = { f -> model.settingFavourite = f },
-            onTrip = { t ->
-                recent = t
-                hereOrigin = null; stopovers = t.stopovers; linkError = null; fromPlace = t.from; toPlace = t.to
-                departAt = 0L; timeType = Transit.TIME_DEPARTURE
-                linkTrip = null; lastLink = null
-                planAgain++
-                showResults = true
-            },
+            onTrip = ::planRecent,
             onResume = {
                 model.activeJourney?.let { journey ->
                     openTrip(OpenTrip(journey.trip, journey.resolved, journey.fromLabel, journey.toLabel, resume = true, stopovers = journey.stopovers))
@@ -1042,7 +1044,7 @@ fun DirectionsOnline(model: KavModel) {
                                     // Not before the rider's required rules have judged it.
                                     if (checking) return@ItineraryCard
                                     openTrip(OpenTrip(
-                                        shown[i], resolved, fromPlace?.name?.let(::shownStart) ?: T("Current location", "המיקום הנוכחי"),
+                                        shown[i], resolved, fromPlace?.name ?: T("Current location", "המיקום הנוכחי"),
                                         toPlace?.name ?: T("Destination", "יעד"), stopovers = stopovers,
                                         asked = if (timeType == Transit.TIME_DEPARTURE) departAt / 1000 else 0L,
                                     ))
