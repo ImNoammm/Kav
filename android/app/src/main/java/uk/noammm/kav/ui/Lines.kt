@@ -213,7 +213,6 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
         )) {
             if (note != null) item(key = "note") { NoteCard(note, Modifier.animateItem().padding(bottom = K.gap3)) }
             item(key = "search") { LineSearch(q, { q = it }, types) { types = it } }
-            item(key = "on-bus") { OnBusButton(model, Modifier.padding(top = K.gap3, bottom = K.gap4)) }
             item(key = "count") {
                 val total = sections.sumOf { it.second.size }
                 // The count rolls as a search or a filter narrows the list.

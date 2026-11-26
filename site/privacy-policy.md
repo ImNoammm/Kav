@@ -15,6 +15,8 @@ lists every place the app talks to, and what each one gets. It applies to the Ka
 When you pick Kav for live buses, planning or timetables, the app asks Kav's server for:
 
 - live buses on the lines, stops or rough area you're looking at;
+- live buses in the rough area around you, at most every 15 seconds while Kav is open and you're moving, if you turn
+  on Recognize the bus in Settings, to see whether you're on one of them;
 - trips between the start and end you plan, and the time;
 - the English of a line alert your phone got in Hebrew;
 - the server's status.

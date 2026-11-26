@@ -1197,6 +1197,9 @@ private fun Shell(model: KavModel) {
         }
     }
 
+    // Whether the rider is on a bus, for Home's card, while Kav is in front (ui/OnBus.kt).
+    uk.noammm.kav.ui.RideWatch()
+
     // Kav's protected surfaces keep Kav's own look under a theme (ExtLook): Settings, the report form, navigation.
     // An extension page opened from Settings sits over it in the extension's own look.
     ExtLook.Protected((model.settingsOpen && ExtPageNav.overlay.isEmpty()) || model.report != null || model.navigating)

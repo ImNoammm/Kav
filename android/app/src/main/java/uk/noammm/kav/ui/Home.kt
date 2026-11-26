@@ -142,8 +142,8 @@ internal fun HomeScreen(
                 if (model.activeJourney == null) item(key = "suggestions") {
                     KavPart("home.suggestions", Unit, { JSONObject() }, ownGap = true) { HomeSuggestions(model, onLatest, listMotion().padding(top = K.gap4)) }
                 }
-                // #116, #100: "I'm already on a bus", and Kav's guess that the rider is on one.
-                item(key = "on-bus") { OnBusCard(model, listMotion().padding(top = K.gap4)) }
+                // The bus the phone travels with, to follow (OnBus.kt).
+                item(key = "on-bus") { OnBusCard(model, listMotion()) }
                 // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
                 if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
                 // Extension tickets and their ride history stay on Home after the payment extension is switched off.
