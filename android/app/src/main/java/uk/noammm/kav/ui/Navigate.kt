@@ -740,7 +740,7 @@ internal fun StepCard(
                     streetView = stop.point?.let { lookAt(it, board, r, stop) },
                 )
                 Spacer(Modifier.height(K.gap2))
-            } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            } else Text(placeLabel(step.label), style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(T("Leave at ${hm.format(Date(step.time * 1000))}", "יציאה בשעה ${hm.format(Date(step.time * 1000))}"), fontSize = 12.sp, color = K.dim)
             // A trip starting at its station: the train is paid at the gates, before its waiting card.
             if (pay && board != null && step.boardLeg >= 0 && RavPass.section(board, r) == RavPass.Section.TRAIN) {

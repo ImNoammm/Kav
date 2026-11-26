@@ -379,7 +379,7 @@ private fun RouteLine(route: ActiveJourney) {
     val r = route.resolved
     val steps = remember(route.trip) { routeSteps(route.trip) }
     val said = remember(steps, T.lang) {
-        T("from ${route.fromLabel}: ", "מ־${route.fromLabel}: ") + steps.joinToString(", ") { stepSaid(it, r) }
+        T("from ${placeLabel(route.fromLabel)}: ", "מ־${placeLabel(route.fromLabel)}: ") + steps.joinToString(", ") { stepSaid(it, r) }
     }
     val shown = steps
     val middle = textMiddle(K.type.subhead)

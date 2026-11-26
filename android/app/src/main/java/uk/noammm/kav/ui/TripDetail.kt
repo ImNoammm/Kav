@@ -419,7 +419,7 @@ private fun Timeline(
         val start = rememberTripEnd(fromLabel, trip.legs.firstOrNull()?.shape?.firstOrNull())
         Rail(Mark.START, null, walk, node = endNode(start)) {
             val (time, label) = leaveEndpoint(trip, System.currentTimeMillis() / 1000)
-            Endpoint(fromLabel, time, label, start)
+            Endpoint(placeLabel(fromLabel), time, label, start)
         }
         var boarded = -1
         trip.legs.forEachIndexed { i, l ->

@@ -18,6 +18,7 @@ import uk.noammm.kav.data.Transit
 import uk.noammm.kav.ui.Fix
 import uk.noammm.kav.ui.K
 import uk.noammm.kav.ui.Mode
+import uk.noammm.kav.ui.placeLabel
 import uk.noammm.kav.ui.Step
 import uk.noammm.kav.ui.T
 import uk.noammm.kav.ui.aboard
@@ -191,11 +192,11 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
         // "Now" while leaving now still makes the first ride, as the card says it (leavesNow()), not a time just gone.
         is Step.Start -> if (leavesNow(journey.trip, now)) Say(
             T("Leave now", "יציאה עכשיו"),
-            T("Start from ${step.label}", "התחלה מ${step.label}"),
+            T("Start from ${placeLabel(step.label)}", "התחלה מ${placeLabel(step.label)}"),
             T("now", "עכשיו"), Glyph(null), accent,
         ) else Say(
             T("Leave at ${time(step.time)}", "יציאה ב-${time(step.time)}"),
-            T("Start from ${step.label}", "התחלה מ${step.label}"),
+            T("Start from ${placeLabel(step.label)}", "התחלה מ${placeLabel(step.label)}"),
             time(step.time), Glyph(null), accent,
         )
         is Step.Walk -> {

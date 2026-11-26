@@ -76,6 +76,10 @@ private fun timeWay(type: Int) = when (type) {
 
 private fun hereName() = T(HERE[0], HERE[1])
 
+// A trip's start as shown: where the rider was, in Kav's language now, whichever language it was named in when the trip
+// was made.
+internal fun placeLabel(label: String): String = if (label in HERE) hereName() else label
+
 private fun herePlace(at: Pair<Double, Double>) = Place(hereName(), "", at.first, at.second)
 
 private fun isHere(p: Place?) = p != null && p.name in HERE
