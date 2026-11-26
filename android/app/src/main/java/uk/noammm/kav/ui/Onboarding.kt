@@ -28,9 +28,7 @@ import uk.noammm.kav.data.Timetable
 fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     val ctx = LocalContext.current
     var page by rememberSaveable { mutableIntStateOf(0) }
-    var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
-    var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
-    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 8 && !BuildConfig.UPDATER) 6 else page - 1 }
+    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 7 && !BuildConfig.UPDATER) 5 else page - 1 }
     // What the last step downloads starts as setup opens, in the background, so it's there by then and the last step
     // doesn't come at all: on Wi-Fi or another unmetered network; on mobile data the timetable only as its own setting
     // allows (Also on mobile data), and the map only once the last step's Download asks for it. The timetable is the
@@ -50,13 +48,13 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     val allThere = mapNow is MapPack.State.Ready && weekNow is Timetable.State.Ready
 
     // Settings' groups in Settings' order: Language and time first (every later step reads in it), then how Kav looks
-    // (Look, Color, Map), then riding (Trips with paying, Providers), then Privacy, then updates and the download.
+    // (Look, Color, Map), then riding (Trips with paying, Providers), then updates and the download.
     val next = { page += 1 }
     // Everything downloaded already: setup ends with the last choice, without the download step.
     val doneOrNext: @Composable () -> Unit = {
         AnimatedContent(allThere, transitionSpec = { switching() }, label = "setupNext") { done ->
             if (done) OnboardingButton(T("Done", "סיום"), onClick = onDone)
-            else OnboardingButton(T("Next", "הבא")) { page = 8 }
+            else OnboardingButton(T("Next", "הבא")) { page = 7 }
         }
     }
     AnimatedContent(
@@ -88,35 +86,24 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices(setup = true) }
             }
             4 -> SetupStep(T("Trips", "נסיעות"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                PlanChoices(model)
+                PlanChoices(model, setup = true)
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it }, setup = true)
-                    // Paying with Rav-Pass, which can be turned on here with its permissions, or later in Settings.
+                    // Paying with Rav-Pass, which can be turned on here with its permissions, or later in Settings, and
+                    // the fare profile at its bottom, as on Settings' page.
                     PayingSetup()
+                    FareProfileGroup()
                 }
             }
-            // The rows of Settings' page, in its order.
-            5 -> SetupStep(T("Providers", "ספקים"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
-            }
-            // Settings' page without private search, which needs Settings' place picker (SeenPlacePicker).
-            6 -> SetupStep(
-                T("Privacy", "פרטיות"),
-                T(
-                    "What Kav shares, and with whom. Settings has all of this again later.",
-                    "מה Kav משתפת, ועם מי. אפשר לשנות את כל זה שוב בהגדרות.",
-                ),
-                // The F-Droid build has no updates step (BuildConfig.UPDATER): setup goes on from here as from that step.
+            // The rows of Settings' page, in its order. The F-Droid build has no updates step (BuildConfig.UPDATER):
+            // setup goes on from here as from that step.
+            5 -> SetupStep(
+                T("Providers", "ספקים"),
                 button = { if (BuildConfig.UPDATER) OnboardingButton(T("Next", "הבא"), onClick = next) else doneOrNext() },
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    PlaceSearchChoice()
-                    StopPhotoChoice()
-                    ProxyChoice()
-                }
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
             }
             // The step's title, with its (i), is AutomaticUpdates' own.
-            7 -> SetupStep(null, button = doneOrNext) {
+            6 -> SetupStep(null, button = doneOrNext) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
                     AutomaticUpdates(setup = true)
                     UpdatePrompts()

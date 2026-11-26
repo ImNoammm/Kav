@@ -52,10 +52,8 @@ object RideAlerts {
     // A line's way as the ministry names it, the key every list matches lines by.
     internal fun routeKey(name: String) = name.trim().replace(Regex("\\s+"), " ")
 
-    // Off until the rider asks for them (Prefs.rideAlerts), then from source: the one picked for Kav's language now
-    // (Prefs.alertSources), so switching the language brings back the source last picked in it. Until one is picked,
-    // Kav's server.
-    var enabled by mutableStateOf(false)
+    // From source: the one picked for Kav's language now (Prefs.alertSources), so switching the language brings back the
+    // source last picked in it. Until one is picked, Kav's server.
     var picked by mutableStateOf(emptyMap<String, Source>())
     var source: Source
         get() = picked[uk.noammm.kav.ui.T.lang.code] ?: Source.KAV
@@ -74,7 +72,6 @@ object RideAlerts {
 
     // A ride's line's alert, as far as it's known now: a server's list, or Google's answer for the ride.
     fun of(line: Transit.LineInfo?, ride: Transit.Leg? = null, r: Transit.Resolved? = null): Alert? {
-        if (!enabled) return null
         return when (source) {
             Source.GOOGLE -> if (ride != null && r != null) GoogleAlerts.of(ride, r) else null
             else -> ServerAlerts.of(line)
@@ -83,7 +80,6 @@ object RideAlerts {
 
     // Brought up to date while a screen with rides is open: the list, or Google's answers for the rides shown.
     suspend fun refresh(rides: List<Pair<Transit.Leg, Transit.Resolved>> = emptyList()) {
-        if (!enabled) return
         when (source) {
             Source.GOOGLE -> GoogleAlerts.refresh(rides)
             else -> ServerAlerts.refresh()

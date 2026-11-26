@@ -123,8 +123,6 @@ object Loaded {
 object Pip {
     var active by mutableStateOf(false)
     var wanted by mutableStateOf(false)
-    // The rider's setting: navigation goes on in a small window when Kav is left, or doesn't.
-    var allowed by mutableStateOf(true)
 }
 
 object PendingLink {
@@ -226,7 +224,6 @@ class MainActivity : ComponentActivity() {
         Shown.accessibility = Prefs.showAccessibility(this)
         Shown.fareProfile = Prefs.fareProfile(this)
         uk.noammm.kav.ui.FareFromRavPass.load(this)
-        uk.noammm.kav.data.RideAlerts.enabled = Prefs.rideAlerts(this)
         uk.noammm.kav.data.RideAlerts.picked = Prefs.alertSources(this)
         uk.noammm.kav.data.RideAlerts.language = Prefs.alertLanguage(this)
         uk.noammm.kav.data.GoogleSession.init(this)
@@ -238,7 +235,6 @@ class MainActivity : ComponentActivity() {
         val app = applicationContext
         uk.noammm.kav.ext.Actions.changed = { android.os.Handler(android.os.Looper.getMainLooper()).post { uk.noammm.kav.ui.PayMode.refresh(app) } }
         uk.noammm.kav.ui.PayMode.refresh(this)
-        Pip.allowed = Prefs.pipNavigation(this)
         Shown.twelveHour = Prefs.twelveHour(this)
         GoogleMaps.shareLocation = !Prefs.privateSearch(this)
         uk.noammm.kav.data.Search.provider = uk.noammm.kav.data.Search.of(Prefs.placeSearch(this))
@@ -603,7 +599,6 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         Shown.accessibility = Prefs.showAccessibility(ctx)
         Shown.fareProfile = Prefs.fareProfile(ctx)
         uk.noammm.kav.ui.FareFromRavPass.load(ctx)
-        uk.noammm.kav.data.RideAlerts.enabled = Prefs.rideAlerts(ctx)
         uk.noammm.kav.data.RideAlerts.picked = Prefs.alertSources(ctx)
         uk.noammm.kav.data.RideAlerts.language = Prefs.alertLanguage(ctx)
         Prefs.crowdSource(ctx).let { c -> uk.noammm.kav.data.GoogleCrowd.enabled = c == Prefs.CROWD_GOOGLE; uk.noammm.kav.data.KavCrowd.enabled = c == Prefs.CROWD_KAV }
@@ -611,7 +606,6 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         Shown.updatePrompts = Prefs.updatePrompts(ctx)
         uk.noammm.kav.ui.PayMode.refresh(ctx)
         Checks.ensure(ctx)
-        Pip.allowed = Prefs.pipNavigation(ctx)
         Shown.twelveHour = Prefs.twelveHour(ctx)
         GoogleMaps.shareLocation = !Prefs.privateSearch(ctx)
         uk.noammm.kav.data.Search.provider = uk.noammm.kav.data.Search.of(Prefs.placeSearch(ctx))
@@ -1178,8 +1172,8 @@ private fun Shell(model: KavModel) {
             TripBridge.fixNow = null
         }
     }
-    LaunchedEffect(model.navigating, Pip.allowed) {
-        Pip.wanted = model.navigating && Pip.allowed
+    LaunchedEffect(model.navigating) {
+        Pip.wanted = model.navigating
         (ctx as? MainActivity)?.updatePipParams()
     }
     // Starting the compass or the location is a few calls into the system that hold the main thread, frames missed,
@@ -1992,12 +1986,6 @@ object Prefs {
     fun setPayTappedAt(ctx: Context, at: Long) = store(ctx).edit().putLong("payTappedAt", at).apply()
     // A live ticket's quiet notification (TicketNotice): on until the rider turns it off.
 
-    // Line alerts for every planner's trips (RideAlerts): off until the rider asks for them.
-    fun rideAlerts(ctx: Context): Boolean = store(ctx).getBoolean("rideAlerts", false)
-    fun setRideAlerts(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("rideAlerts", on).apply()
-    // That switch among a store's or a backup's names: its own, or the one an older Kav kept it under.
-    internal fun alertsSwitch(names: Iterable<String>): String? = names.toList().run { firstOrNull { it == "rideAlerts" }
-        ?: firstOrNull { it.endsWith("Alerts") && it != "lineAlerts" && it != "spokenAlerts" } }
     // How busy a ride usually is (CrowdChoice): from Kav's server (KavCrowd), from Google (GoogleCrowd), or not shown. A new
     // install starts on Kav's; one from before 5.0 keeps what Google's switch was, on unless turned off (upgrade()).
     const val CROWD_KAV = "kav"
@@ -2023,9 +2011,6 @@ object Prefs {
     fun stopPhotos(ctx: Context): Boolean = store(ctx).getBoolean("stopPhotos", true)
     fun setStopPhotos(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("stopPhotos", on).apply()
 
-    // Navigation in a small window when Kav is left.
-    fun pipNavigation(ctx: Context): Boolean = store(ctx).getBoolean("pipNavigation", true)
-    fun setPipNavigation(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("pipNavigation", on).apply()
     // Both off in the F-Droid build (BuildConfig.UPDATER), which F-Droid updates.
     fun updatePrompts(ctx: Context): Boolean = BuildConfig.UPDATER && store(ctx).getBoolean("updatePrompts", true)
     fun setUpdatePrompts(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("updatePrompts", on).apply()
@@ -2235,15 +2220,11 @@ object Prefs {
         if (version < 3 && s.getBoolean("onboarded", false) && !s.contains("stopNames")) e.putString("stopNames", if (lang(ctx) == Lang.EN) "en" else "he")
         // 4.0: alerts take their language's source in place of the one setting all languages shared.
         if (version < 4) e.remove("alertSource")
-        // 4.3: a choice of a provider this Kav no longer has is Kav's own from now on, the alerts' switch has its own
-        // name, and a shared trip's link is always Kav's.
+        // 4.3: a choice of a provider this Kav no longer has is Kav's own from now on, and a shared trip's link is always
+        // Kav's.
         if (version < 5) {
             for (key in listOf("planSource", "timetableSource") + Lang.entries.map { "alertSource.${it.code}" })
                 s.getString(key, null)?.takeIf { Source.of(it) == null }?.let { e.putString(key, Source.KAV.key) }
-            alertsSwitch(s.all.keys)?.takeIf { it != "rideAlerts" }?.let { old ->
-                (s.all[old] as? Boolean)?.let { e.putBoolean("rideAlerts", it) }
-                e.remove(old)
-            }
             e.remove("shareLinks")
         }
         // 5.0: choices of the providers this Kav no longer has are Kav's own (Sources.migrated). The sign-in kept for paying
@@ -2267,6 +2248,12 @@ object Prefs {
         }
         // System is the look until one is picked (lookOf()); a rider from before who never picked one had OLED and keeps it.
         if (version < 9 && s.getBoolean("onboarded", false) && !s.contains("look")) e.putString("look", Look.OLED.name.lowercase())
+        // Service alerts are always on, and a small window always allowed: their switches, under any name an older Kav
+        // kept them by, go.
+        if (version < 9) {
+            s.all.keys.filter { it.endsWith("Alerts") && it != "lineAlerts" && it != "spokenAlerts" }.forEach(e::remove)
+            e.remove("pipNavigation")
+        }
         e.putInt("prefsVersion", 9).apply()
     }
 
@@ -2336,14 +2323,12 @@ object Prefs {
             .put("fareProfile", fareProfile(ctx).name)
             .put("planSettings", planSettings(ctx).letters)
             .put(uk.noammm.kav.data.SavedTime.KEY, uk.noammm.kav.data.SavedTime.text(savedTimes(ctx)))
-            .put("rideAlerts", rideAlerts(ctx))
             .apply { alertSources(ctx).forEach { (lang, s) -> put("alertSource.$lang", s.key) } }
             .put("alertLanguage", alertLanguage(ctx))
             .put("crowdSource", crowdSource(ctx))
             // For an older Kav restoring this backup.
             .put("googleCrowd", crowdSource(ctx) == CROWD_GOOGLE)
             .put("stopPhotos", stopPhotos(ctx))
-            .put("pipNavigation", pipNavigation(ctx))
             .put("ravPass", ravPass(ctx))
             .put("payApp", payApp(ctx))
             .put("updatePrompts", updatePrompts(ctx))
@@ -2405,10 +2390,9 @@ object Prefs {
         if (o.has("plannerTabsHidden")) e.putString("plannerTabsHidden", o.optString("plannerTabsHidden"))
         Source.of(o.optString("shareServer"))?.takeIf { it == Source.KAV || it == Source.OWN }?.let { e.putString("shareServer", it.key) }
         o.optJSONObject("linkStyle")?.let { e.putString("linkStyle", uk.noammm.kav.data.ShareStyle.read(it).json().toString()) }
-        for (key in listOf("pipNavigation", "ravPass", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos")) {
+        for (key in listOf("ravPass", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos")) {
             if (o.has(key)) e.putBoolean(key, o.optBoolean(key))
         }
-        alertsSwitch(o.keys().asSequence().asIterable())?.let { e.putBoolean("rideAlerts", o.optBoolean(it)) }
         if (o.has("spokenAlerts")) e.putBoolean("spokenAlerts", o.optBoolean("spokenAlerts"))
         if (o.has("spokenTurns")) e.putBoolean("spokenTurns", o.optBoolean("spokenTurns"))
         if (o.has("spokenInCalls")) e.putBoolean("spokenInCalls", o.optBoolean("spokenInCalls"))

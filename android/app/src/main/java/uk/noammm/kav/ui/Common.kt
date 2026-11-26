@@ -82,7 +82,6 @@ internal fun lineAlert(r: Transit.Resolved, ride: Transit.Leg?, wait: Transit.Le
 // about; a list of trips passes none.
 @Composable
 internal fun FreshAlerts(rides: List<Pair<Transit.Leg, Transit.Resolved>> = emptyList()) {
-    if (!RideAlerts.enabled) return
     val shown by androidx.compose.runtime.rememberUpdatedState(rides)
     LaunchedEffect(T.rtl, RideAlerts.source, RideAlerts.language) {
         // Once the screen has come in, so the first ask doesn't share its opening's frames.

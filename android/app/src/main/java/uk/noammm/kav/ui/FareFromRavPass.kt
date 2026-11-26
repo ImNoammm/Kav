@@ -48,6 +48,10 @@ internal object FareFromRavPass {
         Prefs.setFareFromRavPass(ctx, kept); found = kept
     }
 
+    // Offered only while paying with Rav-Pass is on by its own switch: its ticket reader is what reads the profile, and an
+    // extension paying in its place has none.
+    fun offered(ravPass: Boolean, reader: Boolean): Boolean = ravPass && reader
+
     // Picked by hand: what Rav-Pass said no longer stands for it.
     fun clear(ctx: Context) { Prefs.setFareFromRavPass(ctx, null); found = null }
 
@@ -77,18 +81,16 @@ internal object FareFromRavPass {
     }
 }
 
-// In the fare profile's sheet: the way to get it from Rav-Pass, or, with the ticket reader off, the one line saying it's
-// needed.
+// In the fare profile's sheet: the way to get it from Rav-Pass, while paying with it is on (FareFromRavPass.offered).
 @Composable
 internal fun FareFromRavPassRow() {
     val ctx = LocalContext.current
-    val reader = TicketStore.on(ctx)
+    if (!FareFromRavPass.offered(Prefs.ravPass(ctx), TicketStore.on(ctx))) return
     val app = PayApp.current
     ListRow(
         T("Get it from ${app.label()}", "קבלה ${app.heFrom}"),
-        subtitle = if (!reader) T("Turn on Pay with ${app.label()} first", "הפעילו קודם את התשלום עם ${app.he}")
-            else FareFromRavPass.why() ?: T("Kav reads it from ${app.en}'s Profile tab", "Kav קוראת אותו מהאזור האישי ${app.heIn}"),
+        subtitle = FareFromRavPass.why() ?: T("Kav reads it from ${app.en}'s Profile tab", "Kav קוראת אותו מהאזור האישי ${app.heIn}"),
         subtitleMaxLines = Int.MAX_VALUE,
-        onClick = if (reader) ({ FareFromRavPass.ask(ctx) }) else null,
+        onClick = { FareFromRavPass.ask(ctx) },
     )
 }
