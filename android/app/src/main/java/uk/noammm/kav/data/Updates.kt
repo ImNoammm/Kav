@@ -25,6 +25,7 @@ object Updates {
         val apkUrl: String?,
         val apkBytes: Long,
         val pageUrl: String,
+        val apkSha256: String? = null,
     )
 
     fun installedVersion(ctx: Context): String =
@@ -53,6 +54,7 @@ object Updates {
             apkUrl = apk?.optString("browser_download_url")?.takeIf { it.isNotBlank() },
             apkBytes = apk?.optLong("size") ?: -1L,
             pageUrl = o.optString("html_url").ifBlank { PAGE },
+            apkSha256 = apk?.optString("digest")?.takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:")?.lowercase(),
         )
     }
 
@@ -75,11 +77,11 @@ object Updates {
     internal fun due(checkedAt: Long, now: Long) = now - checkedAt >= DAY_MS || checkedAt > now
 
     internal fun toJson(r: Release): JSONObject = JSONObject().put("version", r.version).put("name", r.name).put("notes", r.notes)
-        .put("apkUrl", r.apkUrl).put("apkBytes", r.apkBytes).put("pageUrl", r.pageUrl)
+        .put("apkUrl", r.apkUrl).put("apkBytes", r.apkBytes).put("pageUrl", r.pageUrl).put("apkSha256", r.apkSha256)
 
     internal fun fromJson(o: JSONObject) = Release(
         o.getString("version"), o.optString("name"), o.optString("notes"), o.optString("apkUrl").ifBlank { null },
-        o.optLong("apkBytes", -1L), o.optString("pageUrl").ifBlank { PAGE },
+        o.optLong("apkBytes", -1L), o.optString("pageUrl").ifBlank { PAGE }, o.optString("apkSha256").ifBlank { null },
     )
 
     fun isNewer(remote: String, installed: String): Boolean {

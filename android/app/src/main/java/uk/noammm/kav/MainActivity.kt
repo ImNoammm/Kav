@@ -96,6 +96,7 @@ import uk.noammm.kav.data.StopNames
 import uk.noammm.kav.data.nearestStops
 import uk.noammm.kav.data.stopOfKey
 import uk.noammm.kav.data.Updates
+import uk.noammm.kav.data.AutoUpdate
 import uk.noammm.kav.ui.*
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -751,10 +752,13 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         updateError = null
         updateProgress = 0f
         try {
+            // Checked as the background check's download is (AutoUpdate.accept); one turned away isn't fetched again.
+            val notKav = T("This update isn't signed as the Kav on this phone is", "העדכון הזה לא חתום כמו ה-Kav שבטלפון")
             val file = withContext(Dispatchers.IO) {
+                if (AutoUpdate.refused(ctx, release)) throw RuntimeException(notKav)
                 Updates.download(ctx, release) { done, total ->
                     updateProgress = if (total > 0) done.toFloat() / total else 0f
-                }
+                }.also { if (!AutoUpdate.accept(ctx, release, it)) throw RuntimeException(notKav) }
             }
             updateProgress = 1f
             Updates.install(ctx, file)

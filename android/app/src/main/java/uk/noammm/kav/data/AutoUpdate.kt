@@ -13,9 +13,9 @@ import java.io.File
 import java.security.MessageDigest
 
 // Kav updating itself: the background check (Checks) downloads a newer release on Wi-Fi, or on mobile data when the rider
-// allows it, kept only when it's signed with exactly the installed Kav's certificates. Only the rider's Install now, asked
-// as Kav next opens (ReadyPrompt), installs it, so any question from Android or Play Protect follows their own tap. Its
-// state is kept in updated.json.
+// allows it, kept only when it's signed as the installed Kav is, or by a key it proves it rotated to (sameSigners). Only
+// the rider's Install now, asked as Kav next opens (ReadyPrompt), installs it, so any question from Android or Play
+// Protect follows their own tap. Its state is kept in updated.json; a download turned away, in update-refused.json.
 internal object AutoUpdate {
     class Notice(val from: String, val to: String, val name: String, val notes: String, val at: Long) {
         fun release() = Updates.Release(to, name, notes, null, -1, Updates.PAGE)
@@ -26,6 +26,8 @@ internal object AutoUpdate {
     private fun file(ctx: Context) = File(ctx.filesDir, "updated.json")
 
     private fun apk(ctx: Context, version: String) = File(File(ctx.cacheDir, "updates"), "kav-$version.apk")
+
+    private fun refusedFile(ctx: Context) = File(ctx.filesDir, "update-refused.json")
 
     private fun state(ctx: Context): Notice? = runCatching {
         val f = file(ctx)
@@ -38,15 +40,14 @@ internal object AutoUpdate {
         val installed = Updates.installedVersion(ctx)
         if (!Updates.isNewer(release.version, installed) || release.apkUrl == null) {
             File(ctx.cacheDir, "updates").listFiles()?.forEach { it.delete() }
+            refusedFile(ctx).delete()
             return
         }
         if (state(ctx)?.to == release.version && apk(ctx, release.version).exists()) return
+        if (refused(ctx, release)) return
         if (metered(ctx) && !Prefs.updatesOnMobile(ctx)) return
         val apk = Updates.download(ctx, release) { _, _ -> }
-        if (!sameApp(ctx, apk)) {
-            apk.delete()
-            return
-        }
+        if (!accept(ctx, release, apk)) return
         file(ctx).writeText(
             JSONObject().put("from", installed).put("to", release.version).put("name", release.name).put("notes", release.notes).toString(),
         )
@@ -109,15 +110,57 @@ internal object AutoUpdate {
     // The installed version is the one updated to, or later.
     internal fun shows(to: String, installed: String) = to.isNotEmpty() && !Updates.isNewer(to, installed)
 
-    // The download is Kav, no older than this one and signed with exactly its certificates.
+    // A release's download checked (sameApp), the background check's and Update's alike. One turned away is deleted and
+    // remembered, so it isn't fetched again (refused).
+    fun accept(ctx: Context, release: Updates.Release, apk: File): Boolean {
+        if (sameApp(ctx, apk)) {
+            refusedFile(ctx).delete()
+            return true
+        }
+        runCatching {
+            refusedFile(ctx).writeText(JSONObject().put("version", release.version).put("bytes", apk.length()).put("sha256", sha256(apk)).toString())
+        }
+        apk.delete()
+        return false
+    }
+
+    // The release is the download last turned away: the same version, size and, when GitHub gives it, SHA-256. A file
+    // put up again under that version, or any later release, is downloaded as usual.
+    fun refused(ctx: Context, release: Updates.Release): Boolean = runCatching {
+        val o = JSONObject(refusedFile(ctx).readText())
+        refusedMatches(o.optString("version"), o.optLong("bytes", -1L), o.optString("sha256"), release)
+    }.getOrDefault(false)
+
+    internal fun refusedMatches(version: String, bytes: Long, sha256: String, release: Updates.Release) =
+        version == release.version && bytes > 0 && bytes == release.apkBytes && (release.apkSha256 == null || release.apkSha256 == sha256)
+
+    private fun sha256(f: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return hex(md.digest())
+    }
+
+    // The download is Kav, no older than this one and signed as it is (sameSigners).
     private fun sameApp(ctx: Context, apk: File): Boolean {
         val pm = ctx.packageManager
         val got = info(pm, ctx.packageName, apk.path) ?: return false
         val have = info(pm, ctx.packageName, null) ?: return false
-        return got.packageName == ctx.packageName && code(got) >= code(have) && sameSigners(signers(have), signers(got))
+        return got.packageName == ctx.packageName && code(got) >= code(have) && sameSigners(signers(have), signers(got), past(got))
     }
 
-    internal fun sameSigners(have: Set<String>, got: Set<String>) = have.isNotEmpty() && have == got
+    // Exactly the installed Kav's certificates, or a download with one signer whose proof of rotation (its v3 lineage,
+    // checked by Android as it read the APK) holds the installed Kav's one certificate: the way Android lets a release
+    // signed by a newer key update it. Android 8 reads no lineage, so only the old signature is compared there, as those
+    // phones install by it alone.
+    internal fun sameSigners(have: Set<String>, got: Set<String>, gotPast: Set<String> = emptySet()) =
+        have.isNotEmpty() && (have == got || (have.size == 1 && got.size == 1 && have.single() in gotPast))
 
     // The installed Kav, or the APK at path, with its signatures. Some Android versions leave an APK's signingInfo out:
     // the older flag is asked then.
@@ -136,10 +179,18 @@ internal object AutoUpdate {
     private fun signers(p: PackageInfo): Set<String> {
         val certs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && p.signingInfo != null) p.signingInfo?.apkContentsSigners
             else p.signatures
-        return certs.orEmpty().map { s ->
-            MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
-        }.toSet()
+        return certs.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
     }
+
+    // The certificates an APK proves it was signed by before its own (with its own), none when it has several signers.
+    private fun past(p: PackageInfo): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return emptySet()
+        val s = p.signingInfo ?: return emptySet()
+        if (s.hasMultipleSigners()) return emptySet()
+        return s.signingCertificateHistory.orEmpty().map { hex(MessageDigest.getInstance("SHA-256").digest(it.toByteArray())) }.toSet()
+    }
+
+    private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
 
     @Suppress("DEPRECATION")
     private fun code(p: PackageInfo): Long = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) p.longVersionCode else p.versionCode.toLong()
