@@ -180,8 +180,8 @@ class MainActivity : ComponentActivity() {
         // A new activity after one whose spare map was let go in the background (onTrimMemory) never gets onRestart.
         uk.noammm.kav.ui.SpareMap.back()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // The launch screen's arrow flies up and away as Home fades in under it; Kav is already drawn by now.
-            // The arrow is its own surface, so the screen's fade doesn't reach it: it fades by itself.
+            // The launch screen's arrow swoops off with its trail as Home shows through (SplashFlight); Kav is already
+            // drawn by now, and usable all along.
             if (savedInstanceState == null) {
                 Openings.launched = false
                 // In case the launch screen never hands over, 1.5 s from Kav's first frame, not from here: a slow
@@ -189,21 +189,33 @@ class MainActivity : ComponentActivity() {
                 window.decorView.doOnPreDraw { it.postDelayed({ Openings.launched = true }, 1500) }
             }
             splashScreen.setOnExitAnimationListener { splash ->
-                // The arrow travels first and fades last, so the fly-up is seen before it's gone.
-                val out = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-                splash.iconView?.let { icon ->
-                    android.animation.AnimatorSet().apply {
-                        playTogether(
-                            android.animation.ObjectAnimator.ofFloat(icon, android.view.View.TRANSLATION_Y, -64 * resources.displayMetrics.density).setDuration(380),
-                            android.animation.ObjectAnimator.ofFloat(icon, android.view.View.SCALE_X, 0.85f).setDuration(380),
-                            android.animation.ObjectAnimator.ofFloat(icon, android.view.View.SCALE_Y, 0.85f).setDuration(380),
-                            android.animation.ObjectAnimator.ofFloat(icon, android.view.View.ALPHA, 0f).setDuration(230).apply { startDelay = 150 },
-                        )
-                        interpolator = out
-                    }.start()
+                val icon = splash.iconView
+                // With animations off (or no icon on this launch screen) there is no flight: Kav at once.
+                if (icon == null || !android.animation.ValueAnimator.areAnimatorsEnabled()) {
+                    splash.remove()
+                    Openings.launched = true
+                    return@setOnExitAnimationListener
                 }
-                splash.animate().alpha(0f).setStartDelay(150).setDuration(250).setInterpolator(out)
-                    .withEndAction { splash.remove(); Openings.launched = true }.start()
+                // How far the launch screen's own animation got, so the arrow takes off from where it is.
+                val played = splash.iconAnimationStart?.let { java.time.Duration.between(it, java.time.Instant.now()).toMillis() } ?: Long.MAX_VALUE
+                val flight = SplashFlight(this, icon, played, K.accent.toArgb())
+                splash.addView(flight, android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                android.animation.TimeAnimator().apply {
+                    setTimeListener { animator, _, sinceLast ->
+                        // At most two frames' time per frame: when Kav's first frames hold the main thread up, the
+                        // flight waits for them instead of jumping to its end unseen.
+                        flight.t = minOf(SplashFlight.TOTAL, flight.t + minOf(sinceLast, 33L))
+                        // Android's icon (always over the views) goes once the flight's arrow has been drawn under it.
+                        if (flight.t > 0f) icon.alpha = 0f
+                        splash.setBackgroundColor(android.graphics.Color.argb((255 * flight.backdrop).toInt(), 0, 0, 0))
+                        flight.invalidate()
+                        if (flight.t >= SplashFlight.TOTAL) {
+                            animator.cancel()
+                            splash.remove()
+                            Openings.launched = true
+                        }
+                    }
+                }.start()
             }
         }
         enableEdgeToEdge()
