@@ -229,6 +229,7 @@ class TripService : Service() {
         val now = System.currentTimeMillis() / 1000
         val due = listOfNotNull(
             replanAlert(journey, step, latest, now),
+            leaveAlert(journey, step, latest, now, fired),
             tripAlert(journey, step, latest, now),
             transferAlert(journey, step, TicketStore.kept, now * 1000),
         ).firstOrNull { it.key !in fired } ?: return
