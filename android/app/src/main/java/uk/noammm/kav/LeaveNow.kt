@@ -10,7 +10,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.runBlocking
 import uk.noammm.kav.data.KavLive
-import uk.noammm.kav.data.LeaveNow
 import uk.noammm.kav.data.LineAlert
 import uk.noammm.kav.data.Net
 import uk.noammm.kav.data.Schedules
