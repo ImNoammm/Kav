@@ -14,137 +14,85 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import uk.noammm.kav.BuildConfig
 import uk.noammm.kav.KavModel
 import uk.noammm.kav.Prefs
-import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
-import uk.noammm.kav.data.Schedules
-import uk.noammm.kav.data.Sources
 import uk.noammm.kav.data.Timetable
 
 @Composable
 fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     val ctx = LocalContext.current
+    // Only what Kav can't guess: its language, its look and paying, which asks for permissions. Everything else starts
+    // at Kav's own settings and is in Settings. A build without paying leaves PAYING out of the list.
+    val steps = listOf(SetupPart.LANGUAGE, SetupPart.LOOK, SetupPart.PAYING)
     var page by rememberSaveable { mutableIntStateOf(0) }
-    androidx.activity.compose.BackHandler(enabled = page > 0) { page = if (page == 7 && !BuildConfig.UPDATER) 5 else page - 1 }
-    // What the last step downloads starts as setup opens, in the background, so it's there by then and the last step
-    // doesn't come at all: on Wi-Fi or another unmetered network; on mobile data the timetable only as its own setting
-    // allows (Also on mobile data), and the map only once the last step's Download asks for it. The timetable is the
-    // chosen source's: a server of one's own chosen on the way has its own copy fetched instead.
-    val timetableAt = Sources.timetableFrom(Schedules.source, KavLive.ownServer)
+    androidx.activity.compose.BackHandler(enabled = page > 0) { page -= 1 }
+    // The timetable starts downloading as setup opens, in the background, so the download step doesn't come at all: on
+    // Wi-Fi or another unmetered network, and on mobile data only as its own setting allows (Also on mobile data).
     val weekNow = Timetable.state
-    LaunchedEffect(timetableAt) { Timetable.init(ctx) }
-    LaunchedEffect(timetableAt, weekNow) {
+    LaunchedEffect(Unit) { Timetable.init(ctx) }
+    LaunchedEffect(weekNow) {
         if (weekNow is Timetable.State.Missing && (!Timetable.metered(ctx) || Prefs.timetableOnMobile(ctx))) Timetable.startDownload(ctx)
     }
+    // So does Kav's map, on an unmetered network. It doesn't hold setup up: it goes on after setup, with its progress on
+    // the map, and on mobile data the map asks for it there.
     LaunchedEffect(Unit) {
         val map = MapFile.provider().takeIf { it.needsPack }?.pack
         if (map?.state is MapPack.State.Missing && !Timetable.metered(ctx)) map.download(ctx.applicationContext.filesDir)
     }
-    // An OpenFreeMap map draws online until it's downloaded in Settings, so it holds nothing up here.
-    val mapNow = MapFile.provider().let { if (it.needsPack) it.pack.state else MapPack.State.Ready }
-    val allThere = mapNow is MapPack.State.Ready && weekNow is Timetable.State.Ready
-
-    // Settings' groups in Settings' order: Language and time first (every later step reads in it), then how Kav looks
-    // (Look, Color, Map), then riding (Trips with paying, Providers), then updates and the download.
-    val next = { page += 1 }
-    // Everything downloaded already: setup ends with the last choice, without the download step.
+    // Leaving the look's step keeps the look picked there.
+    fun leave() { if (steps.getOrNull(page) == SetupPart.LOOK) Prefs.lookPicked(ctx) }
+    // The timetable there already: setup ends with the last choice, without the download step.
     val doneOrNext: @Composable () -> Unit = {
-        AnimatedContent(allThere, transitionSpec = { switching() }, label = "setupNext") { done ->
-            if (done) OnboardingButton(T("Done", "סיום"), onClick = onDone)
-            else OnboardingButton(T("Next", "הבא")) { page = 7 }
+        AnimatedContent(weekNow is Timetable.State.Ready, transitionSpec = { switching() }, label = "setupNext") { done ->
+            if (done) OnboardingButton(T("Done", "סיום")) { leave(); onDone() }
+            else OnboardingButton(T("Next", "הבא")) { leave(); page = steps.size }
         }
     }
+    val next: @Composable () -> Unit = { OnboardingButton(T("Next", "הבא")) { leave(); page += 1 } }
     AnimatedContent(
         page, transitionSpec = { if (targetState > initialState) forward() else backward() }, label = "onboarding",
         modifier = Modifier.fillMaxSize().background(K.bg),
     ) { p ->
         VeilMaps()
-        when (p) {
-            // A fresh install starts in Hebrew: the title is in both languages, Hebrew first, whichever Kav is in.
-            0 -> SetupStep("שפה ושעה", under = "Language and time", button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LanguageAndTime(ctx) }
+        val button = if (p == steps.size - 1) doneOrNext else next
+        when (steps.getOrNull(p)) {
+            // A fresh install starts in Hebrew: the title is in both languages, Hebrew first, whichever Kav is in. The
+            // clock is the phone's own (Settings can change it).
+            SetupPart.LANGUAGE -> SetupStep("שפה", under = "Language", button = button) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LanguageAndTime(ctx, clock = false) }
             }
             // The preview shows each choice, so the step needs no explanation.
-            1 -> SetupStep(T("Look", "מראה"), button = { OnboardingButton(T("Next", "הבא")) { Prefs.lookPicked(ctx); next() } }) {
+            SetupPart.LOOK -> SetupStep(T("Look", "מראה"), button = button) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
                     AccentPreview()
                     LookChoices { SectionHeader(it) }
-                }
-            }
-            2 -> SetupStep(T("Color", "צבע"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    AccentPreview()
-                    Spacer(Modifier.height(K.gap6))
+                    SectionHeader(T("Color", "צבע"))
                     AccentPicker { Prefs.setAccent(ctx, it.toArgb()) }
-                    LineBadgeChoice()
                 }
             }
-            3 -> SetupStep(T("Map", "מפה"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices(setup = true) }
+            // Paying with Rav-Pass and its permissions, through the same popup as Settings (Root hosts it).
+            SetupPart.PAYING -> SetupStep(T("Paying", "תשלום"), button = button) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSetup() }
             }
-            4 -> SetupStep(T("Trips", "נסיעות"), button = { OnboardingButton(T("Next", "הבא"), onClick = next) }) {
-                PlanChoices(model, setup = true)
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    // Paying with Rav-Pass, which can be turned on here with its permissions, or later in Settings, and
-                    // the fare profile at its bottom, as on Settings' page.
-                    PayingSetup()
-                    FareProfileGroup()
-                }
-            }
-            // The rows of Settings' page, in its order. The F-Droid build has no updates step (BuildConfig.UPDATER):
-            // setup goes on from here as from that step.
-            5 -> SetupStep(
-                T("Providers", "ספקים"),
-                button = { if (BuildConfig.UPDATER) OnboardingButton(T("Next", "הבא"), onClick = next) else doneOrNext() },
-            ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
-            }
-            // The step's title, with its (i), is AutomaticUpdates' own.
-            6 -> SetupStep(null, button = doneOrNext) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                    AutomaticUpdates(setup = true)
-                    UpdatePrompts()
-                }
-            }
-            else -> {
-                // The map the chosen map type needs on the phone, or none (an OpenFreeMap map loads online until it's
-                // downloaded in Settings).
-                val provider = MapFile.provider()
-                val pack = provider.pack.takeIf { provider.needsPack }
-                val state = pack?.state ?: MapPack.State.Ready
+            null -> {
                 val week = Timetable.state
-                val files = ctx.applicationContext.filesDir
                 var started by rememberSaveable { mutableStateOf(false) }
-                val start = {
-                    started = true
-                    if (week !is Timetable.State.Ready) Timetable.startDownload(ctx)
-                    else if (state !is MapPack.State.Ready) pack?.download(files)
-                }
+                val start = { started = true; Timetable.startDownload(ctx) }
                 // One button fades into the next (none while it downloads).
-                val button = when {
-                    state is MapPack.State.Ready && week is Timetable.State.Ready -> 1
-                    week is Timetable.State.Failed || state is MapPack.State.Failed -> 2
-                    started || state is MapPack.State.Downloading || week is Timetable.State.Downloading -> 0
+                val shown = when {
+                    week is Timetable.State.Ready -> 1
+                    week is Timetable.State.Failed -> 2
+                    started || week is Timetable.State.Downloading -> 0
                     else -> 3
                 }
                 SetupStep(
-                    if (pack != null) T("Download the map and timetable", "הורדת המפה ולוח הזמנים")
-                    else T("Download the timetable", "הורדת לוח הזמנים"),
-                    if (pack != null) T(
-                        "The map is for all of Israel and then works without signal. The week's timetable comes with it.",
-                        "המפה היא של כל ישראל, ואחרי ההורדה היא עובדת גם בלי קליטה. איתה מגיע לוח הזמנים של השבוע.",
-                    ) else if (provider is uk.noammm.kav.data.GovMap) T(
-                        "The GovMap map loads as you look, so the Survey of Israel sees the area you view. What downloads now is the week's timetable.",
-                        "מפת GovMap נטענת בזמן הצפייה, ולכן המרכז למיפוי ישראל רואה את האזור שאתם צופים בו. מה שיורד עכשיו הוא לוח הזמנים של השבוע.",
-                    ) else T(
-                        "The OpenFreeMap map loads as you look, so OpenFreeMap sees the area you view. What downloads now is the week's timetable.",
-                        "מפת OpenFreeMap נטענת בזמן הצפייה, ולכן OpenFreeMap רואה את האזור שאתם צופים בו. מה שיורד עכשיו הוא לוח הזמנים של השבוע.",
-                    ),
+                    T("Download the timetable", "הורדת לוח הזמנים"),
+                    T("The week's departures, kept up to date in the background. Kav's map downloads apart, from the map.",
+                        "היציאות של השבוע, והוא מתעדכן ברקע. המפה של Kav יורדת בנפרד, מהמפה עצמה."),
                     button = {
-                        AnimatedContent(button, transitionSpec = { switching() }, label = "setupButton") { b ->
+                        AnimatedContent(shown, transitionSpec = { switching() }, label = "setupButton") { b ->
                             when (b) {
                                 1 -> OnboardingButton(T("Done", "סיום"), onClick = onDone)
                                 2 -> OnboardingButton(T("Try again", "נסו שוב")) { start() }
@@ -155,38 +103,15 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                     },
                 ) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                        // Weight the combined progress by size, downloading the small timetable first.
-                        LaunchedEffect(started, week, state) {
-                            if (started && week is Timetable.State.Ready && state is MapPack.State.Missing) pack?.download(files)
-                        }
-                        val weekDone = when (week) { is Timetable.State.Ready -> 1f; is Timetable.State.Downloading -> week.progress; else -> 0f }
-                        val mapDone = when (state) { is MapPack.State.Ready -> 1f; is MapPack.State.Downloading -> state.progress; else -> 0f }
-                        val mapBytes = pack?.bytes?.toFloat() ?: 0f
-                        val total = (weekDone * WEEK_BYTES + mapDone * mapBytes) / (WEEK_BYTES + mapBytes)
                         // The status changes in place: the bar fades into the note or the failure, and the space eases.
-                        val kind = when {
-                            state is MapPack.State.Ready && week is Timetable.State.Ready -> 1
-                            week is Timetable.State.Failed -> 2
-                            state is MapPack.State.Failed -> 3
-                            started || week is Timetable.State.Downloading || state is MapPack.State.Downloading -> 4
-                            else -> 0
-                        }
                         var why by remember { mutableStateOf("") }
-                        ((week as? Timetable.State.Failed)?.why ?: (state as? MapPack.State.Failed)?.why)?.let { why = it }
-                        AnimatedContent(kind, transitionSpec = { switching() }, label = "setupStatus") { k ->
+                        (week as? Timetable.State.Failed)?.why?.let { why = it }
+                        AnimatedContent(shown, transitionSpec = { switching() }, label = "setupStatus") { k ->
                             when (k) {
-                                1 -> NoteCard(
-                                    if (pack != null) T("Got it. The map and timetable stay on your phone from now on.", "מוכן. מעכשיו המפה ולוח הזמנים נשארים בטלפון שלכם.")
-                                    else T("Got it. The timetable stays on your phone from now on.", "מוכן. מעכשיו לוח הזמנים נשאר בטלפון שלכם."),
-                                )
+                                1 -> NoteCard(T("Got it. The timetable stays on your phone from now on.", "מוכן. מעכשיו לוח הזמנים נשאר בטלפון שלכם."))
                                 2 -> Text(T("Couldn't download the timetable. $why", "ההורדה של לוח הזמנים לא הצליחה. $why"), style = K.type.subhead, color = K.critical)
-                                3 -> Text(T("Couldn't download the map. $why", "ההורדה של המפה לא הצליחה. $why"), style = K.type.subhead, color = K.critical)
-                                4 -> DownloadBar(
-                                    total,
-                                    if (week !is Timetable.State.Ready) T("Downloading the timetable…", "מורידים את לוח הזמנים…")
-                                    else T("Downloading the map…", "מורידים את המפה…"),
-                                )
-                                else -> ((pack?.bytes ?: 0L) + WEEK_BYTES.toLong() shr 20).let { mb -> NoteCard(T("About $mb MB, once.", "בערך ${megabytes(mb)}, פעם אחת.")) }
+                                0 -> DownloadBar((week as? Timetable.State.Downloading)?.progress ?: 0f, T("Downloading the timetable…", "מורידים את לוח הזמנים…"))
+                                else -> NoteCard(T("About ${WEEK_MB} MB, once.", "בערך ${megabytes(WEEK_MB.toLong())}, פעם אחת."))
                             }
                         }
                     }
@@ -196,25 +121,26 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     }
 }
 
+// The parts of setup, in their order.
+private enum class SetupPart { LANGUAGE, LOOK, PAYING }
+
 // One step of setup: its title (with an (i) when there's more to say) and its choices scroll, and its button stays at
-// the bottom, in the same place on every step. The choices sit as on Settings' pages; null title: the content's first
-// part is the title (Updates); under: a second line of title, quieter.
+// the bottom, in the same place on every step. The choices sit as on Settings' pages; under: a second line of title,
+// quieter.
 @Composable
 private fun SetupStep(
-    title: String?, info: String? = null, under: String? = null, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit,
+    title: String, info: String? = null, under: String? = null, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = K.gap1)) {
             Spacer(Modifier.height(K.gap6))
-            if (title != null) {
-                val at = Modifier.padding(horizontal = K.gap3)
-                if (info != null) InfoHeader(title, info, at, headline = true)
-                else {
-                    Text(title, style = K.type.largeTitle, modifier = if (under == null) at.padding(bottom = K.gap2) else at)
-                    if (under != null) Text(under, style = K.type.largeTitle, color = K.textTertiary, modifier = at.padding(bottom = K.gap2))
-                }
-                Spacer(Modifier.height(K.gap3))
+            val at = Modifier.padding(horizontal = K.gap3)
+            if (info != null) InfoHeader(title, info, at, headline = true)
+            else {
+                Text(title, style = K.type.largeTitle, modifier = if (under == null) at.padding(bottom = K.gap2) else at)
+                if (under != null) Text(under, style = K.type.largeTitle, color = K.textTertiary, modifier = at.padding(bottom = K.gap2))
             }
+            Spacer(Modifier.height(K.gap3))
             content()
             Spacer(Modifier.height(K.gap6))
         }
@@ -231,8 +157,8 @@ private fun <S> androidx.compose.animation.AnimatedContentTransitionScope<S>.swi
 @Composable
 private fun OnboardingButton(label: String, onClick: () -> Unit) = KavButton(label, onClick, wide = true)
 
-// About the size of the week's download, for its share of setup's one bar with the map.
-private const val WEEK_BYTES = 6_500_000f
+// About the size of the week's download.
+private const val WEEK_MB = 6
 
 @Composable
 internal fun DownloadBar(progress: Float, what: String = T("Downloading…", "מורידים…")) = Column(verticalArrangement = Arrangement.spacedBy(K.gap1)) {

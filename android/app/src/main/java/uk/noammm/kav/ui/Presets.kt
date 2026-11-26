@@ -1,6 +1,6 @@
 package uk.noammm.kav.ui
 
-// Setup's and Settings' short choices: Kav's own settings, or Custom, which opens the rows behind it. Kept apart from
+// Settings' and setup's short choices: Kav's own settings, or Custom, which opens the rows behind it. Kept apart from
 // the screens so what they show can be checked without them.
 internal object Presets {
     // The language Kav, stop names and the map's names are all in, or null when they differ: Custom.

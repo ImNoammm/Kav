@@ -18,11 +18,10 @@ import uk.noammm.kav.Checks
 import uk.noammm.kav.Prefs
 import uk.noammm.kav.data.Updates
 
-// Kav downloading new versions by itself, to install when the rider says so (AutoUpdate): Settings' switch and a setup
-// step. On unless turned off; it sends nothing about the rider, as the background check
-// (Checks) only downloads.
+// Kav downloading new versions by itself, to install when the rider says so (AutoUpdate): Settings' switch. On unless
+// turned off; it sends nothing about the rider, as the background check (Checks) only downloads.
 @Composable
-internal fun AutomaticUpdates(setup: Boolean = false) {
+internal fun AutomaticUpdates() {
     val ctx = LocalContext.current
     var auto by remember { mutableStateOf(Prefs.autoUpdate(ctx)) }
     var mobile by remember { mutableStateOf(Prefs.updatesOnMobile(ctx)) }
@@ -35,19 +34,14 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
         "Kav שואלת את GitHub כשהיא נפתחת ומורידה גרסה חדשה ברקע. שום דבר לא מותקן בלי אישור שלכם. GitHub רואה את כתובת ה-IP שלכם.",
     )
     Column(Modifier.fillMaxWidth()) {
-        // Setting Kav up, the step's own title carries the (i); in Settings the rows are a card of their own under the
-        // update's, and the first row carries it.
-        if (setup) {
-            InfoHeader(T("Updates", "עדכונים"), info, headline = true)
-            Spacer(Modifier.height(K.gap3))
-        }
-        ListGroup(Modifier.padding(top = if (setup) 0.dp else K.gap3).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
-            if (!setup) row { UpdatePromptsRow() }
+        // The rows are a card of their own under the update's, and the switch carries the (i).
+        ListGroup(Modifier.padding(top = K.gap3).animateContentSize(spring(dampingRatio = 1f, stiffness = 500f))) {
+            row { UpdatePromptsRow() }
             row {
                 ToggleRow(
                     T("Automatic updates", "עדכונים אוטומטיים"), auto,
                     { Icon(Icons.Rounded.SystemUpdate, null, tint = toggleInk(auto), modifier = Modifier.size(22.dp)) },
-                    info = if (setup) null else info,
+                    info = info,
                 ) { on ->
                     auto = on
                     Prefs.setAutoUpdate(ctx, on)

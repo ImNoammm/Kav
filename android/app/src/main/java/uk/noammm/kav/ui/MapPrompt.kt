@@ -16,15 +16,22 @@ import uk.noammm.kav.data.MapPack
 // online.
 private var dismissed by mutableStateOf(false)
 
-// Whether it would show: StartPopups decides when. Only a map that can't draw without its download asks.
+// Once it's up, it stays until it's done or put off, through its own download.
+private var asked by mutableStateOf(false)
+
+// Whether it would show: StartPopups decides when. Only a map that can't draw without its download asks, and not when
+// it's already downloading (setup starts it on Wi-Fi): the map shows its progress itself.
 internal val mapPromptWanted: Boolean
-    get() = !dismissed && MapFile.provider().let { it.needsPack && it.pack.state !is MapPack.State.Ready }
+    get() = !dismissed && MapFile.provider().let {
+        it.needsPack && it.pack.state !is MapPack.State.Ready && (asked || it.pack.state !is MapPack.State.Downloading)
+    }
 
 @Composable
 fun MapPrompt() {
     val pack = MapFile.provider().pack
     val state = pack.state
     if (dismissed || state is MapPack.State.Ready) return
+    LaunchedEffect(Unit) { asked = true }
     val ctx = LocalContext.current
     StartDialog(onDismissRequest = { dismissed = true }) {
         Column(

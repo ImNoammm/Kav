@@ -148,7 +148,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
     }
 
-    // Who Kav asks for what: setup's step in the same order.
+    // Who Kav asks for what.
     part("live", T("Providers", "ספקים"), providersSummary()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
     }
@@ -162,7 +162,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             if (!liquidGlassReady) null else if (K.liquid) T("transparent", "שקוף") else T("solid", "אחיד"),
         ).joinToString(" · "),
     ) {
-        // In setup's order: the preview, the look and its glass, the color, the line badges. A theme, once one is
+        // As setup's look step: the preview, the look and its glass, the color; then the line badges. A theme, once one is
         // installed, comes first: it can set the rest.
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             ThemeChoice()
@@ -314,7 +314,7 @@ internal fun SeenPlacePicker(model: KavModel, open: Boolean, onClose: () -> Unit
 
 private class SettingsPart(val id: String, val title: String, val summary: String, val summaryColor: Color?, val content: @Composable ColumnScope.() -> Unit)
 
-// Riding first (what is changed most), then how Kav looks, then Kav itself: setup has the same cards, the look's first.
+// Riding first (what is changed most), then how Kav looks, then Kav itself.
 private val SETTINGS_GROUPS = listOf(
     listOf("trips", "paying", "live"),
     listOf("look", "language", "map"),
@@ -483,7 +483,7 @@ internal fun OnTheWayChoices(spoken: Boolean, startNow: Boolean, onSpoken: (Bool
     }
 }
 
-// How bus lines look: in Look, and the color step of setting Kav up.
+// How bus lines look: in Look.
 @Composable
 internal fun LineBadgeChoice() {
     val ctx = LocalContext.current
@@ -495,8 +495,7 @@ internal fun LineBadgeChoice() {
     )
 }
 
-// Whether Kav tells of new versions on its own: a row of the updates' card in Settings (AutomaticUpdates), and a card
-// of its own in the updates step of setting Kav up.
+// Whether Kav tells of new versions on its own: a row of the updates' card in Settings (AutomaticUpdates).
 @Composable
 internal fun UpdatePromptsRow() {
     val ctx = LocalContext.current
@@ -507,15 +506,12 @@ internal fun UpdatePromptsRow() {
     ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
 }
 
-@Composable
-internal fun UpdatePrompts() = ListGroup(Modifier.padding(top = K.gap6)) { row { UpdatePromptsRow() } }
-
 // Which map Kav draws, by provider first: Kav's own, kept on the phone; one of OpenFreeMap's four, loaded from OpenFreeMap
 // until they're downloaded; GovMap's; or Esri's satellite photos under Kav's names. Only the provider picked opens its
-// own rows. After setup, the download the chosen map needs or may have is right under the choices, then what's on the
-// phone, each pack once with the maps that go with it.
+// own rows. The download the chosen map needs or may have is right under the choices, then what's on the phone, each
+// pack once with the maps that go with it.
 @Composable
-internal fun MapChoices(setup: Boolean = false) {
+internal fun MapChoices() {
     val ctx = LocalContext.current
     InfoHeader(
         T("Provider", "ספק"),
@@ -554,12 +550,10 @@ internal fun MapChoices(setup: Boolean = false) {
             MapFile.Type.GOVMAP_PHOTO to T("Survey of Israel aerial photos, 2025", "תצלומי אוויר של המרכז למיפוי ישראל, 2025"),
         )) row { MapTypeChoice(mapName(t), look, MapFile.type == t) { pick(t) } }
     }
-    if (!setup) {
-        MapDownload()
-        MapsOnPhone()
-    }
+    MapDownload()
+    MapsOnPhone()
     // The map as it looks with the choice above, around Dizengoff Center; it only shows, so the page scrolls over it.
-    // Before Kav's own map is downloaded (setup), it's read from GitHub for this spot alone.
+    // Before Kav's own map is downloaded, it's read from GitHub for this spot alone.
     Box(Modifier.padding(top = K.gap3).fillMaxWidth().height(160.dp).panel(K.rCard)) {
         TileMap(listOf(32.0731 to 34.7712, 32.0781 to 34.7792), Modifier.fillMaxSize(), remote = true)
         Box(Modifier.matchParentSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } })
@@ -783,7 +777,7 @@ private fun MapTypeChoice(title: String, detail: String, selected: Boolean, onSe
 }
 
 @Composable
-internal fun PlanChoices(model: KavModel, setup: Boolean = false) {
+internal fun PlanChoices(model: KavModel) {
     val ctx = LocalContext.current
     val offered = filtersOf(KavPlan.source)
     // Kav's: every way of getting there, the usual routes, and a card with wheelchair access and without emissions.
@@ -810,23 +804,20 @@ internal fun PlanChoices(model: KavModel, setup: Boolean = false) {
                 }
             }
             RouteSettings()
-            // Setup leaves these at Kav's.
-            if (!setup) {
-                InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
-                    "Emissions are CO2e per passenger, worked out from each ride's distance.",
-                    "הפליטות הן CO2e לנוסע, מחושבות לפי המרחק של כל נסיעה.",
-                ))
-                ListGroup {
-                    row {
-                        ToggleRow(T("Wheelchair access", "נגישות לכיסא גלגלים"), Shown.accessibility,
-                            { AccessibleGlyph(toggleInk(Shown.accessibility), 18.dp) }) { on ->
-                            Shown.accessibility = on; Prefs.setShowAccessibility(ctx, on)
-                        }
+            InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
+                "Emissions are CO2e per passenger, worked out from each ride's distance.",
+                "הפליטות הן CO2e לנוסע, מחושבות לפי המרחק של כל נסיעה.",
+            ))
+            ListGroup {
+                row {
+                    ToggleRow(T("Wheelchair access", "נגישות לכיסא גלגלים"), Shown.accessibility,
+                        { AccessibleGlyph(toggleInk(Shown.accessibility), 18.dp) }) { on ->
+                        Shown.accessibility = on; Prefs.setShowAccessibility(ctx, on)
                     }
-                    row {
-                        ToggleRow(T("Emissions", "פליטות"), Shown.co2, { GlobeGlyph(toggleInk(Shown.co2), K.surface1, 18.dp) }) { on ->
-                            Shown.co2 = on; Prefs.setShowCo2(ctx, on)
-                        }
+                }
+                row {
+                    ToggleRow(T("Emissions", "פליטות"), Shown.co2, { GlobeGlyph(toggleInk(Shown.co2), K.surface1, 18.dp) }) { on ->
+                        Shown.co2 = on; Prefs.setShowCo2(ctx, on)
                     }
                 }
             }
@@ -893,8 +884,8 @@ private fun fareProfileName(profile: uk.noammm.kav.data.FareProfile): String = w
     uk.noammm.kav.data.FareProfile.YOUNG -> T("Young adults aged 18 to 26", "צעירים בגיל 18 עד 26")
 }
 
-// The fare profile Kav's prices are worked out for, at the bottom of paying: in setup and on Settings' page, where with
-// paying on it has a header of its own, apart from the app's own discount profile above it.
+// The fare profile Kav's prices are worked out for, at the bottom of Settings' paying page, where with paying on it has a
+// header of its own, apart from the app's own discount profile above it.
 @Composable
 internal fun FareProfileGroup(header: Boolean = false) {
     if (header) SectionHeader(T("Prices in Kav", "מחירים ב-Kav"))
@@ -1840,7 +1831,7 @@ private fun providersSummary(): String {
 }
 
 // Who Kav asks for live times, trips, the timetable, line alerts and how busy, and where a shared trip's link is made:
-// the Providers page, in Settings and in setup. Default is Kav for all of it; Custom opens each choice.
+// the Providers page. Default is Kav for all of it; Custom opens each choice.
 @Composable
 internal fun Providers() {
     val ctx = LocalContext.current
