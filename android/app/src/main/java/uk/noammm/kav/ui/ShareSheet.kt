@@ -135,7 +135,7 @@ internal fun rememberSharePrep(
     val style = remember(fresh) { Prefs.linkStyle(ctx) }
     val prep = remember(trip, fromLabel, toLabel, style) {
         SharePrep(trip, fromLabel, toLabel, style, CardLook.of(ctx, trip, fromLabel, toLabel, style),
-            style.map && MapPacks.STANDARD.state is MapPack.State.Ready && trip.legs.any { it.shape.size >= 2 })
+            MapPacks.STANDARD.state is MapPack.State.Ready && trip.legs.any { it.shape.size >= 2 })
     }
     val resolved by rememberUpdatedState(r)
     LaunchedEffect(prep, active, prep.wanted) {

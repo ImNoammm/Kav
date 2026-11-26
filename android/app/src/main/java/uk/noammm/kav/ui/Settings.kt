@@ -1689,18 +1689,6 @@ private fun LinkCustomization() {
     }
     Sub(T("On the shared page", "בעמוד המשותף"))
     Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-        // Laid out as the app rows under it, with the handle's room left empty, so the names and switches line up; the names
-        // start where the section's header and Settings' other rows do.
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = K.gap4, end = K.gap1), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).heightIn(min = 56.dp)
-                .clickable(role = Role.Switch) { save(style.copy(map = !style.map)) }
-                .semantics { toggleableState = if (style.map) ToggleableState.On else ToggleableState.Off },
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(T("Map preview", "תצוגה מקדימה של המפה"), Modifier.weight(1f), style = K.type.body)
-                KavSwitch(style.map)
-            }
-            Spacer(Modifier.size(48.dp))
-        }
         SwitchOrderRows(
             style.order, { it },
             { "Kav" },
