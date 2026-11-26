@@ -1086,7 +1086,7 @@ private fun Shell(model: KavModel) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             val first = requestLocationOnce(ctx) { model.locate(it.first, it.second) }
             val follow = trackLocation(
-                ctx, onFix = { model.locate(it.latitude, it.longitude) }, onRough = { model.locate(it.latitude, it.longitude) },
+                ctx, onFix = { model.locate(it.latitude, it.longitude); BoardingWatch.onFix(ctx, it) }, onRough = { model.locate(it.latitude, it.longitude) },
             )
             try { awaitCancellation() } finally { first(); follow() }
         }
