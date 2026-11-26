@@ -10,9 +10,23 @@ import java.net.URL
 object Addresses {
     private const val SEARCH = "https://www.govmap.gov.il/api/search-service/autocomplete"
 
+    // The house point the search gives can be a street-level guess hundreds of metres off (Google puts "כנפי נשרים 31
+    // ירושלים" about 540 m from the house, #128). GovMap holds the Survey of Israel's house points, so when both know the
+    // house and disagree by more than this many metres, GovMap's wins.
+    private const val DISAGREE_M = 150.0
+
     fun find(query: String, at: Pair<Double, Double>?, search: PlaceSearch = Search.provider): List<Transit.Place> {
         val typed = TypedAddress.parse(query) ?: return emptyList()
-        runCatching { search.house(query, at) }.getOrNull()?.let { return listOf(it) }
+        val found = runCatching { search.house(query, at) }.getOrNull()
+        if (found != null) {
+            val gov = runCatching { govMap(query, typed, at, 1500) }.getOrNull().orEmpty().firstOrNull()
+            if (gov != null && uk.noammm.kav.ui.metres(found.lat, found.lon, gov.lat, gov.lon) > DISAGREE_M) return listOf(gov)
+            return listOf(found)
+        }
+        return govMap(query, typed, at, 4000)
+    }
+
+    private fun govMap(query: String, typed: TypedAddress, at: Pair<Double, Double>?, timeoutMs: Int): List<Transit.Place> {
         val body = JSONObject()
             .put("searchText", query.trim())
             .put("language", if (query.any { it in 'א'..'ת' }) "he" else "en")
@@ -21,7 +35,7 @@ object Addresses {
             .toString().toByteArray()
         val c = (RiderProxy.open(URL(SEARCH)) as HttpURLConnection).apply {
             requestMethod = "POST"; doOutput = true
-            connectTimeout = 4000; readTimeout = 4000
+            connectTimeout = timeoutMs; readTimeout = timeoutMs
             setRequestProperty("Content-Type", "application/json")
             // GovMap's firewall turns away anything that doesn't call itself a browser.
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) Kav")
