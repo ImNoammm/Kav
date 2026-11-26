@@ -360,7 +360,7 @@ private fun DepartureBoard(model: KavModel, net: Net, stop: Int, onBack: () -> U
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(K.bg)) {
         ScreenHeader(T("Departures", "יציאות"), back = onBack)
-        KavPart("stop.header", stop, about) {
+        KavPart("stop.header", stop, about, inset = K.gap4) {
         Column(Modifier.padding(horizontal = K.gap4)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StopGlyphOrPhoto(net, stop, null, thumb = 56.dp, kind = stopMode(net, stop), opened = true)
