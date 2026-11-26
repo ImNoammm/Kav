@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
         Shown.twelveHour = Prefs.twelveHour(this)
         GoogleMaps.shareLocation = !Prefs.privateSearch(this)
         uk.noammm.kav.data.Search.provider = uk.noammm.kav.data.Search.of(Prefs.placeSearch(this))
+        uk.noammm.kav.data.Addresses.checkHouse = Prefs.houseCheck(this)
         Prefs.loadSources(this)
         StopNames.english = Prefs.stopNamesEnglish(this)
         MapFile.type = Prefs.mapType(this)
@@ -609,6 +610,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         Shown.twelveHour = Prefs.twelveHour(ctx)
         GoogleMaps.shareLocation = !Prefs.privateSearch(ctx)
         uk.noammm.kav.data.Search.provider = uk.noammm.kav.data.Search.of(Prefs.placeSearch(ctx))
+        uk.noammm.kav.data.Addresses.checkHouse = Prefs.houseCheck(ctx)
         Prefs.loadSources(ctx)
         StopNames.english = Prefs.stopNamesEnglish(ctx)
         MapFile.type = Prefs.mapType(ctx)
@@ -2062,6 +2064,8 @@ object Prefs {
     fun setPlaceSearch(ctx: Context, key: String) = store(ctx).edit().putString("placeSearch", key).apply()
     fun privateSearch(ctx: Context): Boolean = store(ctx).getBoolean("privateSearch", true)
     fun setPrivateSearch(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("privateSearch", on).apply()
+    fun houseCheck(ctx: Context): Boolean = store(ctx).getBoolean("houseCheck", false)
+    fun setHouseCheck(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("houseCheck", on).apply()
 
     // Before live locations and trip planning were two choices: live times from a server, and Kav's planner on it.
     // Still written, for a backup an older Kav reads.
@@ -2306,6 +2310,7 @@ object Prefs {
             .put("look", if (followsSystem(ctx)) SYSTEM_LOOK else look(ctx).name.lowercase())
             .put("liquidGlass", s.getBoolean("liquidGlass", true))
             .put("privateSearch", privateSearch(ctx))
+            .put("houseCheck", houseCheck(ctx))
             .put("placeSearch", placeSearch(ctx))
             .put("liveSource", liveSource(ctx).key)
             .put("planSource", planSource(ctx).key)
@@ -2402,7 +2407,7 @@ object Prefs {
         if (o.has("plannerTabsHidden")) e.putString("plannerTabsHidden", o.optString("plannerTabsHidden"))
         Source.of(o.optString("shareServer"))?.takeIf { it == Source.KAV || it == Source.OWN }?.let { e.putString("shareServer", it.key) }
         o.optJSONObject("linkStyle")?.let { e.putString("linkStyle", uk.noammm.kav.data.ShareStyle.read(it).json().toString()) }
-        for (key in listOf("ravPass", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos")) {
+        for (key in listOf("ravPass", "updatePrompts", "autoUpdate", "updatesOnMobile", "timetableOnMobile", "everyPlanner", "stopPhotos", "houseCheck")) {
             if (o.has(key)) e.putBoolean(key, o.optBoolean(key))
         }
         if (o.has("spokenAlerts")) e.putBoolean("spokenAlerts", o.optBoolean("spokenAlerts"))
