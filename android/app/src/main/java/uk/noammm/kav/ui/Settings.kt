@@ -514,48 +514,37 @@ internal fun UpdatePromptsRow() {
 @Composable
 internal fun UpdatePrompts() = ListGroup(Modifier.padding(top = K.gap6)) { row { UpdatePromptsRow() } }
 
-// Which map Kav draws: its own, kept on the phone; satellite photos under its names, which load from Esri; or one of
-// OpenFreeMap's four, loaded from OpenFreeMap until they're downloaded. After setup, the download the chosen map needs
-// or may have is right under the choices, then what's on the phone, each pack once with the maps that go with it.
+// Which map Kav draws, by provider first: Kav's own, kept on the phone; one of OpenFreeMap's four, loaded from OpenFreeMap
+// until they're downloaded; GovMap's; or Esri's satellite photos under Kav's names. Only the provider picked opens its
+// own rows. After setup, the download the chosen map needs or may have is right under the choices, then what's on the
+// phone, each pack once with the maps that go with it.
 @Composable
 internal fun MapChoices(setup: Boolean = false) {
     val ctx = LocalContext.current
     InfoHeader(
-        T("Map type", "סוג מפה"),
+        T("Provider", "ספק"),
         T(
-            "Standard is on your phone and works offline. The others load as you look, so their provider sees the area you view.",
-            "המפה הרגילה נמצאת בטלפון ועובדת בלי אינטרנט. האחרות נטענות בזמן הצפייה, ולכן הספק שלהן רואה את האזור שאתם צופים בו.",
+            "Kav's map is on your phone and works offline. The others load as you look, so their provider sees the area you view.",
+            "המפה של Kav נמצאת בטלפון ועובדת בלי אינטרנט. האחרות נטענות בזמן הצפייה, ולכן הספק שלהן רואה את האזור שאתם צופים בו.",
         ),
     )
     fun pick(t: MapFile.Type) { MapFile.type = t; Prefs.setMapType(ctx, t) }
-    ListGroup {
+    val providers = MAP_PROVIDERS
+    val at = providers.indexOfFirst { MapFile.type in it.second }
+    // A provider's first map when it's picked.
+    KavSegmented(providers.map { it.first }, at, { i -> if (i != at) pick(providers[i].second.first()) })
+    fun open(t: MapFile.Type) = providers[at].second.contains(t)
+    // Kav's own map: its buildings standing up in 3D close in, or flat.
+    ProviderRows(open(MapFile.Type.STANDARD)) {
         row {
-            MapTypeChoice(mapName(MapFile.Type.STANDARD), T("On your phone, works offline", "בטלפון, עובדת בלי אינטרנט"), MapFile.type == MapFile.Type.STANDARD) { pick(MapFile.Type.STANDARD) }
-        }
-        row {
-            MapTypeChoice(mapName(MapFile.Type.SATELLITE), T("Photos from Esri", "תצלומים מ-Esri"), MapFile.type == MapFile.Type.SATELLITE) { pick(MapFile.Type.SATELLITE) }
-        }
-    }
-    // Under the standard map once it's picked: its buildings standing up in 3D close in, or flat.
-    androidx.compose.animation.AnimatedVisibility(
-        MapFile.type == MapFile.Type.STANDARD,
-        enter = androidx.compose.animation.expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) +
-            androidx.compose.animation.fadeIn(tween(200, delayMillis = 60)),
-        exit = androidx.compose.animation.shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) +
-            androidx.compose.animation.fadeOut(tween(120)),
-    ) {
-        ListGroup(Modifier.padding(top = K.gap2)) {
-            row {
-                ToggleRow(T("3D buildings", "בניינים בתלת-ממד"), MapFile.buildings3d, { Icon(Icons.Rounded.Apartment, contentDescription = null, tint = toggleInk(MapFile.buildings3d), modifier = Modifier.size(20.dp)) },
-                    subtitle = T("Stand up when you tilt the map", "מתרוממים כשמטים את המפה"),
-                    subtitleMaxLines = Int.MAX_VALUE) { on ->
-                    MapFile.buildings3d = on; Prefs.setBuildings3d(ctx, on)
-                }
+            ToggleRow(T("3D buildings", "בניינים בתלת-ממד"), MapFile.buildings3d, { Icon(Icons.Rounded.Apartment, contentDescription = null, tint = toggleInk(MapFile.buildings3d), modifier = Modifier.size(20.dp)) },
+                subtitle = T("Stand up when you tilt the map", "מתרוממים כשמטים את המפה"),
+                subtitleMaxLines = Int.MAX_VALUE) { on ->
+                MapFile.buildings3d = on; Prefs.setBuildings3d(ctx, on)
             }
         }
     }
-    Sub("OpenFreeMap")
-    ListGroup {
+    ProviderRows(open(MapFile.Type.LIBERTY)) {
         for ((t, look) in listOf(
             MapFile.Type.LIBERTY to T("Light, in color", "בהירה, צבעונית"),
             MapFile.Type.BRIGHT to T("Light", "בהירה"),
@@ -563,8 +552,7 @@ internal fun MapChoices(setup: Boolean = false) {
             MapFile.Type.FIORD to T("Dark blue", "כחולה כהה"),
         )) row { MapTypeChoice(mapName(t), look, MapFile.type == t) { pick(t) } }
     }
-    Sub("GovMap")
-    ListGroup {
+    ProviderRows(open(MapFile.Type.GOVMAP)) {
         for ((t, look) in listOf(
             MapFile.Type.GOVMAP to T("Survey of Israel streets, names in Hebrew", "רחובות המרכז למיפוי ישראל, שמות בעברית"),
             MapFile.Type.GOVMAP_PHOTO to T("Survey of Israel aerial photos, 2025", "תצלומי אוויר של המרכז למיפוי ישראל, 2025"),
@@ -580,6 +568,24 @@ internal fun MapChoices(setup: Boolean = false) {
         TileMap(listOf(32.0731 to 34.7712, 32.0781 to 34.7792), Modifier.fillMaxSize(), remote = true)
         Box(Modifier.matchParentSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } })
     }
+}
+
+// Map providers in the order the map's choice lists them, Kav's own first, each with its maps.
+private val MAP_PROVIDERS = listOf(
+    "Kav" to listOf(MapFile.Type.STANDARD),
+    "OpenFreeMap" to listOf(MapFile.Type.LIBERTY, MapFile.Type.BRIGHT, MapFile.Type.DARK, MapFile.Type.FIORD),
+    "GovMap" to listOf(MapFile.Type.GOVMAP, MapFile.Type.GOVMAP_PHOTO),
+    "Esri" to listOf(MapFile.Type.SATELLITE),
+)
+
+// The rows of the provider picked, in and out as every dependent row is.
+@Composable
+private fun ProviderRows(open: Boolean, rows: ListGroupScope.() -> Unit) {
+    AnimatedVisibility(
+        open,
+        enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+        exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+    ) { ListGroup(Modifier.padding(top = K.gap3), content = rows) }
 }
 
 internal fun mapName(t: MapFile.Type) = when (t) {
