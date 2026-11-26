@@ -2260,7 +2260,7 @@ private fun Credits() {
 @Composable
 internal fun ClockChoice(ctx: android.content.Context, modifier: Modifier = Modifier) {
     KavSegmented(
-        listOf(T("24-hour (14:05)", "24 שעות (14:05)"), T("12-hour (2:05 PM)", "12 שעות (2:05 PM)")),
+        listOf(T("24-hour (14:05)", "24 שעות (14:05)"), T("12-hour (2:05 PM)", "12 שעות (${T.ltr("2:05 PM")})")),
         selected = if (Shown.twelveHour) 1 else 0,
         onSelect = { i -> Shown.twelveHour = i == 1; Prefs.setTwelveHour(ctx, i == 1) },
         modifier = modifier,
