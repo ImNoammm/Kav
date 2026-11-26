@@ -668,13 +668,13 @@ private fun MapDownload() {
                     when {
                         !provider.needsPack -> T(
                             "Download to keep all four on your phone: about ${pack.bytes shr 20} MB, once.",
-                            "אפשר להוריד כדי לשמור את ארבען בטלפון: בערך ${pack.bytes shr 20} MB, פעם אחת.",
+                            "אפשר להוריד כדי לשמור את ארבען בטלפון: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.",
                         )
                         MapFile.type == MapFile.Type.SATELLITE -> T(
                             "Satellite's names need the standard map: about ${pack.bytes shr 20} MB, once.",
-                            "השמות במפת הלוויין צריכים את המפה הרגילה: בערך ${pack.bytes shr 20} MB, פעם אחת.")
+                            "השמות במפת הלוויין צריכים את המפה הרגילה: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.")
                         else -> T("This map isn't on your phone yet: about ${pack.bytes shr 20} MB, once.",
-                            "המפה הזו עוד לא בטלפון: בערך ${pack.bytes shr 20} MB, פעם אחת.")
+                            "המפה הזו עוד לא בטלפון: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.")
                     },
                 )
             }
@@ -738,8 +738,8 @@ private fun MapPackRow(pack: MapPack, used: Long) {
                 LiveText(
                     when (state) {
                         is MapPack.State.Downloading -> T("Downloading… ${(state.progress * 100).toInt()}%", "מורידים… ${(state.progress * 100).toInt()}%")
-                        is MapPack.State.Ready -> "${used shr 20} MB"
-                        else -> T("${used shr 20} of ${pack.bytes shr 20} MB, not finished", "${used shr 20} מתוך ${pack.bytes shr 20} MB, לא הסתיים")
+                        is MapPack.State.Ready -> megabytes(used shr 20)
+                        else -> T("${used shr 20} of ${pack.bytes shr 20} MB, not finished", "${used shr 20} מתוך ${megabytes(pack.bytes shr 20)}, לא הסתיים")
                     },
                     style = K.type.subhead, color = K.dim,
                 )
@@ -770,7 +770,7 @@ private fun MapPackRow(pack: MapPack, used: Long) {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                     KavButton(T("Keep", "השארה"), { asking = false }, Modifier.weight(1f), style = ButtonStyle.Secondary)
-                    KavButton(T("Delete ${used shr 20} MB", "מחיקת ${used shr 20} MB"), {
+                    KavButton(T("Delete ${used shr 20} MB", "מחיקת ${megabytes(used shr 20)}"), {
                         asking = false
                         pack.remove(ctx.applicationContext.filesDir)
                     }, Modifier.weight(1f), style = ButtonStyle.Destructive)
@@ -1829,7 +1829,7 @@ internal fun TimetableUpdates() {
             ListRow(
                 T("Also on mobile data", "גם בנתונים סלולריים"),
                 Modifier.semantics { toggleableState = if (mobile) ToggleableState.On else ToggleableState.Off },
-                subtitle = T("Up to 6 MB a day", "עד 6MB ביום"),
+                subtitle = T("Up to 6 MB a day", "עד ${megabytes(6)} ביום"),
                 trailing = { KavSwitch(mobile) }, onClick = { mobile = !mobile; Prefs.setTimetableOnMobile(ctx, mobile) }, chevron = false,
             )
         }

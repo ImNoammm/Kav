@@ -143,8 +143,8 @@ private fun paidLine(t: Ticket): String? {
 // estimate of its time counts on.
 private fun bandLine(t: Ticket): String? = when {
     t.kind != TicketScreens.Kind.BUS && t.kind != TicketScreens.Kind.LIGHT_RAIL -> null
-    t.band == null -> T("If up to ${Ticket.NEAR_KM} km", "אם עד ${Ticket.NEAR_KM} ק\"מ")
-    else -> T("Up to ${t.band} km", "עד ${t.band} ק\"מ")
+    t.band == null -> T("If up to ${Ticket.NEAR_KM} km", "אם עד ${Ticket.NEAR_KM} ק״מ")
+    else -> T("Up to ${t.band} km", "עד ${t.band} ק״מ")
 }
 
 // How long the ticket is good for, as old Kav's tickets said it ("Valid until 12:39"), and whether it still is: a bus or

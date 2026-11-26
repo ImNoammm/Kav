@@ -36,7 +36,7 @@ fun MapPrompt() {
             Text(
                 T(
                     "About ${pack.bytes shr 20} MB for all of Israel, once. Then the map works without signal.",
-                    "בערך ${pack.bytes shr 20} MB לכל ישראל, פעם אחת. אחר כך המפה עובדת גם בלי קליטה.",
+                    "בערך ${megabytes(pack.bytes shr 20)} לכל ישראל, פעם אחת. אחר כך המפה עובדת גם בלי קליטה.",
                 ),
                 fontSize = 14.sp, color = K.muted, lineHeight = 20.sp,
             )

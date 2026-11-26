@@ -58,7 +58,7 @@ internal fun AutomaticUpdates(setup: Boolean = false) {
                 ToggleRow(
                     T("Also on mobile data", "גם בנתונים סלולריים"), mobile,
                     { Icon(Icons.Rounded.SignalCellularAlt, null, tint = toggleInk(mobile), modifier = Modifier.size(22.dp)) },
-                    subtitle = T("About 32 MB a version", "בערך 32MB לגרסה"),
+                    subtitle = T("About 32 MB a version", "בערך ${megabytes(32)} לגרסה"),
                 ) { on ->
                     mobile = on
                     Prefs.setUpdatesOnMobile(ctx, on)

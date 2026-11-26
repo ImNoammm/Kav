@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import uk.noammm.kav.ui.T
+import uk.noammm.kav.ui.megabytes
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -118,7 +119,7 @@ class MapPack(
             if (download.length() == 0L) throw e
             download.length()
         }
-        if (have != part.bytes) throw IOException(T("Interrupted at ${have shr 20} MB, try again", "ההורדה נקטעה אחרי ${have shr 20} MB, נסו שוב"))
+        if (have != part.bytes) throw IOException(T("Interrupted at ${have shr 20} MB, try again", "ההורדה נקטעה אחרי ${megabytes(have shr 20)}, נסו שוב"))
         place(dir, part, download)
     }
 

@@ -204,7 +204,7 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
                             if (week !is Timetable.State.Ready) T("Downloading the timetable…", "מורידים את לוח הזמנים…")
                             else T("Downloading the map…", "מורידים את המפה…"),
                         )
-                        else -> ((pack?.bytes ?: 0L) + WEEK_BYTES.toLong() shr 20).let { mb -> NoteCard(T("About $mb MB, once.", "בערך $mb MB, פעם אחת.")) }
+                        else -> ((pack?.bytes ?: 0L) + WEEK_BYTES.toLong() shr 20).let { mb -> NoteCard(T("About $mb MB, once.", "בערך ${megabytes(mb)}, פעם אחת.")) }
                     }
                 }
                 Spacer(Modifier.height(K.gap8))
@@ -273,7 +273,7 @@ internal fun TimetableStep() {
             T("Getting the timetable", "מורידים את לוח הזמנים"),
             T(
                 "Kav now downloads its timetable: the week's departures, about 6 MB, kept up to date in the background.",
-                "Kav מורידה עכשיו את לוח הזמנים: היציאות של השבוע, בערך 6 MB, והוא מתעדכן ברקע.",
+                "Kav מורידה עכשיו את לוח הזמנים: היציאות של השבוע, בערך ${megabytes(6)}, והוא מתעדכן ברקע.",
             ),
             headline = true,
         )

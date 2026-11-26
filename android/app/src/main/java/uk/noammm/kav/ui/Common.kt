@@ -257,8 +257,11 @@ fun metres(la1: Double, lo1: Double, la2: Double, lo2: Double): Double {
 }
 
 fun distanceLabel(m: Double): String =
-    if (m < 1000) T("${m.roundToInt()} m", "${m.roundToInt()} מ'")
-    else T("%.1f km", "%.1f ק\"מ").format(Locale.US, m / 1000)
+    if (m < 1000) T("${m.roundToInt()} m", "${m.roundToInt()} מ׳")
+    else T("%.1f km", "%.1f ק״מ").format(Locale.US, m / 1000)
+
+// A size in megabytes, "176 MB", kept left to right inside Hebrew, where it would otherwise read "MB 176".
+fun megabytes(mb: Long): String = T.ltr("$mb MB")
 
 enum class Mode { TRAM, SUBWAY, TRAIN, BUS, FERRY, CABLE, GONDOLA, FUNICULAR, TAXI, OTHER }
 
