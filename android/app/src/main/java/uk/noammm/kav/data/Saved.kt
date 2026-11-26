@@ -31,6 +31,9 @@ class LineAlert(
     // Minutes the walk to the stop takes, for a "leave now" alert that goes up that long before the next chosen
     // departure in the window; 0 for the hours' rolling times instead.
     val leaveMin: Int = 0,
+    // How leaveMin came to be: 0 chosen by the rider, 1 measured from their location when the alert was set. A
+    // measured walk is a snapshot of that moment and place; the alert does not measure again as the rider moves.
+    val leaveSrc: Int = 0,
 ) {
     // Where trains end: the timetable's name, with the stop code and place that tell it from a station of a like name.
     class End(val name: String, val code: Int, val lat: Double, val lon: Double) {
@@ -43,6 +46,7 @@ class LineAlert(
         .put("lines", JSONArray(lines)).put("days", days).put("from", from).put("to", to)
         .apply { if (toward.isNotEmpty()) put("toward", JSONArray(toward.map { it.json() })) }
         .apply { if (leaveMin > 0) put("leave", leaveMin) }
+        .apply { if (leaveMin > 0 && leaveSrc > 0) put("leaveSrc", leaveSrc) }
 
     // The days' windows around now, as epoch seconds, from the day before (one running past midnight) to a week on.
     private fun windows(now: Long): List<LongRange> {
@@ -82,6 +86,7 @@ class LineAlert(
                 o.optLong("id"), o.optString("stop"), o.optString("name"), lines, o.optInt("days", WEEKDAYS) and 0x7F,
                 o.optInt("from").coerceIn(0, 1439), o.optInt("to").coerceIn(0, 1439), toward = toward,
                 leaveMin = o.optInt("leave", 0).coerceIn(0, 60),
+                leaveSrc = o.optInt("leaveSrc", 0).coerceIn(0, 1),
             )
         }
 
