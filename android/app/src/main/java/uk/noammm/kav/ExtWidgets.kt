@@ -323,7 +323,8 @@ object ExtWidgets {
             v.setViewVisibility(R.id.row_icon, View.VISIBLE)
             ink.set(v, R.id.row_icon, "setColorFilter") { it.secondary }
         }
-        if (own == null) tap(app, id, index, r.tap)?.let { v.setOnClickPendingIntent(R.id.row, it) }
+        // A row takes the tap itself: one with none doesn't pass it to the widget under it.
+        (own?.open ?: tap(app, id, index, r.tap))?.let { v.setOnClickPendingIntent(R.id.row, it) }
         return v
     }
 
