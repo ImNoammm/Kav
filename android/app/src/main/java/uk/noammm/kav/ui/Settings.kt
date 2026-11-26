@@ -480,6 +480,14 @@ internal fun OnTheWayChoices(
                 onStart(on); Prefs.setBeginTripsImmediately(ctx, on)
             }
         }
+        row {
+            var suggestBus by remember { mutableStateOf(OnBus.suggest(ctx)) }
+            ToggleRow(
+                T("Suggest following my bus", "הצעה לעקוב אחרי האוטובוס שלי"), suggestBus, { RouteGlyph(toggleInk(suggestBus)) },
+                subtitle = T("While Kav is open, notices when you travel with a bus and asks whether to follow it. Nothing is kept.", "כש-Kav פתוחה, מזהה שאתם נוסעים עם אוטובוס ושואלת אם לעקוב אחריו. שום דבר לא נשמר."),
+                subtitleMaxLines = 3,
+            ) { on -> suggestBus = on; OnBus.setSuggest(ctx, on) }
+        }
     }
 }
 
