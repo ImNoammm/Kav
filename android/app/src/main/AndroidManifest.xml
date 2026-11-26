@@ -239,9 +239,11 @@
         <service
             android:name=".DeparturesWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <!-- The widget's host (the launcher) starts this when the widget is placed, so it must be exported;
+             it finishes at once when started without a widget id. -->
         <activity
             android:name=".DeparturesWidgetConfigActivity"
-            android:exported="false" />
+            android:exported="true" />
 
         <!-- tickets read from Rav-Pass: each deleted when it ends, also with the reader off and Kav closed -->
         <receiver
