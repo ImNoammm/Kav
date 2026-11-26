@@ -658,10 +658,6 @@ internal fun lineWords(l: ExtUses.Line): String {
     }
 }
 
-// Publisher text set apart inside Kav's words: isolated, in quotes. Straight quotes in Hebrew, as Kav's Hebrew uses them
-// (curly ones come out the wrong way round around a Hebrew name); the text can't hold either kind (Names.clean).
-internal fun quoted(s: String) = if (T.rtl) T.iso("\"$s\"") else "\u2068\u201c$s\u201d\u2069"
-
 // The publisher's explanation of a line, in Kav's language, else the other one.
 private fun noteOf(l: ExtUses.Line): String? = l.note?.let { (en, he) -> (if (T.rtl) he.ifEmpty { en } else en.ifEmpty { he }).ifEmpty { null } }
 

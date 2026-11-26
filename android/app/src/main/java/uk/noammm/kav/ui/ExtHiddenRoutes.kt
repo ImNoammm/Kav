@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun HiddenRoutesNotice(count: Int, by: List<Pair<String, Int>>, reasons: List<String>, showing: Boolean, modifier: Modifier = Modifier, onShow: () -> Unit) {
     val who = when (by.size) {
-        1 -> quoted(by[0].first)
-        2 -> quoted(by[0].first) + T(" and ", " ו-") + quoted(by[1].first)
+        1 -> T.iso(by[0].first)
+        2 -> T.iso(by[0].first) + T(" and ", " ו-") + T.iso(by[1].first)
         else -> T("${by.size} extensions", "${by.size} תוספים")
     }
     val words = when {

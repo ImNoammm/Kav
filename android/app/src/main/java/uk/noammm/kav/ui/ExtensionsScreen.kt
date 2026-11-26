@@ -137,9 +137,9 @@ internal fun extensionsSummary(ctx: Context): String {
     ).joinToString(" · ")
 }
 
-// A name its publisher chose, inside Kav's own sentence: in quotes and isolated from the words around it, so it reads
-// as theirs and can't reorder Kav's. The name is already plain text (Names.clean).
-private fun named(s: String) = quoted(s)
+// A name its publisher chose, inside Kav's own sentence: isolated from the words around it, so it can't reorder Kav's,
+// and with no quote marks, as no name in Kav's words has. The name is already plain text (Names.clean).
+private fun named(s: String) = T.iso(s)
 
 // Text of either direction inside a sentence or a line of parts, kept to itself so it can't reorder what's around it.
 private fun iso(s: String) = T.iso(s)
