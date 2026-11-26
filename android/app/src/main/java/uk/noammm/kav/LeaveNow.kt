@@ -167,13 +167,22 @@ object LeaveNow {
         val clock = clockFormat()
         val at = uk.noammm.kav.data.LeaveNow.depAt(dep)
         val label = if (a.toward.isNotEmpty()) shownName(dep.endName) else dep.line
+        // The walk minutes say where they came from: measured ones carry when and from where, since the rider may
+        // be somewhere else by now; chosen ones say they were chosen.
+        val walk = if (a.leaveSrc == 1) T(
+            "The walk was measured at ${a.leaveMin} minutes from your location when the alert was set.",
+            "ההליכה נמדדה כ-${a.leaveMin} דקות מהמיקום שלכם כשההתראה נקבעה.",
+        ) else T(
+            "You set the walk at ${a.leaveMin} minutes.",
+            "ההליכה נקבעה על ידכם ל-${a.leaveMin} דקות.",
+        )
         // A live time says so; the timetable's says so.
         val text = if (dep.expected > 0) T(
-            "Live: $label is expected at ${clock.format(Date(at * 1000))}. The walk takes ${a.leaveMin} minutes.",
-            "זמן אמת: $label צפוי ב-${clock.format(Date(at * 1000))}. ההליכה אורכת ${a.leaveMin} דקות.",
+            "Live: $label is expected at ${clock.format(Date(at * 1000))}. $walk",
+            "זמן אמת: $label צפוי ב-${clock.format(Date(at * 1000))}. $walk",
         ) else T(
-            "By the timetable $label leaves at ${clock.format(Date(at * 1000))}. The walk takes ${a.leaveMin} minutes. No live time for it.",
-            "לפי לוח הזמנים $label יוצא ב-${clock.format(Date(at * 1000))}. ההליכה אורכת ${a.leaveMin} דקות. אין זמן אמת עבורו.",
+            "By the timetable $label leaves at ${clock.format(Date(at * 1000))}. $walk No live time for it.",
+            "לפי לוח הזמנים $label יוצא ב-${clock.format(Date(at * 1000))}. $walk אין זמן אמת עבורו.",
         )
         val lines = if (a.toward.isNotEmpty()) T("Trains to ", "רכבות אל ") + a.toward.joinToString(", ") { shownName(it.name) }
             else a.lines.joinToString(", ")
