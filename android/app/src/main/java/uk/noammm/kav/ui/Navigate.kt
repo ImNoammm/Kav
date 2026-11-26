@@ -728,7 +728,8 @@ internal fun StepCard(
     tripArgs: (() -> org.json.JSONObject)? = null,
 ) {
     when (step) {
-        is Step.Start -> Card(T("Start from", "התחלה מ-"), active) {
+        // The place is the card's first line: a Hebrew header can't end in "from" with its place on the line under it.
+        is Step.Start -> Card(T("Start from", "התחלה"), active) {
             val board = step.board
             val stop = board?.let { r.stop(it.fromStop) }
             if (board != null && stop != null) {
