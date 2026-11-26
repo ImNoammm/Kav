@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -101,6 +102,8 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     var leaveMin by remember { mutableIntStateOf(0) }
     val walkChoices = listOf(3, 5, 10, 15, 20, 30, 45)
     var walkMeasured by remember { mutableStateOf(false) }
+    // True when measuring the walk was tried and could not be done; the rider then chooses the minutes, told so.
+    var walkFailed by remember { mutableStateOf(false) }
     // The time on the wheels: 0 from, 1 until, null neither. last keeps it while the wheels fold away.
     var editing by remember { mutableStateOf<Int?>(null) }
     var last by remember { mutableIntStateOf(0) }
@@ -172,18 +175,30 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                 { leaveMin = if (leaveMin > 0) 0 else 10 }, check = true,
             )
             AnimatedVisibility(leaveMin > 0, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(T("Walk", "הליכה"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
-                    for (m in walkChoices) KavChip("$m", leaveMin == m, { leaveMin = m }, Modifier.weight(1f))
-                    Text(T("min", "דקות"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(T("Walk", "הליכה"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                        // A chip the rider picks themselves replaces whatever was measured, and says nothing of it.
+                        for (m in walkChoices) KavChip("$m", leaveMin == m, { leaveMin = m; walkMeasured = false; walkFailed = false }, Modifier.weight(1f))
+                        Text(T("min", "דקות"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                    }
+                    // Where the minutes came from, so they are never taken for fresher or surer than they are.
+                    if (walkMeasured) Text(
+                        T("Measured from your current location; the choices above change it", "נמדד מהמיקום הנוכחי; הבחירה למעלה משנה אותו"),
+                        style = K.type.caption,
+                    ) else if (walkFailed) Text(
+                        T("Could not be measured from your location; the minutes are yours to choose", "לא ניתן היה למדוד מהמיקום; בחרו את הדקות בעצמכם"),
+                        style = K.type.caption,
+                    )
                 }
             }
             // Turning "leave now" on measures the walk from where the rider is now and sets it; the chips stay
             // theirs to change. No location or no planner answering leaves the choice as it is.
             LaunchedEffect(leaveMin > 0) {
                 if (leaveMin <= 0 || walkMeasured) return@LaunchedEffect
-                val at = KavPlan.planner() ?: return@LaunchedEffect
-                requestLocationOnce(ctx) { (lat, lon) ->
+                val at = KavPlan.planner()
+                if (at == null) { walkFailed = true; return@LaunchedEffect }
+                requestLocationOnce(ctx, onFail = { walkFailed = true }) { (lat, lon) ->
                     scope.launch {
                         val mins = withContext(Dispatchers.IO) {
                             runCatching {
@@ -195,8 +210,9 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                         }
                         if (mins != null && mins > 0) {
                             walkMeasured = true
+                            walkFailed = false
                             leaveMin = walkChoices.firstOrNull { it >= mins } ?: walkChoices.last()
-                        }
+                        } else walkFailed = true
                     }
                 }
             }
@@ -215,6 +231,7 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                             System.currentTimeMillis(), key, net.stopName(stop), numbers.filter { it in lines }, days, from, to,
                             toward = ends.filter { it in toward }.map { LineAlert.End(net.name[it], net.code[it], net.lat[it], net.lon[it]) },
                             leaveMin = leaveMin,
+                            leaveSrc = if (leaveMin > 0 && walkMeasured) 1 else 0,
                         )
                         model.saveAlerts(ctx, model.lineAlerts + alert)
                         lines = emptySet()
