@@ -2309,6 +2309,8 @@ fun TileMap(
         var stillHalosTaken = 0
         // The vehicles in the gliding source.
         var gliding = emptySet<String>()
+        // How many marks the last live update had.
+        var liveMarks = 0
         val take = MapView.OnSourceChangedListener { id ->
             if (id == SRC_GLIDE_MARKS) { taken++; tookMs = android.os.SystemClock.uptimeMillis() - sentMs }
             if (id == SRC_LIVE_MARKS) stillTaken++
@@ -2379,8 +2381,12 @@ fun TileMap(
                 val g = latest?.first
                 if (g == null) { wasActive = false; return@collectLatest }
                 // While the screen around the map changes, its frames are the change's. Under a finger it goes on: only
-                // the vehicles near the screen are stepped (farIds), so groups part and join as the fingers zoom.
-                while (settling) {
+                // the vehicles near the screen are stepped (farIds), so groups part and join as the fingers zoom. An
+                // update that takes most of the marks away (Live's picked vehicle, drawn alone) goes at once all the
+                // same: it leaves the map less to lay out for those frames, not more.
+                val fewer = g.together && g.markers.size * 2 < liveMarks
+                liveMarks = g.markers.size
+                while (settling && !fewer) {
                     snapshotFlow { settling }.first { !it }
                     kotlinx.coroutines.delay(150)
                 }
@@ -2414,8 +2420,11 @@ fun TileMap(
                 // as it was going, instead of starting over from where it had got, and the rider glides on after it.
                 flight?.takeIf { it.t < 1f && g.together && it.g.together && g.sameButRider(it.g) }?.let { fly(it, scale) {} }
                 // A group's mark gone from this update (it split, or its count changed: LiveGroups) fades out where it's
-                // drawn, from the alpha it's drawn at; with the rest each goes from its alpha now to its new one.
-                val leaving = if (!g.together) null else {
+                // drawn, from the alpha it's drawn at; with the rest each goes from its alpha now to its new one. Not
+                // while the vehicles that aren't picked are drawn at no opacity (outVehicles), as group marks are: they
+                // go unseen, and a fade of their own would have the map draw them whole for a frame as it switched
+                // their layer to the features' own alphas.
+                val leaving = if (!g.together || (outVehiclesNow?.invoke() ?: 1f) <= 0f) null else {
                     val marks = g.markers.mapNotNullTo(HashSet()) { it.id }
                     val halos = g.halos.mapNotNullTo(HashSet()) { it.id }
                     fun seen(id: String?) = (shownAlpha[id] ?: 0f) > 0f

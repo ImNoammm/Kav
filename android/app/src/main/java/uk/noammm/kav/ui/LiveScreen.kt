@@ -102,9 +102,11 @@ internal fun liveStopsOn(zoomedOut: Boolean, linePicked: Boolean): Boolean = !zo
 private const val BOARD_STOPS = 120
 // The vehicles' list under the map, which folds away to the bar's room while a card is open.
 private val LIVE_LIST = 260.dp
-// A vehicle's or a stop's card opening or closing is one motion: the card, the map's new frame, the other vehicles' and
-// stops' fade and the list folding away all take this long, with one easing.
+// A vehicle's or a stop's card opening or closing is one motion: the card, the map's new frame, the stops' fade and the
+// list folding away all take this long, with one easing.
 private const val LIVE_MOTION_MS = 450
+// How long the rest of the vehicles take to fade as one is picked: gone before the camera's move has gone far.
+private const val OTHERS_OUT_MS = 120
 private val liveMotion = tween<Float>(LIVE_MOTION_MS, easing = FastOutSlowInEasing)
 
 internal fun liveSnapshotFresh(saved: Long, now: Long) = saved > 0 && now - saved in 0L..15L
@@ -148,6 +150,12 @@ internal fun opensNow(vehicle: Boolean, cardOpen: Boolean, ready: Boolean, inMap
 
 internal fun keptLiveVehicle(keep: Long?, chosen: Long?, last: Long?, coming: Boolean): Long? =
     keep ?: chosen ?: last.takeIf { coming }
+
+// Whether Live's map is sent the rest of the vehicles, not only the one picked (tapped or open). Stops never has them.
+// With one picked they stay until the map draws that one as itself (solid), then go; with none they're back once the
+// last one's line has gone from view (coming), by when the camera is back where it was.
+internal fun restWanted(stopsOnly: Boolean, pick: Long?, solid: Long?, coming: Boolean): Boolean =
+    !stopsOnly && if (pick != null) solid != pick else !coming
 
 // A vehicle's name on its plate: its line's number. A train's line has none: it goes by its run number, which the
 // ministry names its vehicle by (route_first_641), as the trip pages show it. Else "..." while its line is looked up, or
@@ -510,9 +518,10 @@ private fun LiveScreenForSource(model: KavModel) {
     var fleetIn by remember(tripKey) { mutableStateOf(false) }
     LaunchedEffect(tripKey) { if (tripKey.isNotEmpty()) uk.noammm.kav.data.KavFleet.ask(tripKey); fleetIn = true }
     val ready = route.isNotEmpty() && lineStops.isNotEmpty() && (onRoad != null || route.size < 2) && fleetIn && crowdIn
-    // The vehicle the map's vehicles are split around (the one kept, the rest going with the fade), as the map has it.
-    // It waits for the tapped one, or that one would fade out with the rest and come back at once, and the one picked
-    // last would stay until it went at once, as if it jumped to the new one.
+    // The vehicle the map draws alone (the one kept, the rest faded and gone from it), as the map has it. It waits for
+    // the tapped one, or that one would fade out with the rest and come back at once, and the one picked last would
+    // stay until it went at once, as if it jumped to the new one; and for the rest to be gone, so the camera's move
+    // isn't spent laying a city's vehicles out again on its way.
     var mapKept by remember { mutableStateOf<Long?>(null) }
     val inMap = (focus as? LiveFocus.Vehicle)?.tripId == mapKept
     if (open != focus && opensNow(focus is LiveFocus.Vehicle, open != null, ready, inMap, waited)) {
@@ -952,9 +961,6 @@ private fun LiveMap(
     // instead of a few frames late; the vehicles are drawn until they're gone and back from where they were.
     // Zoomed out past where stops are looked up (stopsAway), the ones on the map fade out too.
     val stopsShown = animateFloatAsState(if (show != LiveShow.TRAFFIC && !stopsAway) 1f else 0f, tween(240), label = "liveStops")
-    val othersShown = animateFloatAsState(if (show != LiveShow.STOPS) 1f else 0f, tween(240), label = "liveVehicles")
-    val othersDrawn by remember { derivedStateOf { othersShown.value > 0f } }
-    val drawnVehicles = if (othersDrawn) vehicles else shown
     val tint = focusVehicle?.let { v ->
         plateFor(v.routeType, v.line?.agencyId ?: -1)?.fill ?: v.operator()?.takeIf(::hued)?.let { onScreen(it, MapInk.light) } ?: MapInk.route
     }
@@ -970,6 +976,27 @@ private fun LiveMap(
     // changes where it starts and ends: the picked vehicle's road and stops while it's coming or there. What goes
     // stays sent, its layers not drawn while hidden, so it's there at once when it comes back.
     val coming by remember { derivedStateOf { lineShown.value > 0f } }
+    // A vehicle picked is drawn alone, as Stops draws one picked from the list. Once the map has it drawn as itself
+    // (solid: out of its group and of the rest's fade) the rest fade quickly and are sent no more, and its card opens
+    // and the camera leaves for its line only when the map has it alone (onKept); they're sent again once the camera is
+    // back and the line's view has gone (coming). Left on the map unseen, a city's vehicles were laid out again at
+    // each zoom level the camera crossed on its way there and back, which took the frames of the move, and they showed
+    // for a moment grouped for the zoom it had left.
+    val pick = keep ?: chosen
+    var solid by remember { mutableStateOf<Long?>(null) }
+    val wanted = restWanted(show == LiveShow.STOPS, pick, solid, coming)
+    // Whether the map has the rest (onLiveTaken): they fade in from then, not from when they were sent.
+    var othersTaken by remember { mutableStateOf(true) }
+    val othersShown = animateFloatAsState(if (wanted && (pick != null || othersTaken)) 1f else 0f,
+        tween(if (pick != null) OTHERS_OUT_MS else 240), label = "liveVehicles")
+    val othersBack by remember { derivedStateOf { othersShown.value >= 1f } }
+    val othersGone by remember { derivedStateOf { othersShown.value <= 0f } }
+    val alone = !wanted && othersGone
+    SideEffect { if (alone) othersTaken = false; if (pick == null) solid = null }
+    // The camera goes back to where it was as a vehicle's card closes (TileMap's away), so the rest are grouped again
+    // for the zoom they had then from that moment: the picked line's is still the last one told when they return.
+    val zoomAtPick = remember { arrayOfNulls<Float>(1) }
+    LaunchedEffect(chosen != null) { if (chosen != null) zoomAtPick[0] = mapZoom else zoomAtPick[0]?.let { mapZoom = it } }
     val extLook = uk.noammm.kav.ext.NativeMap.version.collectAsState().value
     // Every stop is drawn, none thinned out as the map zooms: Noam wants them all to stay and go together, at the zoom
     // where they're no longer looked up (stopsAway).
@@ -1007,7 +1034,9 @@ private fun LiveMap(
     val density = LocalDensity.current
     val lookTrip = look?.tripId
     val second = System.currentTimeMillis() / 1000
-    val kept = keptLiveVehicle(keep, chosen, lookTrip, coming)
+    // The one that was picked stays as it is until the rest are back around it, or it would fade in again with them.
+    val kept = keptLiveVehicle(keep, chosen, lookTrip, coming || (pick == null && wanted && !othersBack))
+    val drawnVehicles = if (alone) vehicles.filter { it.tripId == kept } else vehicles
     val freshness = remember(drawnVehicles, second) {
         drawnVehicles.map { if (it.arrival.vehicleStatus == 2) Freshness.ESTIMATED else freshnessOf(it.arrival.sampleUtc, second) }
     }
@@ -1071,13 +1100,17 @@ private fun LiveMap(
         }
         marks to images
     }
+    val restImages = remember { arrayOf<Map<String, androidx.compose.ui.graphics.ImageBitmap>>(emptyMap()) }
     val live = remember(moving, me, selection) {
         // The rider's halo the vehicles' size here, so all the halos pulse by one plain radius (TileMap): a halo of
         // another size made the map lay every halo out again at each step of the pulse, thirty times a second. Always
         // that size, vehicles shown or not: taken from the first vehicle's, it shrank when Stops left none.
         val meHalos = me.halos.map { it.copy(radius = VEHICLE_HALO_R) }
+        // The rest's images stay named while one is drawn alone: the map lets go of images no update names, and has
+        // every tile of every source laid out again when it does, then takes each one in again as they return.
+        if (!alone) restImages[0] = moving.images
         moving.copy(halos = moving.halos + meHalos, markers = moving.markers + selection.first,
-            images = moving.images + me.images + selection.second, together = true)
+            images = (if (alone) restImages[0] else emptyMap()) + moving.images + me.images + selection.second, together = true)
             .also { grouping.byLive[it] = GroupsDrawn.Shown(grouping.groups, grouping.places, grouping.membership) }
     }
     // A merged mark tapped: in as far as it opens (into smaller groups or its vehicles), but never past where they all
@@ -1115,7 +1148,14 @@ private fun LiveMap(
         rider = me.markers.firstOrNull(),
         riderHeading = heading,
         // Taps go by the groups the map shows: those of the geometry it has taken, not ones worked out since.
-        onLiveTaken = { g -> grouping.byLive[g]?.let { grouping.shown = it }; if (g === live) onKept(kept) },
+        onLiveTaken = { g ->
+            grouping.byLive[g]?.let { grouping.shown = it }
+            if (g === live) {
+                solid = kept
+                if (alone || kept == null) onKept(kept)
+                if (!alone) othersTaken = true
+            }
+        },
         followRider = withMe && following && focus == null,
         // The marks drawn under the finger: the nearest that's a vehicle shown or a group (none while a vehicle's
         // picked) is opened. Anything else (a picked stop's ring, the rider) goes on to the taps by place below.
