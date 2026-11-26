@@ -1478,28 +1478,37 @@ internal fun focalPadding(anchor: Offset, w: Float, h: Float): DoubleArray = dou
     (h - 2 * anchor.y).coerceAtLeast(0f).toDouble(),
 )
 
-// Kav's own map shows its buildings flat until it leans back: the 3D ones fade in over them with the tilt, fully there
-// from 30°, so straight down they cost nothing (a layer at no opacity isn't drawn) and a tilted map, navigation's own
-// included, shows them in 3D. Only the opacity changes: a change to the heights or to whether the layer shows has the
-// whole map's tiles laid out again, a stall at each step. They fade in from zoom 15 to 15.5 too, like the flat ones
-// (style.json): the map file has every building only from 15, so below it a zoom would pop thousands in at once.
-// Returns the step set, or `last` when there's no such layer.
+// Kav's own map shows its buildings flat until it leans back: the 3D ones stand over them once it has, so straight
+// down they cost nothing (a layer at no opacity isn't drawn) and a tilted map, navigation's own included, shows them
+// in 3D. They stand as Google Maps' do: from its zoom (the style's minzoom), whole and at once, never see-through. The
+// map draws see-through buildings in two passes, their depth first, and goes on drawing a tile's so for as long as it
+// holds the tile, so buildings faded in by their opacity cost both passes for as long as the map then stays tilted.
+// Only the opacity changes: a change to the heights or to whether the layer shows has the whole map's tiles laid out
+// again. Returns the step set (1 standing, 0 flat), or `last` when there's no such layer.
 private fun Style.leanBuildings(tilt: Float, last: Float): Float {
     // Asked at every move of the camera: the layer is only looked up (a new object each time) when the step changes.
-    val step = (((tilt - 3f) / 27f).coerceIn(0f, 1f) * 50).roundToInt() / 50f
+    val step = buildingsStep(tilt, last)
     if (step == last) return last
     val layer = getLayer("buildings_3d") as? FillExtrusionLayer ?: return last
     if (last < 0f) layer.fillExtrusionOpacityTransition = org.maplibre.android.style.layers.TransitionOptions(0, 0)
-    layer.setProperties(PropertyFactory.fillExtrusionOpacity(
-        Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(15, 0), Expression.stop(15.5, step))))
+    layer.setProperties(PropertyFactory.fillExtrusionOpacity(step))
     return step
 }
 
+// The 3D buildings' step at a tilt (degrees), given the step they were at: standing, they stay up a little further
+// down than where they came up, so a tilt held about there doesn't flicker.
+internal fun buildingsStep(tilt: Float, last: Float): Float =
+    if (tilt >= (if (last == 1f) BUILDINGS_DOWN_DEG else BUILDINGS_UP_DEG)) 1f else 0f
+
+// The tilt the 3D buildings stand up at, and the one they lie down again under.
+private const val BUILDINGS_UP_DEG = 8f
+private const val BUILDINGS_DOWN_DEG = 4f
+
 // The graphics driver builds the 3D buildings' shaders the first time one is drawn, and the map stands still for the
 // tenth of a second that takes: at the first zoom into a town after Kav opens. So a style that has them draws one as
-// soon as it's set, in no colour, both ways the map draws them (see-through while they fade in, solid after), and lets
-// it go once a whole frame has had it. Its height and base come from the feature and its colour is one for all, as the
-// real ones' are (MapFadesTest), or the driver would build other shaders than theirs.
+// soon as it's set, in no color and solid as the real ones are drawn, and lets it go once a whole frame has had it.
+// Its height and base come from the feature and its color is one for all, as the real ones' are (MapFadesTest), or
+// the driver would build other shaders than theirs.
 private suspend fun warmBuildings(view: MapView, map: MapLibreMap, style: Style) {
     if (!style.isFullyLoaded || style.getLayer("buildings_3d") == null) return
     val seen = map.projection.visibleRegion.latLngBounds
@@ -1509,7 +1518,6 @@ private suspend fun warmBuildings(view: MapView, map: MapLibreMap, style: Style)
     val square = Polygon.fromLngLats(listOf(listOf(
         Point.fromLngLat(lon - w, lat - h), Point.fromLngLat(lon + w, lat - h), Point.fromLngLat(lon + w, lat + h),
         Point.fromLngLat(lon - w, lat + h), Point.fromLngLat(lon - w, lat - h))))
-    val ways = listOf("kav-3d-warm-through" to 0.5f, "kav-3d-warm-solid" to 1f)
     var whole = 0
     val drawn = kotlinx.coroutines.CompletableDeferred<Unit>()
     // The second whole frame: the first may be one that was on its way before the square was there.
@@ -1517,16 +1525,16 @@ private suspend fun warmBuildings(view: MapView, map: MapLibreMap, style: Style)
     view.addOnDidFinishRenderingFrameListener(frame)
     try {
         style.addSource(GeoJsonSource(SRC_3D_WARM, Feature.fromGeometry(square)))
-        for ((id, opacity) in ways) style.addLayer(FillExtrusionLayer(id, SRC_3D_WARM).withProperties(
+        style.addLayer(FillExtrusionLayer(SRC_3D_WARM, SRC_3D_WARM).withProperties(
             PropertyFactory.fillExtrusionColor(android.graphics.Color.TRANSPARENT),
             PropertyFactory.fillExtrusionHeight(Expression.coalesce(Expression.get("height"), Expression.literal(0))),
             PropertyFactory.fillExtrusionBase(Expression.coalesce(Expression.get("min_height"), Expression.literal(0))),
-            PropertyFactory.fillExtrusionOpacity(opacity)))
+            PropertyFactory.fillExtrusionOpacity(1f)))
         kotlinx.coroutines.withTimeoutOrNull(3000) { drawn.await() }
     } finally {
         view.removeOnDidFinishRenderingFrameListener(frame)
         if (style.isFullyLoaded) {
-            for ((id, _) in ways) style.removeLayer(id)
+            style.removeLayer(SRC_3D_WARM)
             style.removeSource(SRC_3D_WARM)
         }
     }
