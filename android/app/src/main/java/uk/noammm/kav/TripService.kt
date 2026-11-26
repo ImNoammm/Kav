@@ -250,7 +250,8 @@ class TripService : Service() {
         alert(this, due.title, if (exit) due.text + T(" · Make your exit ticket", " · צרו את כרטיס היציאה") else due.text,
             if (exit) T("Exit ticket", "כרטיס יציאה") to PayEntry.pay(this, RavPass.Section.TRAIN) else null, due.key)
         val spoken = if (due.turn) Prefs.spokenTurns(this) else Prefs.spokenAlerts(this)
-        if (spoken && Speaker.mayTalk(this)) Speaker.sayAfterSound(this, due.spoken)
+        // During a call Speaker decides by itself what may be said, where only the rider hears it.
+        if (spoken && (Speaker.mayTalk(this) || Speaker.inCall(this))) Speaker.sayAfterSound(this, due.spoken, due.key)
     }
 
     // The key of the trip alert in the shade, from the alert itself, so a service started again still knows it; null when

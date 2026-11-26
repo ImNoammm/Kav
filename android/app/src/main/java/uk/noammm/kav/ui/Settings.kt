@@ -451,6 +451,14 @@ internal fun OnTheWayChoices(
                 if (on) uk.noammm.kav.Speaker.say(ctx, T("Turn right onto Herzl", "פנו ימינה להרצל")) { noVoice(ctx) }
             }
         }
+        // Only with alerts said out loud, which it is about.
+        if (!setup && spoken) row {
+            var inCalls by remember { mutableStateOf(Prefs.spokenInCalls(ctx)) }
+            ToggleRow(T("Speak during calls", "הקראה בזמן שיחה"), inCalls, { CallGlyph(toggleInk(inCalls)) }, info = T(
+                "Only a bus arriving and getting off, and only you hear them. Not on speakerphone.",
+                "רק הגעת האוטובוס והירידה, ורק אתם שומעים אותן. לא כשהרמקול פועל.",
+            )) { on -> inCalls = on; Prefs.setSpokenInCalls(ctx, on) }
+        }
         if (!setup) row {
             ToggleRow(T("Small window", "חלון קטן"), Pip.allowed, { PipGlyph(toggleInk(Pip.allowed)) }) { on ->
                 Pip.allowed = on; Prefs.setPipNavigation(ctx, on)
@@ -2127,6 +2135,21 @@ private fun SpeakerGlyph(tint: Color, size: Dp = 18.dp) {
             style = Stroke(sw, cap = StrokeCap.Round))
         drawArc(tint, -45f, 90f, false, Offset(w * .40f, h * .16f), androidx.compose.ui.geometry.Size(w * .56f, h * .68f),
             style = Stroke(sw, cap = StrokeCap.Round))
+    }
+}
+
+// A phone's handset: its earpiece, its mouthpiece and the curve between them.
+@Composable
+private fun CallGlyph(tint: Color, size: Dp = 18.dp) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width; val h = this.size.height; val sw = w * .09f
+        drawLine(tint, Offset(w * .20f, h * .30f), Offset(w * .36f, h * .14f), w * .18f, StrokeCap.Round)
+        drawLine(tint, Offset(w * .70f, h * .86f), Offset(w * .86f, h * .70f), w * .18f, StrokeCap.Round)
+        val grip = Path().apply {
+            moveTo(w * .24f, h * .26f)
+            cubicTo(w * .14f, h * .52f, w * .48f, h * .86f, w * .74f, h * .76f)
+        }
+        drawPath(grip, tint, style = Stroke(sw * 1.4f, cap = StrokeCap.Round))
     }
 }
 

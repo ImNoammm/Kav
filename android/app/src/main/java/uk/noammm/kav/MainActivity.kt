@@ -2086,6 +2086,9 @@ object Prefs {
     // A walk's turns said out loud as each comes (TripService), apart from the other alerts.
     fun spokenTurns(ctx: Context): Boolean = store(ctx).getBoolean("spokenTurns", false)
     fun setSpokenTurns(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("spokenTurns", on).apply()
+    // A bus arriving and getting off said during a phone call too, into the call where only the rider hears it (Speaker).
+    fun spokenInCalls(ctx: Context): Boolean = store(ctx).getBoolean("spokenInCalls", false)
+    fun setSpokenInCalls(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("spokenInCalls", on).apply()
 
     fun twelveHour(ctx: Context): Boolean = store(ctx).getBoolean("twelveHour", false)
     fun setTwelveHour(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("twelveHour", on).apply()
@@ -2390,6 +2393,7 @@ object Prefs {
             .put("updatesOnMobile", updatesOnMobile(ctx))
             .put("spokenAlerts", spokenAlerts(ctx))
             .put("spokenTurns", spokenTurns(ctx))
+            .put("spokenInCalls", spokenInCalls(ctx))
             .put("twelveHour", twelveHour(ctx))
     }
 
@@ -2449,6 +2453,7 @@ object Prefs {
         alertsSwitch(o.keys().asSequence().asIterable())?.let { e.putBoolean("rideAlerts", o.optBoolean(it)) }
         if (o.has("spokenAlerts")) e.putBoolean("spokenAlerts", o.optBoolean("spokenAlerts"))
         if (o.has("spokenTurns")) e.putBoolean("spokenTurns", o.optBoolean("spokenTurns"))
+        if (o.has("spokenInCalls")) e.putBoolean("spokenInCalls", o.optBoolean("spokenInCalls"))
         if (o.has("twelveHour")) e.putBoolean("twelveHour", o.optBoolean("twelveHour"))
         val chosen = o.optJSONObject("filters")
         val oldOff = o.optJSONArray("filtersOff")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }
