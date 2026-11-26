@@ -1585,9 +1585,11 @@ internal fun TabGlyph(tab: Tab, tint: Color, side: Dp = 18.dp) {
                 drawCircle(tint, w * .20f, Offset(w * .50f, h * .34f), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
                 line(.50f, .54f, .50f, .86f); line(.32f, .86f, .68f, .86f)
             }
+            // A list: its bullets at the start, on the right in Hebrew.
             Tab.Lines -> listOf(.22f, .50f, .78f).forEachIndexed { i, y ->
-                drawCircle(tint, w * .085f, Offset(w * .18f, h * y))
-                line(.34f, y, if (i == 1) .86f else .70f, y)
+                fun x(f: Float) = if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl) 1f - f else f
+                drawCircle(tint, w * .085f, Offset(w * x(.18f), h * y))
+                line(x(.34f), y, x(if (i == 1) .86f else .70f), y)
             }
             // Four squares: a screen of someone else's.
             Tab.Ext -> listOf(.30f, .70f).forEach { x -> listOf(.30f, .70f).forEach { y ->
