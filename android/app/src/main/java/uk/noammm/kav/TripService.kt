@@ -235,6 +235,8 @@ class TripService : Service() {
         alertedLegs = journey.trip.legs
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
         val now = System.currentTimeMillis() / 1000
+        // An alert whose step is over leaves the shade: the bus boarded or gone, the ride got off, the walk done.
+        shownAlert()?.let { shown -> if (!alertStillDue(shown, journey, step, now)) NotificationManagerCompat.from(this).cancel(ALERT_ID) }
         val due = listOfNotNull(
             replanAlert(journey, step, latest, now),
             tripAlert(journey, step, latest, now),
@@ -246,10 +248,17 @@ class TripService : Service() {
         // Getting off a train with its entrance still open in Kav: the exit ticket, one tap away.
         val exit = due.key.startsWith("ride-") && PayEntry.chosen(this) && exitTicketDue(journey, step, TicketStore.kept, now * 1000)
         alert(this, due.title, if (exit) due.text + T(" · Make your exit ticket", " · צרו את כרטיס היציאה") else due.text,
-            if (exit) T("Exit ticket", "כרטיס יציאה") to PayEntry.pay(this, RavPass.Section.TRAIN) else null)
+            if (exit) T("Exit ticket", "כרטיס יציאה") to PayEntry.pay(this, RavPass.Section.TRAIN) else null, due.key)
         val spoken = if (due.turn) Prefs.spokenTurns(this) else Prefs.spokenAlerts(this)
         if (spoken && Speaker.mayTalk(this)) Speaker.sayAfterSound(this, due.spoken)
     }
+
+    // The key of the trip alert in the shade, from the alert itself, so a service started again still knows it; null when
+    // none is there (never given, swiped away or tapped).
+    private fun shownAlert(): String? = runCatching {
+        getSystemService(android.app.NotificationManager::class.java).activeNotifications
+            .firstOrNull { it.id == ALERT_ID }?.notification?.extras?.getString(EXTRA_ALERT)
+    }.getOrNull()
 
     private var arrivedAt = 0L
 
@@ -330,6 +339,7 @@ class TripService : Service() {
         private const val ACT_EXT = "uk.noammm.kav.trip.EXT"
         private const val EXTRA_EXT = "uk.noammm.kav.trip.EXT_ID"
         private const val EXTRA_ID = "uk.noammm.kav.trip.BUTTON"
+        private const val EXTRA_ALERT = "uk.noammm.kav.trip.ALERT"
         private const val PROMOTED = "android.requestPromotedOngoing"
         private const val TICK_MS = 15_000L
         private const val MIN_GAP_MS = 2_000L
@@ -351,7 +361,7 @@ class TripService : Service() {
             NotificationManagerCompat.from(ctx).cancel(ALERT_ID)
         }
 
-        fun alert(ctx: Context, title: String, text: String, action: Pair<String, Intent>? = null) {
+        fun alert(ctx: Context, title: String, text: String, action: Pair<String, Intent>? = null, key: String? = null) {
             if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
             ensureAlerts(ctx)
             val n = NotificationCompat.Builder(ctx, ALERTS)
@@ -364,6 +374,7 @@ class TripService : Service() {
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .apply { action?.let { (label, i) -> addAction(0, label, PayEntry.pending(ctx, i, 4)) } }
+                .apply { key?.let { addExtras(Bundle().apply { putString(EXTRA_ALERT, it) }) } }
                 .build()
             runCatching { NotificationManagerCompat.from(ctx).notify(ALERT_ID, n) }
         }

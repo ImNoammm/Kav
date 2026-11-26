@@ -320,6 +320,32 @@ internal class TripAlert(val key: String, val title: String, val text: String, v
 
 internal const val TURN_KEY = "turn-"
 
+// How long after its time a bus that hasn't been boarded counts as gone, and its "is arriving" with it.
+private const val LEFT_AFTER_S = 60L
+
+// Whether the alert given under this key is still about where the trip is, or its step is over and it leaves the shade:
+// "is arriving" and a wait's traffic while the rider waits for that ride and it hasn't left, "get off" and a ride's
+// traffic while on that ride, a turn while walking. A plan that stopped working and a transfer running out aren't about
+// one step, and stay.
+internal fun alertStillDue(key: String, journey: ActiveJourney, current: Int, now: Long): Boolean {
+    val leg = key.substringAfter('-').toIntOrNull()
+    val steps = buildSteps(journey.trip, journey.fromLabel, journey.toLabel)
+    val step = steps.getOrNull(current.coerceIn(0, maxOf(steps.lastIndex, 0)))
+    fun waiting() = step is Step.Wait && step.legIndex == leg && run {
+        val (ride, wait) = boardingChoice(step.ride, step.wait, journey.chosen[step.legIndex] ?: 0)
+        val at = journey.resolved.departures(ride, wait, now).firstOrNull { it.tripId == ride.tripId }?.timeUtc ?: ride.dep
+        now - at <= LEFT_AFTER_S
+    }
+    fun riding() = step is Step.Ride && step.legIndex == leg
+    return when {
+        key.startsWith("wait-") -> waiting()
+        key.startsWith("traffic-") -> waiting() || riding()
+        key.startsWith("ride-") -> riding()
+        key.startsWith(TURN_KEY) -> step is Step.Walk
+        else -> true
+    }
+}
+
 // How near a turn its alert comes: a few steps before it.
 private const val TURN_AHEAD_M = 25.0
 private const val LAST_STRETCH_M = 1_000.0
