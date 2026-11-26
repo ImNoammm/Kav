@@ -2028,7 +2028,11 @@ object Prefs {
     fun spokenInCalls(ctx: Context): Boolean = store(ctx).getBoolean("spokenInCalls", false)
     fun setSpokenInCalls(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("spokenInCalls", on).apply()
 
-    fun twelveHour(ctx: Context): Boolean = store(ctx).getBoolean("twelveHour", false)
+    // The phone's own clock until the rider picks one in Settings.
+    fun twelveHour(ctx: Context): Boolean = store(ctx).let { s ->
+        twelveHourOf(if (s.contains("twelveHour")) s.getBoolean("twelveHour", false) else null) { android.text.format.DateFormat.is24HourFormat(ctx) }
+    }
+    fun twelveHourOf(picked: Boolean?, phone24: () -> Boolean): Boolean = picked ?: !phone24()
     fun setTwelveHour(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("twelveHour", on).apply()
 
     // Settings' System look, kept as "system": it follows the phone's dark theme.
@@ -2204,7 +2208,7 @@ object Prefs {
     fun upgrade(ctx: Context) {
         val s = store(ctx)
         val version = s.getInt("prefsVersion", 0)
-        if (version >= 9) return
+        if (version >= 10) return
         val e = s.edit()
         if (version < 2) {
             s.getStringSet("filtersOff", null)?.let { off ->
@@ -2254,7 +2258,10 @@ object Prefs {
             s.all.keys.filter { it.endsWith("Alerts") && it != "lineAlerts" && it != "spokenAlerts" }.forEach(e::remove)
             e.remove("pipNavigation")
         }
-        e.putInt("prefsVersion", 9).apply()
+        // The clock is the phone's until one is picked (twelveHour()); a rider from before who never picked one had 24
+        // hours and keeps it.
+        if (version < 10 && s.getBoolean("onboarded", false) && !s.contains("twelveHour")) e.putBoolean("twelveHour", false)
+        e.putInt("prefsVersion", 10).apply()
     }
 
     fun filters(ctx: Context): Set<ResultFilter> {
@@ -2337,7 +2344,7 @@ object Prefs {
             .put("spokenAlerts", spokenAlerts(ctx))
             .put("spokenTurns", spokenTurns(ctx))
             .put("spokenInCalls", spokenInCalls(ctx))
-            .put("twelveHour", twelveHour(ctx))
+            .apply { store(ctx).let { s -> if (s.contains("twelveHour")) put("twelveHour", s.getBoolean("twelveHour", false)) } }
     }
 
     // Only what the file holds is restored, so settings an older backup lacks stay as they are.
