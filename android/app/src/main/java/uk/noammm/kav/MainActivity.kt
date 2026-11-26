@@ -1941,8 +1941,14 @@ object Prefs {
     fun accent(ctx: Context): Int = store(ctx).getInt("accent", android.graphics.Color.rgb(0x9A, 0xBE, 0xFF))
     fun setAccent(ctx: Context, argb: Int) = store(ctx).edit().putInt("accent", argb).apply()
 
-    fun lang(ctx: Context): Lang =
-        Lang.entries.firstOrNull { it.code == store(ctx).getString("lang", null) } ?: Lang.EN
+    // Kav's language, Hebrew until chosen, as stop names and the map's names are. A rider set up before that, with no
+    // language kept, had English: theirs is kept as English by upgrade(), and read as English here until it has run (a
+    // line alert or a widget can come before Kav is opened after an update).
+    fun lang(ctx: Context): Lang {
+        val s = store(ctx)
+        Lang.entries.firstOrNull { it.code == s.getString("lang", null) }?.let { return it }
+        return if (s.getBoolean("onboarded", false) && s.getInt("prefsVersion", 0) < 8) Lang.EN else Lang.HE
+    }
     fun setLang(ctx: Context, lang: Lang) = store(ctx).edit().putString("lang", lang.code).apply()
 
     // Stops', stations' and towns' names in English rather than the ministry's Hebrew (StopNames), Hebrew until chosen.
@@ -2233,7 +2239,7 @@ object Prefs {
     fun upgrade(ctx: Context) {
         val s = store(ctx)
         val version = s.getInt("prefsVersion", 0)
-        if (version >= 7) return
+        if (version >= 8) return
         val e = s.edit()
         if (version < 2) {
             s.getStringSet("filtersOff", null)?.let { off ->
@@ -2272,7 +2278,9 @@ object Prefs {
         if (version < 7 && s.getBoolean("onboarded", false) && !s.contains("crowdSource")) {
             e.putString("crowdSource", crowdFromGoogle(s.getBoolean("googleCrowd", true)))
         }
-        e.putInt("prefsVersion", 7).apply()
+        // Hebrew is Kav's language until chosen (lang()); a rider from before who never chose one had English and keeps it.
+        if (version < 8 && s.getBoolean("onboarded", false) && !s.contains("lang")) e.putString("lang", Lang.EN.code)
+        e.putInt("prefsVersion", 8).apply()
     }
 
     fun filters(ctx: Context): Set<ResultFilter> {
