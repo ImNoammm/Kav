@@ -14,7 +14,7 @@ import uk.noammm.kav.ui.T
 import uk.noammm.kav.ui.clockFormat
 import java.util.Date
 
-// Home-screen widget (#118): the next buses at the rider's first saved stop, without opening Kav. A bus the server
+// Home-screen widget (#118): the next buses at the stop the rider chose for it, without opening Kav. A bus the server
 // tracks shows its live minutes; one it only knows from the timetable shows the clock time, like the line alerts do.
 // The list comes from DeparturesWidgetService below; tapping a row opens Kav on the stop. The system refreshes the
 // widget at most every half hour (widgetInfo updatePeriodMillis), and Kav asks for a refresh when its saved stops
@@ -22,6 +22,10 @@ import java.util.Date
 class DeparturesWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
         for (id in ids) update(ctx, mgr, id)
+    }
+
+    override fun onDeleted(ctx: Context, ids: IntArray) {
+        for (id in ids) Prefs.dropWidgetStop(ctx, id)
     }
 
     companion object {
@@ -35,13 +39,21 @@ class DeparturesWidget : AppWidgetProvider() {
         fun update(ctx: Context, mgr: AppWidgetManager, id: Int) {
             T.lang = Prefs.lang(ctx)
             Shown.twelveHour = Prefs.twelveHour(ctx)
-            // The saved stop's name when the timetable is already in memory; a generic title when it isn't.
-            val stopName = Prefs.savedStops(ctx).firstOrNull()?.let { key ->
+            // The stop chosen for this widget when it was placed, else the first saved stop, as before. Its name
+            // when the timetable is already in memory; a generic title when it isn't.
+            val stopKey = Prefs.widgetStop(ctx, id) ?: Prefs.savedStops(ctx).firstOrNull()
+            val stopName = stopKey?.let { key ->
                 Loaded.net?.let { n -> n.stopOfKey(key).takeIf { it >= 0 }?.let { n.stopName(it) } }
             }
             val views = RemoteViews(ctx.packageName, R.layout.widget_departures)
             views.setTextViewText(R.id.widget_title, stopName ?: T("Next buses", "האוטובוסים הבאים"))
-            views.setRemoteAdapter(R.id.widget_list, Intent(ctx, DeparturesWidgetService::class.java))
+            // The adapter's intent carries the widget id (and differs by it, so each widget keeps its own stop).
+            views.setRemoteAdapter(
+                R.id.widget_list,
+                Intent(ctx, DeparturesWidgetService::class.java)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                    .setData(android.net.Uri.parse("kav://widget/$id")),
+            )
             views.setEmptyView(R.id.widget_list, R.id.widget_empty)
             val open = PendingIntent.getActivity(
                 ctx, 0,
@@ -57,10 +69,13 @@ class DeparturesWidget : AppWidgetProvider() {
 }
 
 class DeparturesWidgetService : RemoteViewsService() {
-    override fun onGetViewFactory(intent: Intent): RemoteViewsFactory = Factory(applicationContext)
+    override fun onGetViewFactory(intent: Intent): RemoteViewsFactory = Factory(
+        applicationContext,
+        intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID),
+    )
 }
 
-private class Factory(val ctx: Context) : RemoteViewsService.RemoteViewsFactory {
+private class Factory(val ctx: Context, val widgetId: Int) : RemoteViewsService.RemoteViewsFactory {
     private var rows: List<String> = emptyList()
     private var stopKey: String? = null
 
@@ -68,9 +83,10 @@ private class Factory(val ctx: Context) : RemoteViewsService.RemoteViewsFactory 
     override fun onDataSetChanged() {
         T.lang = Prefs.lang(ctx)
         Shown.twelveHour = Prefs.twelveHour(ctx)
-        val first = Prefs.savedStops(ctx).firstOrNull() ?: run { rows = emptyList(); stopKey = null; return }
-        stopKey = first
-        val code = first.substringBefore('/').toIntOrNull() ?: return
+        val chosen = Prefs.widgetStop(ctx, widgetId) ?: Prefs.savedStops(ctx).firstOrNull()
+            ?: run { rows = emptyList(); stopKey = null; return }
+        stopKey = chosen
+        val code = chosen.substringBefore('/').toIntOrNull() ?: return
         val now = System.currentTimeMillis() / 1000
         val clock = clockFormat()
         rows = runCatching {
