@@ -1638,7 +1638,9 @@ private fun LinkCustomization() {
     val ctx = LocalContext.current
     var style by remember { mutableStateOf(Prefs.linkStyle(ctx)) }
     fun save(next: uk.noammm.kav.data.ShareStyle) { style = next; Prefs.setLinkStyle(ctx, next) }
-    Column {
+    // Kav's: a week, the page as Kav is, and everything on it.
+    Sub(T("Sharing a trip", "שיתוף נסיעה"))
+    DefaultOrCustom(style == uk.noammm.kav.data.ShareStyle(), { save(uk.noammm.kav.data.ShareStyle()) }) {
     // Made where the rider picked (TripShare.server).
     val on = if (TripShare.server != KavLive.KAV_SERVER) T("your server", "שרת שלכם") else T("Kav's server", "שרת של Kav")
     InfoHeader(
