@@ -1084,6 +1084,11 @@ fun DirectionsOnline(model: KavModel) {
         label = "placePicker",
     ) { which ->
         if (which != null) {
+        // A pick clears the words for the next search at once: the search fading out keeps the ones it showed, so its
+        // results stay under the finger instead of its empty page flashing up.
+        val leaving = transition.targetState != androidx.compose.animation.EnterExitState.Visible
+        val shownQuery = remember { arrayOf(model.placeQuery) }
+        if (!leaving) shownQuery[0] = model.placeQuery
         PlacePicker(
             // "stop" adds a stop on the way, "stop:1" changes the second.
             title = when {
@@ -1123,7 +1128,7 @@ fun DirectionsOnline(model: KavModel) {
             net = model.net,
             favourites = model.favourites,
             onSaveFavourites = { model.saveFavourites(ctx, it) },
-            query = model.placeQuery,
+            query = shownQuery[0],
             onQuery = { model.placeQuery = it },
             onLocate = { model.locate(it.first, it.second) },
         )
