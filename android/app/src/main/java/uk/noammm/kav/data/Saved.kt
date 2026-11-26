@@ -28,6 +28,10 @@ class LineAlert(
     val id: Long, val stop: String, val name: String, val lines: List<String>, val days: Int, val from: Int, val to: Int,
     // At a train station, which numbers no line, the trains it's for by where they end.
     val toward: List<End> = emptyList(),
+    // True for a warning before the day's last ride of these lines, instead of the hours' rolling times.
+    val lastRide: Boolean = false,
+    // How many minutes before the last ride the warning goes up; the rider's choice, 20 until they change it.
+    val warnMin: Int = 20,
 ) {
     // Where trains end: the timetable's name, with the stop code and place that tell it from a station of a like name.
     class End(val name: String, val code: Int, val lat: Double, val lon: Double) {
@@ -39,6 +43,8 @@ class LineAlert(
     fun json(): JSONObject = JSONObject().put("id", id).put("stop", stop).put("name", name)
         .put("lines", JSONArray(lines)).put("days", days).put("from", from).put("to", to)
         .apply { if (toward.isNotEmpty()) put("toward", JSONArray(toward.map { it.json() })) }
+        .apply { if (lastRide) put("last", true) }
+        .apply { if (lastRide && warnMin != 20) put("warnMin", warnMin) }
 
     // The days' windows around now, as epoch seconds, from the day before (one running past midnight) to a week on.
     private fun windows(now: Long): List<LongRange> {
@@ -77,6 +83,8 @@ class LineAlert(
             return LineAlert(
                 o.optLong("id"), o.optString("stop"), o.optString("name"), lines, o.optInt("days", WEEKDAYS) and 0x7F,
                 o.optInt("from").coerceIn(0, 1439), o.optInt("to").coerceIn(0, 1439), toward = toward,
+                lastRide = o.optBoolean("last"),
+                warnMin = o.optInt("warnMin", 20).coerceIn(5, 120),
             )
         }
 
