@@ -764,8 +764,9 @@ internal fun StepCard(
 
         is Step.Walk -> {
             val stop = r.stop(step.toStop)
+            // As the start's: no Hebrew header ends in "to" with its place on the line under it.
             Card(
-                T("Walk ${step.leg.minutes} min to", "הליכה ${step.leg.minutes} דק׳ אל").takeIf { step.leg.minutes >= 1 } ?: T("Walk to", "הליכה אל"),
+                T("Walk ${step.leg.minutes} min to", "הליכה ${step.leg.minutes} דק׳").takeIf { step.leg.minutes >= 1 } ?: T("Walk to", "הליכה"),
                 active,
                 trailing = if (step.leg.meters > 0) distanceLabel(step.leg.meters.toDouble()) else null,
             ) {
@@ -904,8 +905,8 @@ internal fun StepCard(
             val header = when {
                 active && progress >= 1f && left <= 1 -> T("Get off at the next stop", "רדו בתחנה הבאה")
                 active && progress >= 1f -> T("Get off in $left stops", "ירידה בעוד $left תחנות")
-                stops.size > 1 -> T("Ride ", "נסיעה ") + T.count(stops.size - 1, "1 stop", "תחנה אחת", "stops", "תחנות") + T(" to", " אל")
-                else -> T("Ride to", "נסיעה אל")
+                stops.size > 1 -> T("Ride ", "נסיעה ") + T.count(stops.size - 1, "1 stop", "תחנה אחת", "stops", "תחנות") + T(" to", "")
+                else -> T("Ride to", "נסיעה")
             }
             val scroll = rememberScrollState()
             var railTop by remember { mutableIntStateOf(0) }
