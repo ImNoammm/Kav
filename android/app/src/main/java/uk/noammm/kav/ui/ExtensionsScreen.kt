@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PauseCircle
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
@@ -1098,14 +1099,24 @@ private fun AddSourceSheet(hub: Hub, onFile: () -> Unit, onClose: () -> Unit) {
     ExtUi.tick
     val suggested = uk.noammm.kav.ext.Community.suggest(listed, hub.sources.map { it.key }.toSet())
     Sheet(onClose) { close ->
-        Column(Modifier.fillMaxWidth().padding(K.gap4), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
             SheetHeader(T("Add a source", "הוספת מקור"), { close(onClose) })
-            KavField(text, { text = it }, "github.com/owner/repo", Modifier.fillMaxWidth(), keyboard = androidx.compose.ui.text.input.KeyboardType.Uri)
+            // The field and its Add as one row: the arrow at its end takes the accent once what's typed is a repository,
+            // and the keyboard's own key adds too. The field's own hint says what to type.
+            val ready = parts.isNotEmpty() && bad == null && queue.isEmpty()
+            val add = { if (ready) queue = parsed.mapNotNull { it.second } }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+                KavField(text, { text = it }, "github.com/owner/repo", Modifier.weight(1f), keyboard = androidx.compose.ui.text.input.KeyboardType.Uri,
+                    ime = androidx.compose.ui.text.input.ImeAction.Go, onIme = add)
+                val fill by androidx.compose.animation.animateColorAsState(if (ready) K.accent else K.fill, androidx.compose.animation.core.tween(150), label = "addFill")
+                val ink by androidx.compose.animation.animateColorAsState(if (ready) K.onAccent else K.textTertiary, androidx.compose.animation.core.tween(150), label = "addInk")
+                Box(
+                    Modifier.size(52.dp).clip(androidx.compose.foundation.shape.CircleShape).background(fill)
+                        .clickable(enabled = ready, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = T("Add", "הוספה"), onClick = add),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, T("Add", "הוספה"), tint = ink, modifier = Modifier.size(22.dp)) }
+            }
             if (bad != null) Text(T("Not a GitHub repository: ", "לא מאגר GitHub: ") + T.ltr(bad.take(60)), style = K.type.subhead, color = K.problem)
-            else Text(T("A GitHub repository whose releases carry a Kav bundle.", "מאגר GitHub עם גרסאות שכוללות חבילה של Kav."), style = K.type.subhead, color = K.textTertiary)
-            KavButton(T("Add", "הוספה"), {
-                queue = parsed.mapNotNull { it.second }
-            }, Modifier.fillMaxWidth(), enabled = parts.isNotEmpty() && bad == null && queue.isEmpty())
             // Sources from the community list, the first few not added yet, each a tap from its add popup. They unfold
             // when the list arrives, and fold away once added.
             androidx.compose.animation.AnimatedVisibility(suggested.isNotEmpty(), enter = unfold, exit = fold) {
@@ -1123,7 +1134,7 @@ private fun AddSourceSheet(hub: Hub, onFile: () -> Unit, onClose: () -> Unit) {
                     }
                 }
             }
-            ListGroup(Modifier.padding(top = K.gap3)) {
+            ListGroup {
                 row {
                     ListRow(T("Add a bundle file", "הוספת קובץ חבילה"), leading = { Icon(Icons.Rounded.FolderOpen, null, tint = K.dim) },
                         onClick = { close { onClose(); onFile() } }, chevron = false)
