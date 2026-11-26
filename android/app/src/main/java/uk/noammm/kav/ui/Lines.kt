@@ -1364,7 +1364,8 @@ private fun TimetableLineDetail(model: KavModel, net: Net, route: Int, onBack: (
     // The line's other way, where its row in the list stands for both (A ↔ B), switched to on this page.
     val list = remember(net) { lineListFor(net) }
     var ways by remember(route) { mutableStateOf(emptyList<Pair<Int, String>>()) }
-    LaunchedEffect(route) {
+    // Its buttons' words, made again in a new language, the stop names' included.
+    LaunchedEffect(route, T.lang, StopNames.english) {
         val ends = list.endpoints.ifEmpty { withContext(Dispatchers.Default) { lineEndpoints(net).also { twinsFor(net, it) } }.also { list.endpoints = it } }
         ways = withContext(Dispatchers.Default) { weekWays(net, route, ends) }
     }
@@ -1470,7 +1471,9 @@ private fun LinePage(
     var tappedBus by remember(listKey) { mutableStateOf<String?>(null) }
     // The rider's location and compass while a line's map is open, as for a trip's map.
     DisposableEffect(Unit) { model.lineMapShown = true; onDispose { model.lineMapShown = false } }
-    val rows: List<PageStop>? = remember(way, weekStops) {
+    // Stop names follow their own language setting, so they're made again when it changes, as the page's words are with
+    // Kav's language.
+    val rows: List<PageStop>? = remember(way, weekStops, StopNames.english) {
         way?.stops?.map { s ->
             PageStop(s.code, providerStopName(net, s).ifBlank { s.code.toString() }, providerStopCity(net, s), KavLive.stopOfCode(net, s.code), s.lat, s.lon)
         } ?: weekStops?.map { s -> PageStop(net.code[s], net.stopName(s), net.cityName(s), s, net.lat[s], net.lon[s]) }
@@ -1522,12 +1525,15 @@ private fun LinePage(
     val liveStops = remember(rows) { rows.orEmpty().map { it.week } }
     val byRoute = liveRoute >= 0 && liveStops.isNotEmpty() && liveStops.all { it >= 0 }
     val live = rememberLive(net, if (byRoute) liveRoute else -1, if (byRoute) liveStops else emptyList(), line, way)
-    // How late the way shown usually runs now, once Kav's server has named its routes; asked once a way.
-    var late by remember(route, way) { mutableStateOf<String?>(null) }
+    // How late the way shown usually runs now, once Kav's server has named its routes; asked once a way, and its words made
+    // from what it said, again in a new language.
+    var lateness by remember(route, way) { mutableStateOf<KavLive.Lateness?>(null) }
     LaunchedEffect(way, live.routes) {
         if (live.routes.isEmpty()) return@LaunchedEffect
-        late = withContext(Dispatchers.IO) { KavLive.lateness(live.routes) }
-            ?.let { lateLine(it, live.routes, lateBand(java.util.Calendar.getInstance(ISRAEL)), java.time.LocalDate.now(ISRAEL.toZoneId())) }
+        lateness = withContext(Dispatchers.IO) { KavLive.lateness(live.routes) }
+    }
+    val late = remember(lateness, live.routes, T.lang) {
+        lateness?.let { lateLine(it, live.routes, lateBand(java.util.Calendar.getInstance(ISRAEL)), java.time.LocalDate.now(ISRAEL.toZoneId())) }
     }
     // The line's other ways' live locations too, as often while the page shows, so a switch to one shows its own at once.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -1551,7 +1557,7 @@ private fun LinePage(
             }
         }
     }
-    val weekNext = remember(route) {
+    val weekNext = remember(route, StopNames.english) {
         if (route < 0) null else nextStart(net, routes)?.let { (t, at) ->
             val from = net.stopName(net.stStop[net.tripStart[t]])
             val midnight = Schedules.base(Schedules.today())
@@ -1560,7 +1566,7 @@ private fun LinePage(
     }
     var wayNext by remember(way) { mutableStateOf<NextStart?>(null) }
     var wayNextFound by remember(way) { mutableStateOf(false) }
-    LaunchedEffect(way) {
+    LaunchedEffect(way, StopNames.english) {
         val w = way ?: return@LaunchedEffect
         val l = line ?: return@LaunchedEffect
         wayNext = withContext(Dispatchers.IO) { runCatching { scheduleNextStart(net, l, w) }.getOrNull() }
@@ -1724,7 +1730,7 @@ private fun LinePage(
                 horizontalArrangement = Arrangement.spacedBy(K.gap2),
             ) {
                 if (all.size > 1) {
-                    val labels = remember(all) { wayLabels(net, all) }
+                    val labels = remember(all, T.lang, StopNames.english) { wayLabels(net, all) }
                     all.forEachIndexed { i, _ -> Chip(labels.getOrElse(i) { "" }, i == pick) { picked = i; focus = -1 } }
                 } else weekWays.forEach { (r, label) -> Chip(label, r == route) { if (r != route) onWeekWay(r) } }
             }
