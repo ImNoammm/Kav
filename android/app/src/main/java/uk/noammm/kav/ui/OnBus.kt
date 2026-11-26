@@ -67,6 +67,9 @@ internal object OnBus {
     // The buses the phone travels with now, for Home's card.
     var picks by mutableStateOf<List<BusPick>>(emptyList())
 
+    // The bus Follow was tapped for, and its stops, while the sheet that asks where the rider gets off is open.
+    var following by mutableStateOf<Pair<BusPick, OnBusStops>?>(null)
+
     // Kav's server is asked about the buses around the rider at most this often.
     const val ASK_S = 15L
 
@@ -254,7 +257,7 @@ private fun onBusRide(model: KavModel, net: Net, p: BusPick, d: OnBusStops, stop
     val to = d.stops.lastIndexOf(stop).takeIf { it > 0 } ?: return null
     val lines = (0 until net.nRoutes).filterTo(HashSet()) { net.rShort[it] == p.line.number && net.rType[it] == p.line.type }
     val here = model.here?.takeIf { model.hereFresh } ?: (p.bus.spot.lat to p.bus.spot.lon)
-    return OnBoard.trip(net, lines, d.stops, to, here, System.currentTimeMillis() / 1000, d.shape)
+    return OnBoard.trip(net, lines, d.stops, to, here, System.currentTimeMillis() / 1000, d.shape, first = KavLive.firstOf(p.bus.key))
 }
 
 // Home's card: the bus the phone travels with, to follow, or not. A trip under way on that bus's line is followed already.
@@ -272,7 +275,6 @@ internal fun OnBusCard(model: KavModel, modifier: Modifier = Modifier) {
     val ready = picks.filter { stops[it.bus.key]?.ahead?.isNotEmpty() == true }
     var shown by remember { mutableStateOf(ready) }
     if (ready.isNotEmpty()) shown = ready
-    var following by remember { mutableStateOf<BusPick?>(null) }
     AnimatedVisibility(
         ready.isNotEmpty(), modifier,
         enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
@@ -293,23 +295,34 @@ internal fun OnBusCard(model: KavModel, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(start = K.gap4, end = K.gap4, top = K.gap1),
             )
             for (pk in shown) {
+                val d = stops[pk.bus.key]
                 ListRow(
                     T("Follow line ${T.ltr(pk.line.number)}", "מעקב אחרי קו ${T.ltr(pk.line.number)}"),
-                    subtitle = T("To ⁨${pk.line.to}⁩", "אל ⁨${pk.line.to}⁩"),
+                    subtitle = T("To \u2068${towards(net, pk, d)}\u2069", "אל \u2068${towards(net, pk, d)}\u2069"),
                     leading = { net?.let { LineBadge(it, -1, label = pk.line.number, type = pk.line.type, agency = pk.line.agency) } },
-                    onClick = { following = pk },
+                    onClick = { if (d != null) OnBus.following = pk to d },
                 )
             }
             KavButton(
                 T("Not on a bus", "לא באוטובוס"),
                 { val now = System.currentTimeMillis() / 1000; shown.forEach { OnBus.decline(it.bus.key, now) }; OnBus.picks = emptyList() },
-                Modifier.padding(start = K.gap2, bottom = K.gap2), style = ButtonStyle.Plain,
+                Modifier.padding(bottom = K.gap1), style = ButtonStyle.Plain,
             )
         }
     }
-    val pk = following
-    val d = pk?.let { stops[it.bus.key] }
-    if (pk != null && d != null && net != null) FollowSheet(model, net, pk, d) { following = null }
+}
+
+// Where the bus goes: its trip's last stop as the timetable names it, in the rider's language for stop names; else as the
+// server has it.
+private fun towards(net: Net?, pk: BusPick, d: OnBusStops?): String =
+    d?.stops?.lastOrNull()?.let { net?.stopName(it) } ?: pk.line.to
+
+// The sheet Follow opens, drawn by Home outside its list.
+@Composable
+internal fun OnBusSheet(model: KavModel) {
+    val (pk, d) = OnBus.following ?: return
+    val net = model.net ?: uk.noammm.kav.Loaded.net ?: return
+    FollowSheet(model, net, pk, d) { OnBus.following = null }
 }
 
 // Where the rider gets off: the stops the bus still has ahead; a tap starts the ride there.
@@ -320,7 +333,7 @@ private fun FollowSheet(model: KavModel, net: Net, pk: BusPick, d: OnBusStops, o
     BottomSheet(onDismiss, scrolls = true) { close ->
         SheetHeader(
             T("Where do you get off?", "איפה יורדים?"), { close(onDismiss) },
-            subtitle = T("Line ${T.ltr(pk.line.number)} to ⁨${pk.line.to}⁩", "קו ${T.ltr(pk.line.number)} אל ⁨${pk.line.to}⁩"),
+            subtitle = T("Line ${T.ltr(pk.line.number)} to \u2068${towards(net, pk, d)}\u2069", "קו ${T.ltr(pk.line.number)} אל \u2068${towards(net, pk, d)}\u2069"),
         )
         ListGroup(Modifier.padding(top = K.gap3)) {
             for (g in d.ahead) row {

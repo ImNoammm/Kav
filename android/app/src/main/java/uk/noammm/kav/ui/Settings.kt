@@ -483,7 +483,7 @@ internal fun OnTheWayChoices(
         row {
             var suggestBus by remember { mutableStateOf(OnBus.suggest(ctx)) }
             ToggleRow(
-                T("Recognize the bus", "זיהוי האוטובוס"), suggestBus, { RouteGlyph(toggleInk(suggestBus)) }, info = T(
+                T("Recognize the bus", "זיהוי האוטובוס"), suggestBus, { ModeGlyph(Mode.BUS, toggleInk(suggestBus), 18.dp) }, info = T(
                     "While Kav is open and you move with a bus, Home offers to follow it. Kav's server is asked for the buses around you.",
                     "כש-Kav פתוחה ואתם נוסעים עם אוטובוס, מסך הבית מציע לעקוב אחריו. השרת של Kav נשאל על האוטובוסים סביבכם.",
                 ),

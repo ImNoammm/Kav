@@ -177,6 +177,8 @@ internal fun HomeScreen(
         }
     }
 
+    // Follow's sheet, from the on-bus card in the list above (OnBus.kt).
+    OnBusSheet(model)
     if (creating) FavouriteEditor(
         existing = null,
         onSave = { name, icon ->
