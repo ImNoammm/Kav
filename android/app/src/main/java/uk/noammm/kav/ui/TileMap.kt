@@ -1480,7 +1480,7 @@ internal fun focalPadding(anchor: Offset, w: Float, h: Float): DoubleArray = dou
 
 // Kav's own map shows its buildings flat until it leans back: the 3D ones stand over them once it has, so straight
 // down they cost nothing (a layer at no opacity isn't drawn) and a tilted map, navigation's own included, shows them
-// in 3D. They stand as Google Maps' do: from its zoom (the style's minzoom), whole and at once, never see-through. The
+// in 3D. They stand as Google Maps' do, from the style's minzoom: whole and at once, never see-through. The
 // map draws see-through buildings in two passes, their depth first, and goes on drawing a tile's so for as long as it
 // holds the tile, so buildings faded in by their opacity cost both passes for as long as the map then stays tilted.
 // Only the opacity changes: a change to the heights or to whether the layer shows has the whole map's tiles laid out

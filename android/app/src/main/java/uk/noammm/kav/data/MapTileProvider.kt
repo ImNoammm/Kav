@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.ui.Lang
 import uk.noammm.kav.ui.Look
+import kotlin.math.log2
 
 // Where a map type's tiles, names and credit come from (MapFile.Type): Kav's own map on the phone, satellite photos
 // under its names, or one of OpenFreeMap's styles, from its pack on the phone or, while that isn't there, from
@@ -38,7 +39,7 @@ sealed class MapTileProvider(val pack: MapPack) {
             else -> return null
         }
         val style = JSONObject(asset(ctx, name).replace("__MAP__", tiles))
-        if (!MapFile.buildings3d) withoutBuildings(style)
+        if (!MapFile.buildings3d) withoutBuildings(style) else buildingsFrom(style, ctx.resources.displayMetrics.density)
         MapLabels.rewrite(style, MapLabels.Schema.PROTOMAPS, labels)
         return MapShields.apply(style, MapLabels.Schema.PROTOMAPS)
     }
@@ -163,6 +164,19 @@ object MapLabels {
 internal fun withoutBuildings(style: JSONObject): JSONObject = style.put("layers", style.getJSONArray("layers").let { all ->
     JSONArray().apply { for (i in 0 until all.length()) all.getJSONObject(i).takeIf { it.optString("id") !in setOf("buildings", "buildings_3d") }?.let(::put) }
 })
+
+// Kav's zoom the 3D buildings begin at. Google Maps begins its own a little closer in, but navigation follows a ride at
+// 18.3 (Navigate's Follow) and a ride keeps its buildings: they begin clear of that, and no further out than it takes.
+internal const val BUILDINGS_FROM_Z = 18f
+
+// The 3D buildings from that zoom on a screen of this density. The map engine counts its zoom in density-independent
+// pixels and in tiles twice the size of Kav's, so one zoom of Kav's is another of the engine's on each screen: a number
+// fixed in the style file (it holds the one for density 2) would begin them after a ride's zoom on a denser screen.
+internal fun buildingsFrom(style: JSONObject, density: Float): JSONObject = style.apply {
+    val layers = getJSONArray("layers")
+    for (i in 0 until layers.length()) layers.getJSONObject(i).takeIf { it.optString("id") == "buildings_3d" }
+        ?.put("minzoom", BUILDINGS_FROM_Z - 1.0 - log2(density.toDouble()))
+}
 
 // Road numbers drawn as Israel's route markers (traffic sign 611): the number in the colour of the road's class on a
 // white plate, in a frame of that colour. Freeways blue, main roads red, regional roads green and local roads black, as

@@ -54,7 +54,7 @@ object MapFile {
 
     suspend fun styleJson(ctx: Context, t: Type, look: Look, labels: Lang, preview: Boolean): String? {
         val p = provider(t)
-        val key = "$t|$look|$labels|$preview|${p.pack.state is MapPack.State.Ready}|$buildings3d"
+        val key = "$t|$look|$labels|$preview|${p.pack.state is MapPack.State.Ready}|$buildings3d|${ctx.resources.displayMetrics.density}"
         synchronized(made) { made[key] }?.let { return it }
         val json = withContext(Dispatchers.Default) { p.style(ctx, look, labels, preview)?.toString() } ?: return null
         synchronized(made) { made[key] = json }
