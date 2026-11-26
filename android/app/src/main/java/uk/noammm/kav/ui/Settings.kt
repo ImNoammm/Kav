@@ -1629,7 +1629,7 @@ private fun LinkCustomization() {
     val ctx = LocalContext.current
     var style by remember { mutableStateOf(Prefs.linkStyle(ctx)) }
     fun save(next: uk.noammm.kav.data.ShareStyle) { style = next; Prefs.setLinkStyle(ctx, next) }
-    // Kav's: a week, the page as Kav is, and everything on it.
+    // Kav's: a week, and the page as Kav is.
     Sub(T("Sharing a trip", "שיתוף נסיעה"))
     DefaultOrCustom(style == uk.noammm.kav.data.ShareStyle(), { save(uk.noammm.kav.data.ShareStyle()) }) {
     // Made where the rider picked (TripShare.server).
@@ -1677,21 +1677,11 @@ private fun LinkCustomization() {
                 { save(style.copy(theme = themes[it])) })
         }
     }
-    Sub(T("On the shared page", "בעמוד המשותף"))
-    Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-        SwitchOrderRows(
-            style.order, { it },
-            { "Kav" },
-            on = { it in style.apps },
-            onToggle = { id -> save(style.copy(apps = if (id in style.apps) style.apps - id else style.apps + id)) },
-            onOrder = { save(style.copy(order = it)) },
-        )
-    }
     }
 }
 
 // Rows that each turn something on or off and can be dragged into another order by their handle (or moved up and down
-// by TalkBack's actions): the share page's apps and the planners' tabs. A held row lifts and follows the finger, and the
+// by TalkBack's actions): the planners' tabs. A held row lifts and follows the finger, and the
 // order changes as it passes half of a neighbour. A row that can't be turned off right now shows its switch dimmed.
 @Composable
 internal fun <I> SwitchOrderRows(

@@ -115,7 +115,7 @@ private fun EveryPlannerRows(theirs: List<String>) {
         KavPlan.tabOrder = order
         Prefs.setPlannerTabs(ctx, order)
     }
-    // Laid out as the share page's apps (SwitchOrderRows): a switch shows or hides a planner's tab (an extension's
+    // In SwitchOrderRows: a switch shows or hides a planner's tab (an extension's
     // switches its planner on or off), and its handle drags it to another place. The chosen planner's tab can be hidden
     // only while an extension's tab is left, so until then its switch stays on, dimmed.
     val shown = KavPlan.plannerTabs()

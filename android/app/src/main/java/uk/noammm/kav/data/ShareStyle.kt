@@ -31,13 +31,13 @@ data class ShareStyle(
 
         fun read(o: JSONObject): ShareStyle {
             val defaults = ShareStyle()
-            val shown = o.optJSONArray("apps")
             val savedOrder = o.optJSONArray("order")
             val order = savedOrder?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it in APPS }.distinct() }.orEmpty()
             return ShareStyle(
                 o.optString("language").takeIf { it in listOf("auto", "en", "he") } ?: defaults.language,
                 o.optString("theme").let { if (it == "black") "oled" else it }.takeIf { it in listOf("auto", "oled", "dark", "light") } ?: defaults.theme,
-                if (shown == null) defaults.apps else (0 until shown.length()).map { shown.optString(it) }.filter { it in APPS }.toSet(),
+                // Kav's button is always on the page, whatever an older Kav saved: there is nothing else to pick.
+                defaults.apps,
                 order + APPS.filter { it !in order },
                 o.optString("stopLanguage").takeIf { it in listOf("auto", "en", "he") } ?: defaults.stopLanguage,
                 o.optInt("expiryDays").takeIf { it in listOf(3, 7, 30) } ?: defaults.expiryDays,
