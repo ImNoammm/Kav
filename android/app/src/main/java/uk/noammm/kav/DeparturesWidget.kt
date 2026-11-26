@@ -8,6 +8,7 @@ import android.content.Intent
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import uk.noammm.kav.data.KavLive
+import uk.noammm.kav.data.stopOfKey
 import uk.noammm.kav.ui.Shown
 import uk.noammm.kav.ui.T
 import uk.noammm.kav.ui.clockFormat
