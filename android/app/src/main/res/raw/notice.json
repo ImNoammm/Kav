@@ -2,14 +2,10 @@
   "id": "4.4-paying-paused",
   "en": {
     "title": "A note about this update",
-    "text": "you can't pay inside kav anymore. instead, \"pay for a ride\" on home and under each ride of a trip opens the rav-pass app, and you pay there. kav sends it nothing about you or your ride.",
-    "helpTitle": "kav needs your help",
-    "help": "kav has no ads and never will. keeping its server and the app running takes time and money, so if kav helps you, buying me a coffee keeps it running."
+    "text": "you can't pay inside kav anymore. instead, \"pay for a ride\" on home and under each ride of a trip opens the rav-pass app, and you pay there. kav sends it nothing about you or your ride."
   },
   "he": {
     "title": "הודעה על העדכון הזה",
-    "text": "כבר אי אפשר לשלם בתוך Kav. במקום זה, \"תשלום על נסיעה\" במסך הבית ומתחת לכל נסיעה במסלול פותח את אפליקציית רב-פס, ושם משלמים. Kav לא מעבירה לה שום דבר עליכם או על הנסיעה.",
-    "helpTitle": "Kav צריכה את העזרה שלכם",
-    "help": "ב-Kav אין פרסומות ולא יהיו. התחזוקה של השרת והיישומון דורשת זמן וכסף, אז אם Kav עוזרת לכם, קפה עוזר לה להמשיך לעבוד."
+    "text": "כבר אי אפשר לשלם בתוך Kav. במקום זה, \"תשלום על נסיעה\" במסך הבית ומתחת לכל נסיעה במסלול פותח את אפליקציית רב-פס, ושם משלמים. Kav לא מעבירה לה שום דבר עליכם או על הנסיעה."
   }
 }

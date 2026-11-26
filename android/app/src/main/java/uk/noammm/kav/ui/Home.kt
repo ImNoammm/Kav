@@ -315,6 +315,13 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
 // on every return to the Home tab.
 internal object Openings {
     var count by mutableIntStateOf(0)
+    // The openings Kav's own popups may come in (StartPopups): its screen started anew, or Kav back after AWAY_MS out of
+    // sight. A short visit to another app and back (paying in Rav-Pass, say) is not one, and neither is Kav's screen
+    // brought back by Android as it was left (a turned phone, or Kav closed in the background meanwhile).
+    var popups by mutableIntStateOf(0)
+    const val AWAY_MS = 60 * 60_000L
+    // When Kav last went out of sight, by the clock that doesn't jump with the time of day.
+    var leftAt = 0L
     // False while the launch screen's arrow flies off: a popup's window would cut it short.
     var launched by mutableStateOf(true)
 }

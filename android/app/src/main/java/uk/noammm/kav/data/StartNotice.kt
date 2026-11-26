@@ -3,12 +3,12 @@ package uk.noammm.kav.data
 import android.content.Context
 import org.json.JSONObject
 import uk.noammm.kav.R
-import uk.noammm.kav.ui.COFFEE_URL
 import uk.noammm.kav.ui.T
 
-// A message this version brings, said once as Kav opens, to a rider updating and to a fresh install alike. Its text is
-// bundled in res/raw/notice.json, in English and Hebrew, under an id; it's due until the rider closes it, and then never
-// again for that id. A file that's missing or not whole shows nothing. Nothing is asked of the network.
+// A message this version brings, said once as Kav opens, to a rider who updated: a fresh install has no update to be
+// told about, so it never sees it. Its text is bundled in res/raw/notice.json, in English and Hebrew, under an id; it's
+// due until the rider closes it, and then never again for that id. A file that's missing or not whole shows nothing.
+// Nothing is asked of the network.
 internal object StartNotice {
     class Message(
         val id: String,
@@ -17,11 +17,9 @@ internal object StartNotice {
     ) {
         val title get() = T(en[0], he[0])
         val text get() = T(en[1], he[1])
-        val helpTitle get() = T(en[2], he[2])
-        val help get() = T(en[3], he[3])
     }
 
-    private val FIELDS = listOf("title", "text", "helpTitle", "help")
+    private val FIELDS = listOf("title", "text")
 
     // The message in the file when it's whole: an id and every field in English, each Hebrew one falling back to it.
     fun parse(json: String?): Message? = runCatching {
@@ -34,27 +32,27 @@ internal object StartNotice {
 
     fun due(json: String?, closed: Set<String>): Message? = parse(json)?.takeIf { it.id !in closed }
 
-    // Either button closes it: the coffee one opens Buy Me a Coffee first, and both record it as seen.
-    fun close(m: Message, coffee: Boolean, open: (String) -> Unit, record: (String) -> Unit) {
-        if (coffee) open(COFFEE_URL)
+    // At an opening: the message when it's due and Android installed this Kav over an earlier one. On a fresh install
+    // it's put down as seen at once, so a later update that brings the same file doesn't show it either.
+    fun check(json: String?, closed: Set<String>, updatedInPlace: Boolean, record: (String) -> Unit): Message? {
+        val m = due(json, closed) ?: return null
+        if (updatedInPlace) return m
         record(m.id)
+        return null
     }
 
     private fun store(ctx: Context) = ctx.getSharedPreferences("notice", Context.MODE_PRIVATE)
 
     // Small and in the APK, so read as Kav opens, before another popup can take the opening.
-    fun notice(ctx: Context): Message? = due(
+    fun notice(ctx: Context): Message? = check(
         runCatching { ctx.resources.openRawResource(R.raw.notice).bufferedReader().use { it.readText() } }.getOrNull(),
         store(ctx).getStringSet("closed", null).orEmpty(),
-    )
+        runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).let { it.lastUpdateTime > it.firstInstallTime } }
+            .getOrDefault(false),
+    ) { closed(ctx, it) }
 
-    // Seen: and "Enjoying Kav?", which asks for a coffee too, sits out the next opening (StartPopups).
     fun closed(ctx: Context, id: String) {
         val s = store(ctx)
-        s.edit().putStringSet("closed", s.getStringSet("closed", null).orEmpty() + id).putBoolean("supportWaits", true).apply()
+        s.edit().putStringSet("closed", s.getStringSet("closed", null).orEmpty() + id).apply()
     }
-
-    fun supportWaits(ctx: Context) = store(ctx).getBoolean("supportWaits", false)
-
-    fun supportWaited(ctx: Context) = store(ctx).edit().remove("supportWaits").apply()
 }

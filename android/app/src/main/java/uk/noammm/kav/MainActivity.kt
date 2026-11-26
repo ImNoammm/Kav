@@ -46,11 +46,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -178,6 +173,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null && uk.noammm.kav.ext.SafeStart.take(this, intent)) return
         Openings.count++
+        if (savedInstanceState == null) Openings.popups++
         // A new activity after one whose spare map was let go in the background (onTrimMemory) never gets onRestart.
         uk.noammm.kav.ui.SpareMap.back()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -325,6 +321,7 @@ class MainActivity : ComponentActivity() {
     // Kav out of sight, with paying maybe switched in its settings: the shortcuts, tile and ticket notification follow.
     override fun onStop() {
         super.onStop()
+        Openings.leftAt = android.os.SystemClock.elapsedRealtime()
         PayEntry.sync(this)
         // Extensions' home screen widgets drawn again, in the look the rider may have changed, and the next buses' too.
         ExtWidgets.left(this)
@@ -341,6 +338,7 @@ class MainActivity : ComponentActivity() {
     override fun onRestart() {
         super.onRestart()
         Openings.count++
+        if (android.os.SystemClock.elapsedRealtime() - Openings.leftAt >= Openings.AWAY_MS) Openings.popups++
         uk.noammm.kav.ui.SpareMap.back()
     }
 
@@ -800,6 +798,8 @@ private fun Root() {
         Box(Modifier.fillMaxSize()) {
             OnboardingScreen(model) { Prefs.setOnboarded(ctx); onboarded = true }
             uk.noammm.kav.ui.PaySetupHost()
+            // Its switch turned off asks here, as in Settings, and is never left waiting for Home.
+            uk.noammm.kav.ui.PayOffAskHost()
         }
         return
     }
@@ -1400,7 +1400,7 @@ internal fun ImportPrompt(model: KavModel) {
     var failed by remember(uri) { mutableStateOf<String?>(null) }
     var busy by remember(uri) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Dialog(onDismissRequest = { if (!busy) PendingBackup.uri = null }) {
+    uk.noammm.kav.ui.StartDialog(onDismissRequest = { if (!busy) PendingBackup.uri = null }) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.surface1).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
@@ -1447,7 +1447,7 @@ internal fun ImportPrompt(model: KavModel) {
 @Composable
 internal fun LookPrompt(onDone: () -> Unit) {
     // Back and a tap outside keep the look as it is, as Done does.
-    Dialog(onDismissRequest = onDone) {
+    uk.noammm.kav.ui.StartDialog(onDismissRequest = onDone) {
         // A dialog is its own window, out of reach of the theme's fade: picking a look eases its colours instead.
         val surface = androidx.compose.animation.animateColorAsState(K.surface1, androidx.compose.animation.core.tween(300), label = "lookSurface").value
         val ink = androidx.compose.animation.animateColorAsState(K.text, androidx.compose.animation.core.tween(300), label = "lookInk").value
@@ -1458,57 +1458,6 @@ internal fun LookPrompt(onDone: () -> Unit) {
             Text(T("Pick a look", "בחרו מראה"), style = K.type.title, color = ink)
             LookChoices { Text(it, style = K.type.caption, color = quiet, modifier = Modifier.padding(top = K.gap4, bottom = K.gap2)) }
             KavButton(T("Done", "סיום"), onDone, Modifier.padding(top = K.gap5), wide = true)
-        }
-    }
-}
-
-// Shown once per install: after setup, or after the look prompt on an update.
-@Composable
-internal fun SupportPrompt(onDone: () -> Unit) {
-    val ctx = LocalContext.current
-    Dialog(onDismissRequest = onDone) {
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.surface1).padding(K.gap5),
-        ) {
-            Text(T("Enjoying Kav?", "נהנים מקו?"), style = K.type.title)
-            Text(
-                T(
-                    "Kav is made to protect every user's privacy and to make riding the bus a little more " +
-                        "bearable (as much as possible).",
-                    "קו מפותחת במטרה לשמור על הפרטיות של כל משתמש ולהפוך את השימוש באוטובוסים לחוויה " +
-                        "נסבלת יותר (כמה שאפשר).",
-                ),
-                fontSize = 14.sp, color = K.dim, lineHeight = 20.sp, modifier = Modifier.padding(top = K.gap2),
-            )
-            Text(
-                buildAnnotatedString {
-                    append(T(
-                        "If you'd like to support Kav's development, you're welcome to tap the button below. " +
-                            "If that's not an option for you, you can show your support with ",
-                        "אם תרצו לתרום להמשך הפיתוח של האפליקציה, אתם מוזמנים ללחוץ על הכפתור למטה. " +
-                            "אם אין לכם אפשרות, אתם מוזמנים להביע תמיכה דרך ",
-                    ))
-                    withLink(LinkAnnotation.Url(REPO_URL, TextLinkStyles(SpanStyle(color = K.accentInk)))) {
-                        append(T("a star on GitHub", "כוכב בגיטהאב"))
-                    }
-                    append(".")
-                },
-                fontSize = 14.sp, color = K.dim, lineHeight = 20.sp, modifier = Modifier.padding(top = K.gap2),
-            )
-            Text(
-                T(
-                    "*Donating is just a thank-you and 100% optional. You won't lose any features if you can't :)",
-                    "*תרומה היא אות הערכה בלבד, והיא אופציונלית לגמרי. לא תאבדו אף פיצ'ר אם אין ביכולתכם לתרום :)",
-                ),
-                style = K.type.caption, modifier = Modifier.padding(top = K.gap3),
-            )
-            KavButton(
-                T("Buy me a coffee", "קנו לי קפה"), { openLink(ctx, COFFEE_URL); onDone() }, Modifier.padding(top = K.gap5), wide = true,
-            )
-            KavButton(
-                T("Have you seen the economy??", "ראית את מצב האקונומיה??"), onDone, Modifier.padding(top = K.gap2),
-                style = ButtonStyle.Secondary, wide = true,
-            )
         }
     }
 }
@@ -2256,7 +2205,7 @@ object Prefs {
     private fun inIsrael(p: Transit.Place) = p.lat in 29.0..34.0 && p.lon in 34.0..36.5
 
     fun onboarded(ctx: Context): Boolean = store(ctx).getBoolean("onboarded", false)
-    fun setOnboarded(ctx: Context) = store(ctx).edit().putBoolean("onboarded", true).putBoolean("pickSupport", true).apply()
+    fun setOnboarded(ctx: Context) = store(ctx).edit().putBoolean("onboarded", true).apply()
 
     fun pickLook(ctx: Context): Boolean = store(ctx).getBoolean("pickLook", false)
     fun lookPicked(ctx: Context) {
@@ -2265,14 +2214,12 @@ object Prefs {
         e.apply()
     }
 
-    fun pickSupport(ctx: Context): Boolean = store(ctx).getBoolean("pickSupport", false)
-    fun supportShown(ctx: Context) = store(ctx).edit().remove("pickSupport").apply()
-
-    // Runs once, the first time 2.0, 3.0, 4.0, 4.3 and then 5.0 open on an install that had an older version.
+    // Runs once, the first time 2.0, 3.0, 4.0, 4.3, 5.0 and then the release after 5.1 open on an install that had an older
+    // version.
     fun upgrade(ctx: Context) {
         val s = store(ctx)
         val version = s.getInt("prefsVersion", 0)
-        if (version >= 8) return
+        if (version >= 9) return
         val e = s.edit()
         if (version < 2) {
             s.getStringSet("filtersOff", null)?.let { off ->
@@ -2280,7 +2227,7 @@ object Prefs {
                 e.putStringSet("filtersOff", off - setOf("CARMELIT", "RAKAVLIT", "SHARE_TAXI") + cable)
             }
             if (s.getBoolean("onboarded", false)) {
-                e.putBoolean("privateSearch", true).putBoolean("pickLook", true).putBoolean("pickSupport", true)
+                e.putBoolean("privateSearch", true).putBoolean("pickLook", true)
             }
         }
         // Stop names have a language of their own, Hebrew unless chosen. A rider who had Kav in English keeps English
@@ -2313,7 +2260,12 @@ object Prefs {
         }
         // Hebrew is Kav's language until chosen (lang()); a rider from before who never chose one had English and keeps it.
         if (version < 8 && s.getBoolean("onboarded", false) && !s.contains("lang")) e.putString("lang", Lang.EN.code)
-        e.putInt("prefsVersion", 8).apply()
+        // Kav no longer asks for support by itself: what kept that asking goes.
+        if (version < 9) {
+            e.remove("pickSupport")
+            ctx.getSharedPreferences("notice", Context.MODE_PRIVATE).edit().remove("supportWaits").apply()
+        }
+        e.putInt("prefsVersion", 9).apply()
     }
 
     fun filters(ctx: Context): Set<ResultFilter> {

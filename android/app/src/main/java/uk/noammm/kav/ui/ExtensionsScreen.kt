@@ -1279,7 +1279,7 @@ internal fun BlockedPrompt(items: List<Pair<String, Boolean>>, onLater: () -> Un
     val names = items.map { it.first }
     val source = items.any { it.second }
     val one = items.size == 1
-    Dialog(onDismissRequest = onLater) {
+    StartDialog(onDismissRequest = onLater) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.surface1).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),

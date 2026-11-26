@@ -9,7 +9,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
 
@@ -27,7 +26,7 @@ fun MapPrompt() {
     val state = pack.state
     if (dismissed || state is MapPack.State.Ready) return
     val ctx = LocalContext.current
-    Dialog(onDismissRequest = { dismissed = true }) {
+    StartDialog(onDismissRequest = { dismissed = true }) {
         Column(
             Modifier.fillMaxWidth().panel(K.rCard, solid = true).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),

@@ -94,7 +94,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uk.noammm.kav.ext.Capabilities
@@ -395,7 +394,7 @@ private fun NoticeRow(icon: ImageVector, text: String) {
 // a short screen).
 @Composable
 internal fun Popup(onDismiss: () -> Unit, buttons: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+    StartDialog(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().panel(K.rCard, solid = true).padding(K.gap5), verticalArrangement = Arrangement.spacedBy(K.gap4)) {
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(K.gap4), content = content)
             buttons()

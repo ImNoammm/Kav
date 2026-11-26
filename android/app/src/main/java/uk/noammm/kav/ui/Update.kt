@@ -36,7 +36,6 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import uk.noammm.kav.BuildConfig
 import uk.noammm.kav.KavModel
@@ -107,7 +106,7 @@ private fun ReleasePrompt(
     title: String, versions: String, release: Updates.Release, onLater: () -> Unit, status: @Composable () -> Unit = {},
     later: Boolean = true, action: @Composable RowScope.() -> Unit,
 ) {
-    Dialog(onDismissRequest = onLater) {
+    StartDialog(onDismissRequest = onLater) {
         Column(
             Modifier.fillMaxWidth().panel(K.rCard, solid = true).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
@@ -366,12 +365,11 @@ internal fun UpdatedNotice(notice: AutoUpdate.Notice, onClose: () -> Unit) =
         KavButton(T("Close", "סגירה"), onClose, Modifier.weight(1f))
     }
 
-// The message this version brings (StartNotice), once, in ReleasePrompt's look: its text, then why Kav needs help, and
-// two ways to close it, Got it and Buy me a coffee, which opens the page as well. On a short screen the text gives way,
-// so the ask and the buttons stay in view.
+// The message this version brings (StartNotice), once, in ReleasePrompt's look: its text and one way to close it. On a
+// short screen the text scrolls, so the button stays in view.
 @Composable
-internal fun NoticePrompt(notice: StartNotice.Message, onClose: (coffee: Boolean) -> Unit) {
-    Dialog(onDismissRequest = { onClose(false) }) {
+internal fun NoticePrompt(notice: StartNotice.Message, onClose: () -> Unit) {
+    StartDialog(onDismissRequest = onClose) {
         Column(
             Modifier.fillMaxWidth().panel(K.rCard, solid = true).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
@@ -388,16 +386,7 @@ internal fun NoticePrompt(notice: StartNotice.Message, onClose: (coffee: Boolean
                 Spacer(Modifier.height(K.gap3))
                 Text(notice.text, style = K.type.subhead)
             }
-            Column {
-                Separator(0.dp)
-                Spacer(Modifier.height(K.gap3))
-                Text(notice.helpTitle, style = K.type.headline)
-                Text(notice.help, style = K.type.subhead, modifier = Modifier.padding(top = K.gap1))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                KavButton(T("Got it", "הבנתי"), { onClose(false) }, Modifier.heightIn(min = 52.dp), style = ButtonStyle.Secondary)
-                KavButton(T("Buy me a coffee", "קנו לי קפה"), { onClose(true) }, Modifier.weight(1f))
-            }
+            KavButton(T("Got it", "הבנתי"), onClose, Modifier.fillMaxWidth())
         }
     }
 }

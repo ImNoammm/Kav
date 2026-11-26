@@ -58,7 +58,10 @@ import uk.noammm.kav.tripNotice
 // draws: it reads nothing of Rav-Pass's screen and takes no touch but its own.
 //
 // Rav-Pass opens inside Kav's own task (its pay link is started without a new task), so Kav can tell from its own task
-// whether Rav-Pass is what's in front. Only from Android 12L (API 32) does Android say whether a task is visible
+// whether Rav-Pass is what's in front. Two things in Rav-Pass take it further, and the button stays through both: its
+// sign-in screen puts Google's phone number picker over itself, another app's screen in Kav's task, and signing in
+// starts Rav-Pass again in a task of its own (a new task that clears it), which Kav's task can't see but the ticket
+// reader can. Only from Android 12L (API 32) does Android say whether a task is visible
 // (TaskInfo.isVisible); before it Kav could see that Rav-Pass is on top of its task but not whether the rider has gone
 // Home or to another app since, so there the button is never offered.
 internal object PayOverlay {
@@ -81,10 +84,17 @@ internal object PayOverlay {
         // Kav's task shares the screen with another app (split screen): the button, placed by the whole screen, could sit
         // over the other app, so it isn't shown.
         val split: Boolean = false,
+        // Once Rav-Pass has been seen: another app's screen on top of Kav's task, which Rav-Pass opened over itself.
+        val overRavPass: Boolean = false,
+        // Rav-Pass's window in front as the ticket reader sees it, in whatever task it now is.
+        val ravPassFront: Boolean = false,
     )
 
-    // Shown only with Rav-Pass on top of Kav's task, that task in front, the phone on and unlocked, and the rider's yes.
-    fun shows(s: Seen) = s.chosen && s.allowed && s.ravPassOnTop && s.taskVisible && s.screenOn && !s.locked && !s.split
+    // Rav-Pass in front, from Kav: on top of Kav's task, under a screen it opened there, or started again in its own task.
+    fun inRavPass(s: Seen) = s.ravPassFront || s.taskVisible && (s.ravPassOnTop || s.overRavPass)
+
+    // Shown only with Rav-Pass in front, the phone on and unlocked, and the rider's yes.
+    fun shows(s: Seen) = s.chosen && s.allowed && inRavPass(s) && s.screenOn && !s.locked && !s.split
 
     // Whether to go on watching after a Pay tap: until Rav-Pass has come up (for a moment), then for as long as it stays
     // on top of Kav's task, unless hidden for so long that the rider has plainly moved on.
@@ -92,7 +102,7 @@ internal object PayOverlay {
         !s.chosen || !s.allowed -> false
         !seenRavPass -> sinceTapMs < WAIT_MS
         // Something over Rav-Pass for a moment (Android's camera permission, a payment sheet): watch on for a minute.
-        !s.ravPassOnTop -> hiddenMs < AWAY_MS
+        !s.ravPassOnTop && !s.overRavPass && !s.ravPassFront -> hiddenMs < AWAY_MS
         else -> hiddenMs < GIVE_UP_MS
     }
 
@@ -202,7 +212,7 @@ internal object PayOverlay {
             val ctx = app ?: return
             val s = seen(ctx)
             val now = System.currentTimeMillis()
-            if (s.ravPassOnTop) seenRavPass = true
+            if (s.ravPassOnTop || s.ravPassFront) seenRavPass = true
             if (shows(s)) { show(ctx); hiddenSince = now; window?.keepClear() } else hide()
             if (!watches(s, now - tappedAt, seenRavPass, if (window != null) 0 else now - hiddenSince)) { disarm(); return }
             main.postDelayed(this, if (window != null) 250 else 500)
@@ -217,13 +227,17 @@ internal object PayOverlay {
             ctx.getSystemService(ActivityManager::class.java).appTasks.mapNotNull { t -> runCatching { t.taskInfo }.getOrNull() }
         }.getOrDefault(emptyList())
         val task = tasks.firstOrNull { it.topActivity?.packageName == RavPass.PACKAGE } ?: tasks.firstOrNull()
+        val top = task?.topActivity?.packageName
+        // Rav-Pass's window the one in front as the ticket reader sees it; null without the reader. Not yet while Kav's
+        // own screen is still showing as Rav-Pass starts (the reader is told only of Rav-Pass's windows, so its active
+        // window is none while Kav's is in front).
+        val reader = uk.noammm.kav.TicketReader.running?.let { r ->
+            runCatching { r.rootInActiveWindow?.packageName == RavPass.PACKAGE }.getOrDefault(true)
+        }
         return Seen(
-            // Rav-Pass at the top of Kav's task, and its window the one in front as the ticket reader sees it: not yet while
-            // Kav's own screen is still showing as Rav-Pass starts (the reader is told only of Rav-Pass's windows, so its
-            // active window is none while Kav's is in front).
-            ravPassOnTop = task?.topActivity?.packageName == RavPass.PACKAGE && (uk.noammm.kav.TicketReader.running?.let { r ->
-                runCatching { r.rootInActiveWindow?.packageName == RavPass.PACKAGE }.getOrDefault(true)
-            } ?: true),
+            ravPassOnTop = top == RavPass.PACKAGE && reader != false,
+            overRavPass = seenRavPass && top != null && top != RavPass.PACKAGE && top != ctx.packageName,
+            ravPassFront = reader == true,
             taskVisible = task?.isVisible == true,
             screenOn = ctx.getSystemService(PowerManager::class.java)?.isInteractive == true,
             locked = ctx.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked != false,
