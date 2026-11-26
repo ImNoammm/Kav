@@ -437,7 +437,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         if (uk.noammm.kav.ext.Actions.take(null, "stop.save") { org.json.JSONObject().put("stops", org.json.JSONArray(keys)) }) return
         saveStopsOwn(ctx, keys)
     }
-    fun saveStopsOwn(ctx: Context, keys: List<String>) { savedStops = keys; Prefs.setSavedStops(ctx, keys) }
+    fun saveStopsOwn(ctx: Context, keys: List<String>) { savedStops = keys; Prefs.setSavedStops(ctx, keys); DeparturesWidget.refresh(ctx) }
     var savedLines by mutableStateOf(ctx?.let { Prefs.savedLines(it) } ?: emptyList())
     fun saveLines(ctx: Context, keys: List<String>) {
         if (uk.noammm.kav.ext.Actions.take(null, "line.save") { org.json.JSONObject().put("lines", org.json.JSONArray(keys)) }) return
