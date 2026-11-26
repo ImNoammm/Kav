@@ -1867,17 +1867,60 @@ private fun languageSummary(): String {
     ).joinToString(" · ")
 }
 
-// Kav's language, the languages of stops' and the map's names, and the clock, each under its own label: setup's first
-// step and Settings' page look the same.
+// One language for Kav, stop names and the map's names, or Custom, which opens the three apart; then the clock. Setup's
+// first step and Settings' page look the same.
 @Composable
 internal fun LanguageAndTime(ctx: android.content.Context) {
-    Sub(T("Kav's language", "השפה של Kav"))
-    LanguageRow(ctx)
-    StopNamesRow(ctx)
-    Sub(T("Names on the map", "שמות במפה"))
-    MapLabelsRow(ctx)
+    // The language being switched to counts as Kav's at once, so a tap on it never shows the three apart on the way.
+    val preset = Presets.language(T.wanted ?: T.lang, StopNames.english, MapFile.labels)
+    var picked by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val custom = Presets.custom(picked, preset != null)
+    val langs = Presets.languagesFrom(T.lang)
+    Sub(T("Language", "שפה"))
+    KavSegmented(
+        langs.map { it.label } + T("Custom", "מותאם אישית"),
+        selected = if (custom) langs.size else langs.indexOf(preset),
+        onSelect = { i ->
+            picked = i == langs.size
+            langs.getOrNull(i)?.let { l ->
+                T.switchTo(l); Prefs.setLang(ctx, l)
+                StopNames.english = l == Lang.EN; Prefs.setStopNamesEnglish(ctx, l == Lang.EN)
+                MapFile.labels = l; Prefs.setMapLabels(ctx, l)
+            }
+        },
+    )
+    CustomRows(custom) {
+        Sub(T("Kav's language", "השפה של Kav"))
+        LanguageRow(ctx)
+        StopNamesRow(ctx)
+        Sub(T("Names on the map", "שמות במפה"))
+        MapLabelsRow(ctx)
+    }
     Sub(T("Time format", "תבנית שעה"))
     ClockChoice(ctx)
+}
+
+// Kav's settings or the rider's own: only Custom opens the rows behind it. kavs: the settings are Kav's own now;
+// toKavs puts them back.
+@Composable
+internal fun DefaultOrCustom(kavs: Boolean, toKavs: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    var picked by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val custom = Presets.custom(picked, kavs)
+    KavSegmented(
+        listOf(T("Default", "ברירת מחדל"), T("Custom", "מותאם אישית")), if (custom) 1 else 0,
+        { i -> picked = i == 1; if (i == 0) toKavs() }, modifier,
+    )
+    CustomRows(custom, content)
+}
+
+// The rows Custom opens, in and out with the motion every row that depends on another has.
+@Composable
+private fun CustomRows(open: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    AnimatedVisibility(
+        open,
+        enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+        exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+    ) { Column(content = content) }
 }
 
 @Composable
@@ -2008,9 +2051,10 @@ private fun SeenChoice(model: KavModel, onChoose: () -> Unit) {
 
 @Composable
 private fun LanguageRow(ctx: android.content.Context) {
+    val langs = Presets.languagesFrom(T.lang)
     KavSegmented(
-        Lang.entries.map { it.label }, selected = Lang.entries.indexOf(T.lang),
-        onSelect = { i -> val l = Lang.entries[i]; T.switchTo(l); Prefs.setLang(ctx, l) },
+        langs.map { it.label }, selected = langs.indexOf(T.wanted ?: T.lang),
+        onSelect = { i -> val l = langs[i]; T.switchTo(l); Prefs.setLang(ctx, l) },
     )
 }
 
@@ -2019,9 +2063,10 @@ private fun LanguageRow(ctx: android.content.Context) {
 @Composable
 internal fun StopNamesRow(ctx: android.content.Context) {
     SectionHeader(T("Stop names", "שמות תחנות"))
+    val langs = Presets.languagesFrom(T.lang)
     KavSegmented(
-        listOf("English", "עברית"), selected = if (StopNames.english) 0 else 1,
-        onSelect = { i -> StopNames.english = i == 0; Prefs.setStopNamesEnglish(ctx, i == 0) },
+        langs.map { it.label }, selected = langs.indexOf(if (StopNames.english) Lang.EN else Lang.HE),
+        onSelect = { i -> val en = langs[i] == Lang.EN; StopNames.english = en; Prefs.setStopNamesEnglish(ctx, en) },
     )
 }
 
@@ -2032,9 +2077,10 @@ internal fun searchName() = if (uk.noammm.kav.data.Search.provider == uk.noammm.
 @Composable
 internal fun MapLabelsRow(ctx: android.content.Context) {
     // In the order Kav's languages are listed in.
+    val langs = Presets.languagesFrom(T.lang)
     KavSegmented(
-        listOf("English", "עברית"), selected = if (MapFile.labels == Lang.EN) 0 else 1,
-        onSelect = { i -> val l = if (i == 0) Lang.EN else Lang.HE; MapFile.labels = l; Prefs.setMapLabels(ctx, l) },
+        langs.map { it.label }, selected = langs.indexOf(MapFile.labels),
+        onSelect = { i -> val l = langs[i]; MapFile.labels = l; Prefs.setMapLabels(ctx, l) },
     )
 }
 
