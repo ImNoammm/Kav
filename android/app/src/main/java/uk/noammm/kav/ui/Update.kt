@@ -25,6 +25,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -141,10 +150,99 @@ private fun ReleaseNotes(release: Updates.Release, maxHeight: androidx.compose.u
         Separator(0.dp)
         Spacer(Modifier.height(K.gap3))
         // The notes are GitHub's, in the language they were written in: each line reads in its own direction, so English
-        // notes in a Hebrew Kav start at the left with their dashes first.
-        Text(notes, Modifier.fillMaxWidth(), style = K.type.subhead.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
+        // notes in a Hebrew Kav start at the left with their bullets first.
+        val link = K.accentInk
+        Text(
+            remember(notes, link) { releaseNotesText(notes, SpanStyle(color = link)) }, Modifier.fillMaxWidth(),
+            style = K.type.subhead.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
+        )
     }
 }
+
+// GitHub's release notes are Markdown: shown as text, with bold as bold, italics as italics, a heading as a bold line, a
+// list's marks as bullets, code as its plain words and a link as its words. A link opens only when it is https.
+internal fun releaseNotesText(markdown: String, link: SpanStyle): AnnotatedString = buildAnnotatedString {
+    markdown.lines().forEachIndexed { i, raw ->
+        if (i > 0) append('\n')
+        val heading = HEADING.find(raw)
+        when {
+            heading != null -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { inline(raw.substring(heading.range.last + 1).trimEnd('#', ' '), link) }
+            RULE.matches(raw) -> {}
+            else -> {
+                val item = ITEM.find(raw)
+                val quote = QUOTE.find(raw)
+                when {
+                    item != null -> { append("• "); inline(raw.substring(item.range.last + 1), link) }
+                    quote != null -> inline(raw.substring(quote.range.last + 1), link)
+                    else -> inline(raw, link)
+                }
+            }
+        }
+    }
+}
+
+private val HEADING = Regex("^\\s{0,3}#{1,6}\\s+")
+private val RULE = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")
+private val ITEM = Regex("^\\s*[-*+]\\s+")
+private val QUOTE = Regex("^\\s{0,3}>\\s?")
+private val BARE_URL = Regex("https://[^\\s<>()\\[\\]]*[^\\s<>()\\[\\].,;:!?'\"]")
+
+// One line's words: escapes, `code`, **bold**, *italics*, [words](address), <address> and a bare https address.
+private fun AnnotatedString.Builder.inline(text: String, link: SpanStyle, links: Boolean = true) {
+    var i = 0
+    val plain = StringBuilder()
+    fun flush() { if (plain.isNotEmpty()) { append(plain.toString()); plain.clear() } }
+    fun linked(words: String, url: String) {
+        flush()
+        if (url.startsWith("https://")) withLink(LinkAnnotation.Url(url, TextLinkStyles(link))) { inline(words, link, links = false) }
+        else inline(words, link, links)
+    }
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            c == '\\' && i + 1 < text.length && text[i + 1] in "\\`*_{}[]()#+-.!<>|~" -> { plain.append(text[i + 1]); i += 2 }
+            c == '`' -> {
+                val ticks = text.substring(i).takeWhile { it == '`' }
+                val end = text.indexOf(ticks, i + ticks.length)
+                if (end < 0) { plain.append(ticks); i += ticks.length }
+                else { plain.append(text.substring(i + ticks.length, end).trim()); i = end + ticks.length }
+            }
+            text.startsWith("**", i) || text.startsWith("__", i) -> {
+                val mark = text.substring(i, i + 2)
+                val end = text.indexOf(mark, i + 2)
+                if (end <= i + 2 || (mark == "__" && i > 0 && text[i - 1].isLetterOrDigit())) { plain.append(mark); i += 2 }
+                else { flush(); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { inline(text.substring(i + 2, end), link, links) }; i = end + 2 }
+            }
+            (c == '*' || (c == '_' && (i == 0 || !text[i - 1].isLetterOrDigit()))) && i + 1 < text.length && !text[i + 1].isWhitespace() -> {
+                val end = text.indexOf(c, i + 1)
+                if (end < 0 || text[end - 1].isWhitespace() || (c == '_' && end + 1 < text.length && text[end + 1].isLetterOrDigit())) {
+                    plain.append(c); i++
+                } else { flush(); withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { inline(text.substring(i + 1, end), link, links) }; i = end + 1 }
+            }
+            c == '!' && text.startsWith("![", i) -> {
+                val m = LINK.matchAt(text, i + 1)
+                if (m == null) { plain.append(c); i++ } else { plain.append(m.groupValues[1]); i = m.range.last + 1 }
+            }
+            c == '[' && links -> {
+                val m = LINK.matchAt(text, i)
+                if (m == null) { plain.append(c); i++ } else { linked(m.groupValues[1], m.groupValues[2]); i = m.range.last + 1 }
+            }
+            c == '<' && links -> {
+                val m = AUTOLINK.matchAt(text, i)
+                if (m == null) { plain.append(c); i++ } else { linked(m.groupValues[1], m.groupValues[1]); i = m.range.last + 1 }
+            }
+            c == 'h' && links && text.startsWith("https://", i) && (i == 0 || !text[i - 1].isLetterOrDigit()) -> {
+                val m = BARE_URL.matchAt(text, i)
+                if (m == null) { plain.append(c); i++ } else { flush(); withLink(LinkAnnotation.Url(m.value, TextLinkStyles(link))) { append(m.value) }; i = m.range.last + 1 }
+            }
+            else -> { plain.append(c); i++ }
+        }
+    }
+    flush()
+}
+
+private val LINK = Regex("\\[([^\\]]*)]\\(\\s*<?([^)\\s>]*)>?(?:\\s+\"[^\"]*\")?\\s*\\)")
+private val AUTOLINK = Regex("<(https?://[^>\\s]+)>")
 
 @Composable
 private fun UpdateProgress(model: KavModel) {
