@@ -64,6 +64,16 @@ object NativeRules {
                 .put("toMode", r.int()).put("walkMetres", r.int()).put("walkSec", r.int()).put("gapSec", r.int())
                 .put("sameStop", r.int() == 1).put("fromStop", r.str()).put("toStop", r.str()))
         }
+        for (i in 0 until routes.length()) {
+            val legs = routes.getJSONObject(i).getJSONArray("legs")
+            for (k in 0 until legs.length()) {
+                fun time() = r.int().let { if (it < 0) JSONObject.NULL else it }
+                val leg = legs.getJSONObject(k).put("liveDep", time()).put("liveArr", time())
+                leg.put("turns", JSONArray().apply {
+                    repeat(r.int()) { put(JSONObject().put("way", r.str()).put("street", r.str()).put("metres", r.int()).put("lat", r.int() / 1e6).put("lon", r.int() / 1e6)) }
+                })
+            }
+        }
         return JSONObject().put("query", query).put("routes", routes).put("walks", walks).put("transfers", transfers)
     }
 

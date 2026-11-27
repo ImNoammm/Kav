@@ -5,6 +5,8 @@ import org.json.JSONObject
 import uk.noammm.kav.ActiveJourney
 import uk.noammm.kav.RecentTrip
 import uk.noammm.kav.data.Transit
+import uk.noammm.kav.journeyArrival
+import uk.noammm.kav.ui.Fix
 import uk.noammm.kav.ui.Step
 import java.io.File
 
@@ -91,8 +93,12 @@ object TripEvents {
     internal fun reason(was: Seen) = if (was.step >= was.last) "arrived" else "ended"
 
     // An event as Kav.onTrip tells it: the trip in the shape slots and parts get it (Slots.trip), its places' names, the
-    // step the rider is on and the one navigation shows, and every step of the trip (stepList).
-    internal fun json(event: String, j: ActiveJourney, step: Int, steps: List<Step>, reason: String? = null, shown: Int = -1): JSONObject {
+    // step the rider is on and the one navigation shows, every step of the trip (stepList), and when it gets there as
+    // Kav estimates it now (eta, seconds since 1970, the trip notification's "Arrive").
+    internal fun json(
+        event: String, j: ActiveJourney, step: Int, steps: List<Step>, reason: String? = null, shown: Int = -1,
+        fix: Fix? = null, now: Long = System.currentTimeMillis() / 1000,
+    ): JSONObject {
         val r = j.resolved
         val s = steps.getOrNull(step)
         val leg = legOf(s, j.chosen)
@@ -100,7 +106,25 @@ object TripEvents {
             .put("leg", leg?.let { Pipeline.legJson(it, r) } ?: JSONObject.NULL).put("legIndex", legIndex(s, j.trip))
             .put("shown", shown)
         return JSONObject().put("event", event).put("trip", Slots.trip(j.trip, r)).put("from", j.fromLabel).put("to", j.toLabel)
-            .put("step", stepJson).put("steps", stepList(j, steps)).apply { if (reason != null) put("reason", reason) }
+            .put("step", stepJson).put("steps", stepList(j, steps)).put("eta", journeyArrival(j, steps, step, fix, now))
+            .apply { if (reason != null) put("reason", reason) }
+    }
+
+    // The arrival last told, with its trip, so "eta" is told only as Kav's estimate moves to another minute.
+    private var told: Pair<Transit.Itinerary, Long>? = null
+
+    // Kav working out the trip's arrival again (the trip service, every few seconds, with Kav in the background too):
+    // an "eta" event when it moved to another minute. A trip just started or planned again on the way was told its
+    // arrival with that event.
+    fun arrival(j: ActiveJourney, step: Int, fix: Fix?) {
+        if (!Native.listensToTrips()) return
+        val steps = uk.noammm.kav.ui.buildSteps(j.trip, j.fromLabel, j.toLabel)
+        val now = System.currentTimeMillis() / 1000
+        val eta = journeyArrival(j, steps, step, fix, now)
+        val was = synchronized(this) { told.also { told = j.trip to eta } }
+        if (was == null || was.first !== j.trip || was.second / 60 == eta / 60) return
+        val shown = uk.noammm.kav.TripBridge.shown?.invoke() ?: -1
+        Native.tripEvent(json("eta", j, step, steps, shown = shown, fix = fix, now = now).toString())
     }
 
     // Each step of the trip, in navigation's order, so an extension knows what every one is: its kind, the index of its
@@ -156,6 +180,7 @@ object TripEvents {
         val (j, step) = uk.noammm.kav.TripBridge.journey?.invoke() ?: return
         val steps = uk.noammm.kav.ui.buildSteps(j.trip, j.fromLabel, j.toLabel)
         val shown = uk.noammm.kav.TripBridge.shown?.invoke() ?: -1
-        Native.tripEvent(json("start", j, step, steps, shown = shown).toString(), identity)
+        val fix = uk.noammm.kav.TripBridge.fixNow?.invoke()
+        Native.tripEvent(json("start", j, step, steps, shown = shown, fix = fix).toString(), identity)
     }
 }

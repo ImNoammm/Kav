@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.AddRoad
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.Widgets
@@ -426,6 +427,7 @@ private fun kindIcon(cap: String): ImageVector = when (cap) {
     Capabilities.BOARD -> Icons.Rounded.DepartureBoard
     uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> Icons.Rounded.PhotoCamera
     uk.noammm.kav.ext.TripButtons.CAPABILITY -> Icons.Rounded.Notifications
+    uk.noammm.kav.ext.KavPlans.ADD -> Icons.Rounded.AddRoad
     uk.noammm.kav.ext.TripAccess.HISTORY -> Icons.Rounded.History
     uk.noammm.kav.ext.TripAccess.FOLLOW -> Icons.Rounded.Navigation
     Pipeline.WALK -> Icons.AutoMirrored.Rounded.DirectionsWalk
@@ -440,6 +442,7 @@ private fun kindWords(cap: String) = when (cap) {
     Capabilities.BOARD -> T("Provides timetables and stop boards", "מספק לוחות זמנים ולוחות תחנה")
     uk.noammm.kav.ext.StopPhotoHook.CAPABILITY -> T("Stop photos", "תמונות של תחנות")
     uk.noammm.kav.ext.TripButtons.CAPABILITY -> T("Buttons on the trip's notification", "כפתורים בהתראת הנסיעה")
+    uk.noammm.kav.ext.KavPlans.ADD -> T("Adds routes to your results", "מוסיף מסלולים לתוצאות")
     uk.noammm.kav.ext.TripAccess.HISTORY -> T("Trip history", "היסטוריית נסיעות")
     uk.noammm.kav.ext.TripAccess.FOLLOW -> T("Your trips", "הנסיעות שלכם")
     Pipeline.WALK -> T("Walking model", "מודל הליכה")

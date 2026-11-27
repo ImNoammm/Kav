@@ -53,10 +53,12 @@ class TripService : Service() {
             advance()
             retune()
             post()
+            tellArrival()
             handler.postDelayed(this, TICK_MS)
         }
     }
     private val settle = Runnable { post() }
+    private val arrivals = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "kav-trip-arrival").apply { isDaemon = true } }
 
     private val fired = HashSet<String>()
     private var firedFor = ""
@@ -105,6 +107,7 @@ class TripService : Service() {
     override fun onDestroy() {
         Speaker.shutdown()
         handler.removeCallbacksAndMessages(null)
+        arrivals.shutdown()
         tracking?.invoke()
         tracking = null
         if (running === this) { running = null; uk.noammm.kav.ext.TripButtons.changed = null }
@@ -298,6 +301,13 @@ class TripService : Service() {
         val (journey, step) = journey() ?: return null
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
         return tripNotice(journey, step, latest, System.currentTimeMillis() / 1000, Prefs.accent(this))
+    }
+
+    // Extensions following the trip are told its arrival as it moves (TripEvents.arrival), off the main thread.
+    private fun tellArrival() {
+        val (journey, step) = journey() ?: return
+        val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
+        arrivals.execute { runCatching { uk.noammm.kav.ext.TripEvents.arrival(journey, step, latest) } }
     }
 
     private fun post(force: Boolean = false) {
@@ -507,4 +517,6 @@ object TripBridge {
     @Volatile var shown: (() -> Int)? = null
     @Volatile var fix: ((Fix) -> Unit)? = null
     @Volatile var fixNow: (() -> Fix?)? = null
+    // The trip under way goes on as next, on the step given, when it is still was (Kav.switchTrip). On the main thread.
+    @Volatile var switchTo: ((was: ActiveJourney, next: ActiveJourney, step: Int) -> Boolean)? = null
 }

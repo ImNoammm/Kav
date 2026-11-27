@@ -588,7 +588,7 @@ kav.provide("results.add") { input ->
 - Asked `{"query": {"from", "to", "at", "way", "now", "settings", "modes", "reason"}, "routes": [...], "trip"}`:
   `routes` are Kav's own, `reason` is `"search"`, or `"replan"` when Kav plans a New route from here for the trip under
   way, which also gives that `trip` (as `kav.onTrip` gives it). For `"replan"`, the first route you answer is the new
-  route.
+  route. `at` is as for `kav.plan`: `0` when the rider searched for now, `now` the time Kav asks, in seconds since 1970.
 - Answered `[{"ref", "start", "walks"}]`: routes from `kav.plan`, at most 3. `start` is when the rider leaves, in
   seconds since 1970 (the route's own by default); `walks` how many seconds each walk before the route's first ride
   takes (the route's own by default; as many as those walks). Kav lays the walks and waits out from `start`, and takes
@@ -605,8 +605,11 @@ val switched = kav.switchTrip("""{"ref": "r12", "after": 1, "dep": 1795421100, "
 ```
 
 `after` is the ride's index in the trip's `legs`, `dep` and `arr` the trip's own as `kav.onTrip` gives them, so a
-trip that changed since is left as it is. True when it was switched; false for a `ref` Kav doesn't know, another trip,
-a ride the rider is past, or Kav's screen not running. Only while the rider allows following trips, with a
-`trips.follow` contribution (without it, it throws). From any thread. The listener is then told `"replan"`.
+trip that changed since is left as it is. `start` and `walks`, both optional, lay the route out first as for
+`results.add` (a run from the stop where the ride ends, say). True when it was switched; false for a `ref` Kav doesn't
+know, another trip, a ride the rider is past, walks that don't reach the route's first ride in time, a trip with
+stops on the way still ahead (a route of `kav.plan` goes through none), or Kav's screen not running. Only while the
+rider allows following trips, with a `trips.follow` contribution (without it, it throws). From any thread. The
+listener is then told `"replan"`.
 
 </div>

@@ -115,7 +115,7 @@ object Capabilities {
     const val BOARD = "board.provide"
 
     // Every capability this Kav runs, each by the extension's own code. A capability not here is ignored, not refused.
-    val KNOWN: Set<String> get() = setOf(PLAN, BOARD, StopPhotoHook.CAPABILITY, TripButtons.CAPABILITY, TripAccess.HISTORY, TripAccess.FOLLOW, Widgets.CAPABILITY, PageSpecs.PAGE, PageSpecs.HOME, Looks.CAPABILITY, MethodHooks.CAPABILITY, ScreenPieces.CAPABILITY) + Pipeline.HOOKS +
+    val KNOWN: Set<String> get() = setOf(PLAN, BOARD, StopPhotoHook.CAPABILITY, TripButtons.CAPABILITY, KavPlans.ADD, TripAccess.HISTORY, TripAccess.FOLLOW, Widgets.CAPABILITY, PageSpecs.PAGE, PageSpecs.HOME, Looks.CAPABILITY, MethodHooks.CAPABILITY, ScreenPieces.CAPABILITY) + Pipeline.HOOKS +
         Slots.CAPABILITIES + Actions.CAPABILITIES + Parts.CAPABILITIES
 
     fun known(capability: String) = capability in KNOWN

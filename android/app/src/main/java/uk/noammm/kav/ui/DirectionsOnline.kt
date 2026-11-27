@@ -475,6 +475,27 @@ fun DirectionsOnline(model: KavModel) {
                 if (checked.failure != null) { unchecked = kavRoutes; raw = emptyList(); ruleFailure = checked.failure }
                 else { raw = checked.routes; ruleNote = rulesSaid(checked); hiddenRoutes = checked.hiddenRoutes }
             }
+            // Extensions that add routes (ext/KavPlans.kt) are asked once Kav's own planner's routes are on screen, for a
+            // search without stops on the way; theirs go first, judged by the rider's route rules too.
+            if (link == null && pinned == null && planner == KavPlan.source.key && timeType != Transit.TIME_LAST && stopovers.isEmpty() &&
+                raw.isNotEmpty() && ruleFailure == null && uk.noammm.kav.ext.KavPlans.wanted()) {
+                planning = false; plannedFor = planKey
+                val kavRoutes = raw
+                // "at" is 0 for a search for now, as in Kav.plan, so an extension can tell it from one for a time picked.
+                val asked = uk.noammm.kav.ext.KavPlans.Query(fromLL, toLL, departAt / 1000, if (q.way == 'a') 'a' else 'd', settings, types)
+                val added = withContext(Dispatchers.IO) {
+                    runCatching { uk.noammm.kav.ext.KavPlans.ask("search", asked, q.nowS, kavRoutes.filterNot(res::isTaxiCard), resolved) }.getOrNull()
+                        ?.let { a ->
+                            val routes = if (!uk.noammm.kav.ext.Hooks.hasRules()) a.routes
+                                else uk.noammm.kav.ext.Hooks.check(a.routes, a.resolved, q).takeIf { it.failure == null }?.routes.orEmpty()
+                            uk.noammm.kav.ext.KavPlans.Added(routes, a.resolved)
+                        }
+                }
+                if (added != null && added.routes.isNotEmpty()) {
+                    resolved = added.resolved
+                    raw = uk.noammm.kav.ext.Pipeline.retag(added.routes + kavRoutes)
+                }
+            }
             model.activeJourney?.takeIf { active -> raw.any { it === active.trip } }?.let {
                 model.activeJourney = it.copy(resolved = Transit.Resolved(
                     it.resolved.lines + resolved.lines, it.resolved.stops + resolved.stops,

@@ -331,6 +331,10 @@
         <receiver
             android:name=".InstallStatus"
             android:exported="false" />
+        <!-- an extension's alarm, set by Kav.alarm -->
+        <receiver
+            android:name=".ext.ExtAlarms$Receiver"
+            android:exported="false" />
 
         <!-- the downloaded update, readable by the installer and nobody else -->
         <provider

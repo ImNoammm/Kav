@@ -56,6 +56,8 @@ object Native {
         @Volatile var onTrip: Kav.TripListener? = null
         // API 5: its home screen widgets' content, by widget id (Widgets).
         val widgets = ConcurrentHashMap<String, Kav.Widget>()
+        // API 5: told its alarms (ExtAlarms).
+        @Volatile var onAlarm: Kav.Alarm? = null
     }
 
     private val loaded = ConcurrentHashMap<String, Loaded>()
@@ -151,6 +153,14 @@ object Native {
             Result.failure(IllegalStateException("interrupted"))
         }
     }
+
+    // One of its alarms came (ExtAlarms): its listener told, waited for as a hook is, so Android keeps Kav up meanwhile.
+    fun alarm(identity: String, id: String) {
+        val a = loaded[identity]?.onAlarm ?: return
+        ask(identity, "alarm", ALARM_MS) { a.ring(id); "" }
+    }
+
+    private const val ALARM_MS = 8_000L
 
     // Whether any extension listens to trips (Kav.onTrip): only then are trip events worked out.
     fun listensToTrips(): Boolean = loaded.values.any { it.onTrip != null }
@@ -347,6 +357,29 @@ object Native {
             uk.noammm.kav.ui.ScreenOverlay.capture(null, behind = true) { picture, behind, pieces ->
                 if (loaded[i.identity] !== l) { picture?.recycle(); behind?.recycle(); return@capture }
                 NativeGuard.call(i.identity, "captureBehind") { captured.captured(picture, behind, pieces) }
+            }
+        }
+
+        // API 5: Kav's own planner (KavPlans), the trip under way changed to one of its routes, its alarms, and a file
+        // the rider picks.
+        override fun plan(query: String): String? {
+            offMain("plan")
+            return KavPlans.plan(i.identity, KavPlans.query(JSONObject(query)))?.toString()
+        }
+
+        override fun switchTrip(change: String): Boolean {
+            declares("switchTrip", TripAccess.FOLLOW)
+            if (!TripAccess.allows(i.identity, TripAccess.FOLLOW)) return false
+            return KavPlans.switchTrip(i.identity, JSONObject(change), System.currentTimeMillis() / 1000)
+        }
+
+        override fun alarm(id: String, atMillis: Long) = ExtAlarms.set(app, i.identity, id, atMillis)
+
+        override fun onAlarm(listener: Kav.Alarm?) { l.onAlarm = listener }
+
+        override fun pickFile(types: Array<String>?, picked: Kav.Picked) {
+            uk.noammm.kav.ui.ExtPicks.file(types?.toList().orEmpty().ifEmpty { listOf("*/*") }) { uri ->
+                NativeGuard.call(i.identity, "pickFile") { picked.picked(uri?.toString()) }
             }
         }
 

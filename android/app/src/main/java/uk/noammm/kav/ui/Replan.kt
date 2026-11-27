@@ -365,20 +365,28 @@ internal fun replanned(journey: ActiveJourney, from: ReplanFrom, routeTypes: Lis
     val planner = KavPlan.replanAt(trip) ?: return null
     val stopovers = journey.stopovers.drop(trip.legs.take(from.done).count { it.visit != null })
     val planned = KavPlan.plan(from.at, end, from.time * 1000, Transit.TIME_DEPARTURE, routeTypes, false, stopovers, planner)
+    val now = System.currentTimeMillis() / 1000
+    // On Kav's own planner, an extension that adds routes (ext/KavPlans.kt) may give the new route: theirs come first.
+    val added = if (trip.provider.isNotEmpty() || stopovers.isNotEmpty()) null else runCatching {
+        uk.noammm.kav.ext.KavPlans.ask("replan", uk.noammm.kav.ext.KavPlans.Query(from.at, end, if (from.time > 0) from.time else now, 'd',
+            KavPlan.settings, routeTypes), now, planned.plan.laidOut().filterNot(planned.plan::isTaxiCard), planned.resolved,
+            uk.noammm.kav.ext.Pipeline.routeJson(trip, journey.resolved))
+    }.getOrNull()
+    val found = added?.routes.orEmpty() + planned.plan.laidOut()
+    val resolved = added?.resolved ?: planned.resolved
     // The route rules the journey was chosen under (its pinned snapshot), not whatever the rider picked since. If a
     // required one fails, no new route: the trip keeps the one it has.
-    val routes = if (trip.policy.isEmpty()) planned.plan.laidOut() else {
-        val now = System.currentTimeMillis() / 1000
+    val routes = if (trip.policy.isEmpty()) found else {
         val q = uk.noammm.kav.ext.Pipeline.Query('d', if (from.time > 0) from.time else now, now, KavPlan.settings.letters, T.lang.code,
             stopovers.map { it.stayMin * 60L })
         // Rules that can't all be read back: no new route, rather than one judged under only some of them.
         val pinned = uk.noammm.kav.ext.Snapshot.parseWhole(trip.policy) ?: return null
-        val c = uk.noammm.kav.ext.Hooks.check(planned.plan.laidOut(), planned.resolved, q, pinned)
+        val c = uk.noammm.kav.ext.Hooks.check(found, resolved, q, pinned)
         if (c.failure != null) return null
         c.routes
     }
     val route = routes.firstOrNull { !planned.plan.isTaxiCard(it) && it.legs.isNotEmpty() } ?: return null
-    val next = switched(journey, from, route, planned.resolved, stopovers)
+    val next = switched(journey, from, route, resolved, stopovers)
     return next to stepAfterSwitch(next, from, current)
 }
 

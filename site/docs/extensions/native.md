@@ -458,7 +458,7 @@ for the screen it was asked from, so `kavAction` on one of those works while tha
 | `nav.exit` | `{"trip"}` | Leaves navigation for Home, by its back button or Back. The trip goes on. | `ui/TripDetail.kt:138` |
 | `share.send` | `{"target": "copy" \| "more" \| <app package>, "name", "link"}` | A target in a trip's share sheet. `link` is `null` until Kav has made it. | `ui/ShareSheet.kt:583` |
 | `pay.mode` | `{"on": <boolean>, "from": "home" \| "settings" \| "setup"}` | Paying turned on (at once, or through setup) or off (Kav asks first), from Home's offer, the Paying switch or setup. | `ui/RavPass.kt:472` |
-| `pay.offer.hide` | `{}` | Hides Home's offer to set up paying. | `ui/RavPass.kt:301` |
+| `pay.offer.hide` | `{}` | Hides Home's offer to set up paying, its pay button with a yellow dot. From Kav 5.2 the rider has no way to hide it, so Kav never asks an extension for this one; `kavAction` still hides the offer. | `ui/ExtActions.kt:104` |
 | `pay.place.open` | `{"place"}` | Opens one of Rav-Pass's pages from Settings' Paying. See the place names below. | `ui/RavPass.kt:604` |
 | `pay.history.clear` | `{"rides"}` | Clear history in Settings' Paying. Kav's own asks first. | `ui/RavPass.kt:548` |
 | `ticket.ravpass.open` | Same as `ticket.header`. | Open in Rav-Pass on a Rav-Pass ticket. | `ui/TicketCard.kt:343` |

@@ -370,7 +370,7 @@ object Pipeline {
     }
 
     // The legs from..until (exclusive), from `at`: each walk at its time, the waits up to `until`'s departure.
-    private fun place(legs: MutableList<Transit.Leg>, from: Int, until: Int, at0: Long, leaves: Long, walkS: (Int) -> Long) {
+    internal fun place(legs: MutableList<Transit.Leg>, from: Int, until: Int, at0: Long, leaves: Long, walkS: (Int) -> Long) {
         var at = at0
         for (j in from until until) {
             val l = legs[j]
@@ -396,7 +396,7 @@ object Pipeline {
     }
 
     // Kav's own tags worked out again over what's left, when any time changed: the planner's other tags stay.
-    private fun retag(list: List<Transit.Itinerary>): List<Transit.Itinerary> {
+    internal fun retag(list: List<Transit.Itinerary>): List<Transit.Itinerary> {
         if (list.isEmpty()) return list
         val own = uk.noammm.kav.data.RouteTags.ORDER.toSet()
         val bare = list.map { it.with(tags = emptyList()) }
@@ -440,8 +440,17 @@ object Pipeline {
             .put("line", if (ride) lineRef(l.lineId) ?: JSONObject.NULL else JSONObject.NULL)
             .put("lineNumber", if (ride) l.shortName.ifBlank { r.line(l.lineId)?.number.orEmpty() } else JSONObject.NULL)
             .put("mode", if (ride) mode(l, r) else -1).put("trip", if (ride) tripRef(l.tripId) ?: JSONObject.NULL else JSONObject.NULL)
-            .put("stops", l.stops.size)
+            .put("stops", l.stops.size).put("liveDep", liveDep(l, r) ?: JSONObject.NULL).put("liveArr", liveArr(l, r) ?: JSONObject.NULL)
+            .put("turns", JSONArray(l.turns.map { u ->
+                JSONObject().put("way", u.way).put("street", u.street).put("metres", u.metres).put("lat", u.lat).put("lon", u.lon)
+            }))
     }
+
+    // A ride's live times as Kav has them, at the stop it's boarded at and the one it's left at; null without one.
+    internal fun liveDep(l: Transit.Leg, r: Transit.Resolved): Long? =
+        if (l.kind == Transit.LegKind.RIDE) r.arrival(l)?.rtUtc?.takeIf { it > 0 } else null
+    internal fun liveArr(l: Transit.Leg, r: Transit.Resolved): Long? =
+        if (l.kind == Transit.LegKind.RIDE) r.alightLiveAt(l) else null
 
     // A search as route rules are sent it (Bridge), which NativeRules turns into their JSON.
     internal fun encode(q: Query, routes: List<Transit.Itinerary>, r: Transit.Resolved, walks: List<Walk>, changes: List<Change>): ByteArray {
@@ -471,6 +480,11 @@ object Pipeline {
         w.int(changes.size)
         for (c in changes) w.int(c.route).int(c.fromLeg).int(c.toLeg).int(c.fromMode).int(c.toMode).int(c.walkM).int(c.walkS)
             .int(c.gapS).int(if (c.same) 1 else 0).str(c.fromStop).str(c.toStop)
+        // Each leg's live times and turns, in the order of the legs above, after the rest.
+        for (t in routes) for (l in t.legs) {
+            w.long(liveDep(l, r) ?: -1).long(liveArr(l, r) ?: -1).int(l.turns.size)
+            for (u in l.turns) w.str(u.way).str(u.street).int(u.metres).int(e6(u.lat)).int(e6(u.lon))
+        }
         return w.bytes()
     }
 
