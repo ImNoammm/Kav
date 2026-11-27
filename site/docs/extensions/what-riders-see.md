@@ -37,7 +37,7 @@ These are all the lines there are, in the order Kav lists them. The exact words,
 
 | Line | Your extension has it when | Key |
 |---|---|---|
-| **What it is**, one line per kind: a trip planner, a provider of timetables and stop boards, a walking model, a transfer rule, a route filter, a ranker, route tags | it has a contribution with capability `plan.provide`, `board.provide`, `walk.time`, `transfer.policy`, `results.filter`, `results.rank` or `results.annotate`. One line per capability, in that order | the capability |
+| **What it is**, one line per kind: a trip planner, a provider of timetables and stop boards, routes added to results (API 5), a walking model, a transfer rule, a route filter, a ranker, route tags | it has a contribution with capability `plan.provide`, `board.provide`, `results.add`, `walk.time`, `transfer.policy`, `results.filter`, `results.rank` or `results.annotate`. One line per capability, in that order | the capability |
 | **It has its own screens** | it has a `page.provide` contribution | `page.provide` |
 | **It has a page the rider can pin as a tab** | one of its `pages` has `"tab": true` | `tab` |
 | **It can replace the Home screen** | it has a `home.body` contribution | `home.body` |

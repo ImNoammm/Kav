@@ -72,6 +72,7 @@ adds the permissions or what is changed.
 |---|---|---|
 | Trip planner | מתכנן מסלולים | `plan.provide` |
 | Provides timetables and stop boards | מספק לוחות זמנים ולוחות תחנה | `board.provide` |
+| Adds routes to your results | מוסיף מסלולים לתוצאות | `results.add` (API 5) |
 | Walking model | מודל הליכה | `walk.time` |
 | Transfer rule | כלל החלפות | `transfer.policy` |
 | Route filter | מסנן מסלולים | `results.filter` |

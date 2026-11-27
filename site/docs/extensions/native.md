@@ -172,6 +172,11 @@ class Hello : KavExtension {
 | `vehicles(query)` | API 5: the live vehicles of a line, or around a place, as Kav's Live tab has them (the same) |
 | `departures(query)` | API 5: a stop's next departures, as its board in Kav shows them (the same) |
 | `addRides(rides)` | API 5: rides already over, into Kav's ride history (the same) |
+| `plan(query)` | API 5: Kav's own planner, its routes each with a `ref` ([hooks.md](/docs/extensions/hooks#kavs-own-planner-kavplan-resultsadd-and-kavswitchtrip-api-5)) |
+| `switchTrip(change)` | API 5: the trip under way goes on with a route `plan` gave (the same) |
+| `alarm(id, atMillis)` | API 5: wakes Kav at a time, with Kav closed too, and tells `onAlarm` ([below](#alarms-and-files)) |
+| `onAlarm(listener)` | API 5: told each of your alarms by its id (the same) |
+| `pickFile(types, picked)` | API 5: Android's photo or file picker over Kav's screen; told the file chosen, or `null` (the same) |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -246,6 +251,7 @@ and its own color picker as `settingsScreen`.
 | `plan.provide` | `{"from": [lat, lon], "to": [lat, lon], "at", "way", "modes", "settings"}` | a plan, or `null` for no routes |
 | `board.stops` | `{}` | `{"stops": [...], "lines": {...}}` |
 | `board.departures` | `{"stop", "from", "limit"}` | an array of departures |
+| `results.add` | API 5: the search, `{"query", "routes", "trip"}` | `[{"ref", "start", "walks"}]`: routes from `plan`, first in the results ([hooks.md](/docs/extensions/hooks#kavs-own-planner-kavplan-resultsadd-and-kavswitchtrip-api-5)) |
 
 A route rule is asked within the search's shared budget (400 ms for all rules together, at most 150 to 200 ms
 each); a planner and a stop board within 30 seconds (`board.stops` 60). A hook that throws, answers late or answers
@@ -358,6 +364,26 @@ kav.addRides("""[{"key": "r1", "removed": true}]""")
   installed from a bundle file gets a new `id()` with each file, so for it a key also covers the rides an earlier bundle
   file of the same name left under that key: adding replaces them, removing takes them out. A ride that isn't right (no
   key, another kind, no `at`) throws, and none of the list is added.
+
+### Alarms and files
+
+API 5. Kav wakes your extension at a time you set, with Kav closed too, and opens Android's own pickers for you.
+
+```kotlin
+// Told on a thread of Kav's, once your extension has started; the same id again moves an alarm, 0 takes it out.
+kav.onAlarm { id -> if (id == "check") checkTheTrip() }
+kav.alarm("check", System.currentTimeMillis() + 3 * 60_000)
+
+// Images only: Android's photo picker. Else its file picker for those MIME types (all files for null).
+kav.pickFile(arrayOf("image/*")) { uri -> if (uri != null) hero = Uri.parse(uri) }
+```
+
+- `alarm`: Android may hold an alarm a few minutes while the phone is idle, as with any app's alarm that needs no
+  special permission, and a restart of the phone drops them. At most 20 at a time; more throws. Set `onAlarm` in
+  `start`: when an alarm wakes Kav, Kav starts your extension first and then tells it, so the listener must be set by
+  then. From any thread.
+- `pickFile`: told the file chosen as a `content://` address you read with the `Context`'s `ContentResolver` while Kav
+  runs, or `null` when the rider closed the picker. Called from any thread; told on the main thread.
 
 ## API 4: taking over Kav
 
@@ -537,7 +563,7 @@ when the part next shows.
 | `nav.card` | `{"trip", "step", "current"}` | Each step's card under way. | `ui/Navigate.kt:520` |
 | `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:876` |
 | `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:922` |
-| `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:464` |
+| `nav.banner` | `{"trip", "step", "kind", "leg", "index", "shown"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end); `shown` is the step whose card the rider swiped to (Kav 5.2). Made again as the trip moves on to another step, the rider picks another line or swipes to another card. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:464` |
 | `ride.pay` | `{"trip", "leg", "index"}` | The pay row of a ride's card, on a trip's page, in navigation's cards and on Home's current trip card: "Pay for this ride" (or a station's) and what to do, under which Kav shows the ride's ticket instead once it has one (and then no part). `leg` is the ride, `index` its place in `trip.legs`. Replaced, your view sits in Kav's own rounded row and is all of it, so its taps are yours. Kav 5.1 and older have no such part, and `kav.part` throws there. | `ui/RavPass.kt:337` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |

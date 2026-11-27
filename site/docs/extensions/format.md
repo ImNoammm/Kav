@@ -129,6 +129,7 @@ At most 64 KB.
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](/docs/extensions/native#screen-parts)) |
 | `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
 | `widget.provide` (API 5) | home screen widgets, each listed under the manifest's `"widgets"` ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
+| `results.add` (API 5) | routes from Kav's own planner, first in Kav's results ([hooks.md](/docs/extensions/hooks#kavs-own-planner-kavplan-resultsadd-and-kavswitchtrip-api-5)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](/docs/extensions/native) has the table).
