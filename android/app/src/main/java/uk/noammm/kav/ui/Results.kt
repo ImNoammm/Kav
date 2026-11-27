@@ -185,7 +185,7 @@ fun PlanHeader(
     // A place of the way moved, held or by its handle: the start, the stops and the destination, counted from the start, 0.
     onMove: (from: Int, to: Int) -> Unit = { _, _ -> },
 ) {
-    Column(Modifier.fillMaxWidth().animateContentSize(tween(260)).padding(horizontal = K.gap4, vertical = K.gap2)) {
+    Column(Modifier.fillMaxWidth().animateContentSize(tween(260)).padding(horizontal = K.gap4, vertical = K.gap3)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
             if (onBack != null) BackButton(onBack)
             // The way from start to destination on one card, a hairline between its places. Each place, the start too,
@@ -291,7 +291,7 @@ fun PlanHeader(
                 Box(Modifier.graphicsLayer { rotationZ = spin }) {
                     KavIconButton(
                         Icons.Rounded.SwapVert, T("Swap start and destination", "החלפת התחלה ויעד"),
-                        { turned += 180f; onSwap() }, floating = true,
+                        { turned += 180f; onSwap() }, floating = true, tint = K.text,
                     )
                 }
             }

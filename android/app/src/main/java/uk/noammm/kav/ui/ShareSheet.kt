@@ -373,7 +373,7 @@ internal class RouteShot(
     class Way(val points: List<Offset>, val colour: Color, val walk: Boolean)
 }
 
-private object RouteShots {
+internal object RouteShots {
     // The few last drawn, so opening the sheet again for the same trip doesn't draw its map again.
     private val kept = object : LinkedHashMap<String, RouteShot>(8, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, RouteShot>?) = size > 4
@@ -435,7 +435,7 @@ private object RouteShots {
     // in another script too), where the map on screen just leaves that letter out. Road numbers stay off it: their
     // plates are images the app adds, which a still picture made from a style can't take (MapSnapshotter adds them
     // before it's ready and crashes).
-    private fun labelled(style: String, rtl: Boolean, named: Boolean): String {
+    internal fun labelled(style: String, rtl: Boolean, named: Boolean): String {
         val json = org.json.JSONObject(style)
         val layers = json.getJSONArray("layers")
         val kept = org.json.JSONArray()

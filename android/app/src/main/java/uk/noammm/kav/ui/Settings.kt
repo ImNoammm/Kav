@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
@@ -60,7 +61,6 @@ import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
-import uk.noammm.kav.data.MapPacks
 import uk.noammm.kav.data.PlanSettings
 import uk.noammm.kav.data.Schedules
 import uk.noammm.kav.data.Source
@@ -74,7 +74,6 @@ import androidx.compose.material.icons.rounded.QrCodeScanner
 import uk.noammm.kav.data.RideAlerts
 import uk.noammm.kav.data.RiderProxy
 import uk.noammm.kav.data.GoogleCrowd
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.outlined.Home
@@ -267,7 +266,7 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                 KavPart("settings.page.header", open.id to headTitle, about) {
                     if (headAdd != null || headCheck != null) ScreenHeader(headTitle, back = headBack) {
                         headCheck?.let { ExtCheckButton(it) }
-                        headAdd?.let { KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), it) }
+                        headAdd?.let { KavIconButton(Icons.Rounded.Add, T("Add a source", "הוספת מקור"), it, floating = true, tint = K.text) }
                     } else ScreenHeader(headTitle, "", back = headBack)
                 }
                 Column(Modifier.padding(horizontal = K.gap1)) {
@@ -499,13 +498,15 @@ internal fun UpdatePromptsRow() {
     ) { on -> Shown.updatePrompts = on; Prefs.setUpdatePrompts(ctx, on) }
 }
 
-// Which map Kav draws, by provider first: Kav's own, kept on the phone; one of OpenFreeMap's four, loaded from OpenFreeMap
-// until they're downloaded; GovMap's; or Esri's satellite photos under Kav's names. Only the provider picked opens its
-// own rows. The download the chosen map needs or may have is right under the choices, then what's on the phone, each
-// pack once with the maps that go with it.
+// Which map Kav draws, under how it looks: by provider first: Kav's own, kept on the phone; one of OpenFreeMap's four,
+// loaded from OpenFreeMap until they're downloaded; GovMap's; or Esri's satellite photos under Kav's names. Only the
+// provider picked opens its own rows. The download the chosen map needs or may have is right under the choices, in one
+// card, then what's on the phone, each pack once with the maps that go with it.
 @Composable
 internal fun MapChoices() {
     val ctx = LocalContext.current
+    // The map as it looks with the choices under it, around Dizengoff Center, as a still picture (MapPreview).
+    MapPreview(200.dp, Modifier.padding(top = K.gap2))
     InfoHeader(
         T("Provider", "ספק"),
         T(
@@ -544,13 +545,6 @@ internal fun MapChoices() {
         )) row { MapTypeChoice(mapName(t), look, MapFile.type == t) { pick(t) } }
     }
     MapDownload()
-    MapsOnPhone()
-    // The map as it looks with the choice above, around Dizengoff Center; it only shows, so the page scrolls over it.
-    // Before Kav's own map is downloaded, it's read from GitHub for this spot alone.
-    Box(Modifier.padding(top = K.gap3).fillMaxWidth().height(160.dp).panel(K.rCard)) {
-        TileMap(listOf(32.0731 to 34.7712, 32.0781 to 34.7792), Modifier.fillMaxSize(), remote = true)
-        Box(Modifier.matchParentSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } })
-    }
 }
 
 // Map providers in the order the map's choice lists them, Kav's own first, each with its maps.
@@ -596,152 +590,49 @@ private fun mapSummary(): String {
     ).joinToString(" · ")
 }
 
-// The maps that go with a pack, named for its row and its notes.
-private fun mapsOf(pack: MapPack): String = MapFile.typesOf(pack).map { mapName(it) }.let { names ->
-    if (names.size < 2) return@let names.joinToString()
-    // Hebrew's "and" joins a Latin name with a hyphen.
-    val and = T(" and ", if (names.last().first() in 'A'..'z') " ו-" else " ו")
-    names.dropLast(1).joinToString(", ") + and + names.last()
-}
-
-// The chosen map's download while it isn't on the phone: what it is and its size, its progress, or why it failed.
+// The chosen map's download while it isn't on the phone, in one small card, the only place it shows: Keep on your
+// phone, what it's for and its size, with a Download pill at its end; then the bar while it saves, or why it failed with
+// Try again.
 @Composable
 private fun MapDownload() {
     val ctx = LocalContext.current
     val provider = MapFile.provider()
     val pack = provider.pack
     val state = pack.state
-    // Kept while the card closes once the map is in, so it doesn't flash back to "isn't on your phone yet".
+    // Kept while the card closes once the map is in, so it doesn't flash back to Download.
     var shown by remember { mutableStateOf(state) }
     if (state !is MapPack.State.Ready) shown = state
     AnimatedVisibility(state !is MapPack.State.Ready, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
-        Column(Modifier.padding(top = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
+        KavCard(Modifier.padding(top = K.gap3)) {
             val now = shown
-            // The note, the bar and a failure fade into each other while the space eases.
+            // The row and the bar fade into each other while the space eases.
             androidx.compose.animation.AnimatedContent(
-                when (now) { is MapPack.State.Downloading -> 1; is MapPack.State.Failed -> 2; else -> 0 },
+                now is MapPack.State.Downloading,
                 transitionSpec = {
                     (fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(150)))
                         .using(androidx.compose.animation.SizeTransform(clip = false) { _, _ -> spring(dampingRatio = 1f, stiffness = 500f) })
                 },
-                label = "mapMissing",
-            ) { kind ->
-            when (kind) {
-                1 -> DownloadBar((shown as? MapPack.State.Downloading)?.progress ?: 1f, T("Downloading the map…", "מורידים את המפה…"))
-                2 -> {
-                    val why = (shown as? MapPack.State.Failed)?.why.orEmpty()
-                    Text(T("Couldn't download the map. $why", "ההורדה של המפה לא הצליחה. $why"), style = K.type.subhead, color = K.critical)
-                }
-                else -> NoteCard(
-                    when {
-                        !provider.needsPack -> T(
-                            "Download to keep all four on your phone: about ${pack.bytes shr 20} MB, once.",
-                            "אפשר להוריד כדי לשמור את ארבען בטלפון: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.",
+                label = "mapDownload",
+            ) { saving ->
+                if (saving) DownloadBar((shown as? MapPack.State.Downloading)?.progress ?: 1f, T("Saving to your phone…", "שומרים בטלפון…"))
+                else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(T("Keep on your phone", "שמירה בטלפון"), fontSize = 16.sp, color = K.text)
+                        val size = megabytes(pack.bytes shr 20)
+                        val failed = shown as? MapPack.State.Failed
+                        Text(
+                            when {
+                                failed != null -> T("Couldn't download. ${failed.why}", "ההורדה לא הצליחה. ${failed.why}").trim()
+                                !provider.needsPack -> T("Work offline too · $size", "עובדות גם בלי אינטרנט · $size")
+                                MapFile.type == MapFile.Type.SATELLITE -> T("For the names on the photos · $size", "לשמות שעל התצלומים · $size")
+                                else -> T("Needed for this map · $size", "נדרשת למפה הזו · $size")
+                            },
+                            style = K.type.subhead, color = if (failed != null) K.critical else K.textSecondary,
                         )
-                        MapFile.type == MapFile.Type.SATELLITE -> T(
-                            "Satellite's names need the standard map: about ${pack.bytes shr 20} MB, once.",
-                            "השמות במפת הלוויין צריכים את המפה הרגילה: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.")
-                        else -> T("This map isn't on your phone yet: about ${pack.bytes shr 20} MB, once.",
-                            "המפה הזו עוד לא בטלפון: בערך ${megabytes(pack.bytes shr 20)}, פעם אחת.")
-                    },
-                )
-            }
-            }
-            // Folds away while it downloads, and comes back as Try again if it fails.
-            AnimatedVisibility(
-                now !is MapPack.State.Downloading,
-                enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f), expandFrom = Alignment.Top),
-                exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = Alignment.Top),
-            ) {
-                KavButton(
-                    if (now is MapPack.State.Failed) T("Try again", "נסו שוב") else T("Download", "הורדה"),
-                    { pack.download(ctx.applicationContext.filesDir) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Download,
-                )
-            }
-        }
-    }
-}
-
-// What's on the phone: each pack once, with its size and the maps that go with it, and a way to delete it. A pack the
-// maps can't draw without goes back to waiting for its download; OpenFreeMap's maps go back to loading online, and the
-// row says so before it goes.
-@Composable
-@android.annotation.SuppressLint("ProduceStateDoesNotAssignValue")
-private fun MapsOnPhone() {
-    val ctx = LocalContext.current
-    val files = ctx.applicationContext.filesDir
-    val sizes = MapPacks.all.map { pack ->
-        produceState(0L, pack.state) { value = withContext(Dispatchers.IO) { pack.used(files) } }.value
-    }
-    val any = sizes.any { it > 0 }
-    AnimatedVisibility(any, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
-        Column(Modifier.padding(top = K.gap3)) {
-            Sub(T("On your phone", "בטלפון"))
-            Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-                MapPacks.all.forEachIndexed { i, pack ->
-                    AnimatedVisibility(sizes[i] > 0, enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)), exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120))) {
-                        Column {
-                            if (MapPacks.all.take(i).indices.any { sizes[it] > 0 }) Separator()
-                            MapPackRow(pack, sizes[i])
-                        }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MapPackRow(pack: MapPack, used: Long) {
-    val ctx = LocalContext.current
-    val state = pack.state
-    var asking by remember(pack) { mutableStateOf(false) }
-    if (state is MapPack.State.Downloading) asking = false
-    Column(Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                // Satellite only takes the standard map's names and roads from it; its photos are never on the phone.
-                val standard = pack === MapPacks.STANDARD
-                Text(if (standard) T("Standard map", "המפה הרגילה") else mapsOf(pack), fontSize = 16.sp, color = K.text)
-                LiveText(
-                    when (state) {
-                        is MapPack.State.Downloading -> T("Downloading… ${(state.progress * 100).toInt()}%", "מורידים… ${(state.progress * 100).toInt()}%")
-                        is MapPack.State.Ready -> megabytes(used shr 20)
-                        else -> T("${used shr 20} of ${pack.bytes shr 20} MB, not finished", "${used shr 20} מתוך ${megabytes(pack.bytes shr 20)}, לא הסתיים")
-                    },
-                    style = K.type.subhead, color = K.dim,
-                )
-            }
-            androidx.compose.animation.AnimatedVisibility(
-                state !is MapPack.State.Downloading && !asking,
-                enter = fadeIn(tween(220, delayMillis = 60)), exit = fadeOut(tween(150)),
-            ) {
-                KavButton(T("Delete", "מחיקה"), { asking = true }, style = ButtonStyle.Plain)
-            }
-        }
-        // The question opens under the row, saying what happens to the maps that go with the pack.
-        AnimatedVisibility(
-            asking,
-            enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f), expandFrom = Alignment.Top),
-            exit = fadeOut(tween(150)) + shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = Alignment.Top),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
-                Text(
-                    if (MapFile.typesOf(pack).any { MapFile.provider(it).needsPack }) T(
-                        "${mapsOf(pack)} won't show until it's downloaded again.",
-                        "${mapsOf(pack)} לא יוצגו עד שהיא תורד שוב.",
-                    ) else T(
-                        "${mapsOf(pack)} then load online, and OpenFreeMap sees the area you view.",
-                        "${mapsOf(pack)} ייטענו אז מהרשת, ו-OpenFreeMap יראה את האזור שאתם צופים בו.",
-                    ),
-                    style = K.type.subhead, color = K.textSecondary,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                    KavButton(T("Keep", "השארה"), { asking = false }, Modifier.weight(1f), style = ButtonStyle.Secondary)
-                    KavButton(T("Delete ${used shr 20} MB", "מחיקת ${megabytes(used shr 20)}"), {
-                        asking = false
-                        pack.remove(ctx.applicationContext.filesDir)
-                    }, Modifier.weight(1f), style = ButtonStyle.Destructive)
+                    SmallButton(if (now is MapPack.State.Failed) T("Try again", "נסו שוב") else T("Download", "הורדה"), false) {
+                        pack.download(ctx.applicationContext.filesDir)
+                    }
                 }
             }
         }
@@ -775,64 +666,85 @@ internal fun PlanChoices(model: KavModel) {
     val offered = filtersOf(KavPlan.source)
     // Kav's: every way of getting there, the usual routes, and a card with wheelchair access and without emissions.
     val kavs = offered.all { it in model.filters } && KavPlan.settings == PlanSettings() && Shown.accessibility && !Shown.co2
+    // The page opens on its choices themselves, set to Kav's; a page holding only a Default or Custom choice was a page
+    // for one setting (Noam, 27 Nov 2026). Reset to default shows once something differs.
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-        Sub(T("Planning", "תכנון מסלולים"))
-        DefaultOrCustom(kavs, {
-            offered.filter { it !in model.filters }.forEach { model.setFilter(ctx, it, true) }
-            KavPlan.settings = PlanSettings(); Prefs.setPlanSettings(ctx, PlanSettings())
-            Shown.accessibility = true; Prefs.setShowAccessibility(ctx, true)
-            Shown.co2 = false; Prefs.setShowCo2(ctx, false)
-        }) {
-            InfoHeader(
-                T("What a plan may show", "מה מסלול יכול לכלול"),
-                T("Shuttle: municipal shuttle lines. Taxi: Gett rides, on their own or before a train.",
-                    "שאטל: קווי שאטל עירוניים. מונית: נסיעות Gett, בפני עצמן או לפני רכבת."),
-            )
-            ListGroup {
-                offered.forEach { f ->
-                    row {
-                        val on = f in model.filters
-                        ToggleRow(f.label, on, { FilterGlyph(f, on) }) { model.setFilter(ctx, f, it) }
-                    }
+        InfoHeader(
+            T("What a plan may show", "מה מסלול יכול לכלול"),
+            T("Shuttle: municipal shuttle lines. Taxi: Gett rides, on their own or before a train.",
+                "שאטל: קווי שאטל עירוניים. מונית: נסיעות Gett, בפני עצמן או לפני רכבת."),
+        )
+        ListGroup {
+            offered.forEach { f ->
+                row {
+                    val on = f in model.filters
+                    ToggleRow(f.label, on, { FilterGlyph(f, on) }) { model.setFilter(ctx, f, it) }
                 }
             }
-            RouteSettings()
-            InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
-                "Emissions are CO2e per passenger, worked out from each ride's distance.",
-                "הפליטות הן CO2e לנוסע, מחושבות לפי המרחק של כל נסיעה.",
-            ))
-            ListGroup {
-                row {
-                    ToggleRow(T("Wheelchair access", "נגישות לכיסא גלגלים"), Shown.accessibility,
-                        { AccessibleGlyph(toggleInk(Shown.accessibility), 18.dp) }) { on ->
-                        Shown.accessibility = on; Prefs.setShowAccessibility(ctx, on)
-                    }
-                }
-                row {
-                    ToggleRow(T("Emissions", "פליטות"), Shown.co2, { GlobeGlyph(toggleInk(Shown.co2), K.surface1, 18.dp) }) { on ->
-                        Shown.co2 = on; Prefs.setShowCo2(ctx, on)
-                    }
+        }
+        RouteSettings()
+        InfoHeader(T("What a card shows", "מה מוצג בכרטיס"), T(
+            "Emissions are CO2e per passenger, worked out from each ride's distance.",
+            "הפליטות הן CO2e לנוסע, מחושבות לפי המרחק של כל נסיעה.",
+        ))
+        ListGroup {
+            row {
+                ToggleRow(T("Wheelchair access", "נגישות לכיסא גלגלים"), Shown.accessibility,
+                    { AccessibleGlyph(toggleInk(Shown.accessibility), 18.dp) }) { on ->
+                    Shown.accessibility = on; Prefs.setShowAccessibility(ctx, on)
                 }
             }
+            row {
+                ToggleRow(T("Emissions", "פליטות"), Shown.co2, { GlobeGlyph(toggleInk(Shown.co2), K.surface1, 18.dp) }) { on ->
+                    Shown.co2 = on; Prefs.setShowCo2(ctx, on)
+                }
+            }
+        }
+        // Back to Kav's own, once anything differs.
+        AnimatedVisibility(
+            !kavs,
+            enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+            exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+        ) {
+            KavButton(T("Reset to default", "איפוס לברירת המחדל"), {
+                offered.filter { it !in model.filters }.forEach { model.setFilter(ctx, it, true) }
+                KavPlan.settings = PlanSettings(); Prefs.setPlanSettings(ctx, PlanSettings())
+                Shown.accessibility = true; Prefs.setShowAccessibility(ctx, true)
+                Shown.co2 = false; Prefs.setShowCo2(ctx, false)
+            }, Modifier.padding(top = K.gap4), style = ButtonStyle.Plain)
         }
     }
 }
 
-// How Kav's planner, and the rider's own server, pick routes for this rider (KavPlan.settings): a choice of two or three
-// each, the usual in the middle.
+// How Kav's planner, and the rider's own server, pick routes for this rider (KavPlan.settings): one group of four rows,
+// each a choice of two or three in a menu, the usual in the middle.
 @Composable
 private fun RouteSettings() {
     val ctx = LocalContext.current
     val now = KavPlan.settings
     fun save(next: PlanSettings) { KavPlan.settings = next; Prefs.setPlanSettings(ctx, next) }
-    SettingChoice(T("Walking pace", "קצב הליכה"), paceInfo(), listOf(T("Slow", "איטי"), T("Usual", "רגיל"), T("Fast", "מהיר")),
-        PlanSettings.Pace.entries.indexOf(now.pace)) { save(now.copy(pace = PlanSettings.Pace.entries[it])) }
-    SettingChoice(T("Walking", "הליכה"), walkingInfo(), listOf(T("Less", "פחות"), T("Usual", "רגיל"), T("I don't mind", "לא אכפת לי")),
-        PlanSettings.Walking.entries.indexOf(now.walking)) { save(now.copy(walking = PlanSettings.Walking.entries[it])) }
-    SettingChoice(T("Changes", "החלפות"), changesInfo(), listOf(T("Usual", "רגיל"), T("Fewer", "פחות")),
-        PlanSettings.Changes.entries.indexOf(now.changes)) { save(now.copy(changes = PlanSettings.Changes.entries[it])) }
-    SettingChoice(T("Time at the stop", "זמן בתחנה"), spareInfo(), listOf(T("Tight", "צפוף"), T("Usual", "רגיל"), T("Relaxed", "נינוח")),
-        PlanSettings.Spare.entries.indexOf(now.spare)) { save(now.copy(spare = PlanSettings.Spare.entries[it])) }
+    InfoHeader(T("Walking and changes", "הליכה והחלפות"), listOf(
+        T("Walking pace", "קצב הליכה") to paceInfo(), T("Walking", "הליכה") to walkingInfo(),
+        T("Changes", "החלפות") to changesInfo(), T("Time at the stop", "זמן בתחנה") to spareInfo(),
+    ).joinToString("\n") { (row, info) -> "$row — $info" })
+    ListGroup {
+        row {
+            PickRow(T("Walking pace", "קצב הליכה"), listOf(T("Slow", "איטי"), T("Usual", "רגיל"), T("Fast", "מהיר")),
+                PlanSettings.Pace.entries.indexOf(now.pace)) { save(now.copy(pace = PlanSettings.Pace.entries[it])) }
+        }
+        row {
+            PickRow(T("Walking", "הליכה"), listOf(T("Less", "פחות"), T("Usual", "רגיל"), T("I don't mind", "לא אכפת לי")),
+                PlanSettings.Walking.entries.indexOf(now.walking)) { save(now.copy(walking = PlanSettings.Walking.entries[it])) }
+        }
+        row {
+            PickRow(T("Changes", "החלפות"), listOf(T("Usual", "רגיל"), T("Fewer", "פחות")),
+                PlanSettings.Changes.entries.indexOf(now.changes)) { save(now.copy(changes = PlanSettings.Changes.entries[it])) }
+        }
+        row {
+            PickRow(T("Time at the stop", "זמן בתחנה"), listOf(T("Tight", "צפוף"), T("Usual", "רגיל"), T("Relaxed", "נינוח")),
+                PlanSettings.Spare.entries.indexOf(now.spare)) { save(now.copy(spare = PlanSettings.Spare.entries[it])) }
+        }
+    }
 }
 
 // What each choice does, under its own "i", in a rider's words; the rules themselves are the server's (live.py
@@ -857,10 +769,30 @@ internal fun spareInfo() = T(
     "צפוף: בלי זמן מיותר, כך שיוצאים מאוחר יותר ומפספסים יותר אוטובוסים. נינוח: דקה וחצי לפני אוטובוס ושלוש דקות בהחלפה.",
 )
 
+// A row whose value is picked from a short menu, the menu styled like the stop-time one in Results.
 @Composable
-private fun SettingChoice(title: String, info: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    InfoHeader(title, info)
-    KavSegmented(options, selected, onSelect)
+private fun PickRow(title: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    ListRow(title, onClick = { open = true }, chevron = false, trailing = {
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap1)) {
+                Text(options[selected], style = K.type.subhead, color = K.textSecondary, maxLines = 1)
+                Icon(Icons.Rounded.UnfoldMore, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(16.dp))
+            }
+            androidx.compose.material3.DropdownMenu(
+                open, onDismissRequest = { open = false }, modifier = Modifier.background(K.bg),
+                containerColor = K.bg, tonalElevation = 0.dp, shadowElevation = 8.dp,
+                shape = RoundedCornerShape(K.rTile), border = androidx.compose.foundation.BorderStroke(0.5.dp, K.separator),
+            ) {
+                options.forEachIndexed { i, label ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(label, style = K.type.body, color = if (i == selected) K.accentInk else K.text) },
+                        onClick = { open = false; onSelect(i) },
+                    )
+                }
+            }
+        }
+    })
 }
 
 private fun fareProfileName(profile: uk.noammm.kav.data.FareProfile): String = when (profile) {

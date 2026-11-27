@@ -33,13 +33,11 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     val steps = listOf(SetupPart.WELCOME, SetupPart.LOOK, SetupPart.PAYING)
     var page by rememberSaveable { mutableIntStateOf(0) }
     androidx.activity.compose.BackHandler(enabled = page > 0) { page -= 1 }
-    // The timetable starts downloading as setup opens, in the background, so the download step doesn't come at all: on
-    // Wi-Fi or another unmetered network, and on mobile data only as its own setting allows (Also on mobile data).
+    // The timetable starts downloading as setup opens, in the background, on any network: Kav can't work without its
+    // first week (6 MB, once), as the background check also takes it on mobile data. Its updates follow Also on mobile data.
     val weekNow = Timetable.state
     LaunchedEffect(Unit) { Timetable.init(ctx) }
-    LaunchedEffect(weekNow) {
-        if (weekNow is Timetable.State.Missing && (!Timetable.metered(ctx) || Prefs.timetableOnMobile(ctx))) Timetable.startDownload(ctx)
-    }
+    LaunchedEffect(weekNow) { if (weekNow is Timetable.State.Missing) Timetable.startDownload(ctx) }
     // So does Kav's map, on an unmetered network. It doesn't hold setup up: it goes on after setup, with its progress on
     // the map, and on mobile data the map asks for it there.
     LaunchedEffect(Unit) {
@@ -48,13 +46,8 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
     }
     // Leaving the look's step keeps the look picked there.
     fun leave() { if (steps.getOrNull(page) == SetupPart.LOOK) Prefs.lookPicked(ctx) }
-    // The timetable there already: setup ends with the last choice, without the download step.
-    val doneOrNext: @Composable () -> Unit = {
-        AnimatedContent(weekNow is Timetable.State.Ready, transitionSpec = { switching() }, label = "setupNext") { done ->
-            if (done) OnboardingButton(T("Done", "סיום")) { leave(); onDone() }
-            else OnboardingButton(T("Next", "הבא")) { leave(); page = steps.size }
-        }
-    }
+    // Setup ends with the last choice. A week still on its way is waited for after it (TimetableStep, through Root).
+    val done: @Composable () -> Unit = { OnboardingButton(T("Done", "סיום")) { leave(); onDone() } }
     val next: @Composable () -> Unit = { OnboardingButton(T("Next", "הבא")) { leave(); page += 1 } }
     // Let's get started asks for the location, once, and goes on whatever the answer is.
     val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -74,8 +67,8 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
         modifier = Modifier.fillMaxSize().background(K.bg),
     ) { p ->
         VeilMaps()
-        val button = if (p == steps.size - 1) doneOrNext else next
-        when (steps.getOrNull(p)) {
+        val button = if (p == steps.size - 1) done else next
+        when (steps[p]) {
             SetupPart.WELCOME -> WelcomeStep(welcomed)
             // The preview is the step: the look and the color under it show on it, so nothing needs saying. The glass is in
             // Settings' Look.
@@ -91,47 +84,6 @@ fun OnboardingScreen(model: KavModel, onDone: () -> Unit) {
             // Paying with Rav-Pass and its permissions, through the same popup as Settings (Root hosts it).
             SetupPart.PAYING -> SetupStep(T("Paying", "תשלום"), button = button) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { PayingSetup() }
-            }
-            null -> {
-                val week = Timetable.state
-                var started by rememberSaveable { mutableStateOf(false) }
-                val start = { started = true; Timetable.startDownload(ctx) }
-                // One button fades into the next (none while it downloads).
-                val shown = when {
-                    week is Timetable.State.Ready -> 1
-                    week is Timetable.State.Failed -> 2
-                    started || week is Timetable.State.Downloading -> 0
-                    else -> 3
-                }
-                SetupStep(
-                    T("Download the timetable", "הורדת לוח הזמנים"),
-                    T("The week's departures, kept up to date in the background. Kav's map downloads apart, from the map.",
-                        "היציאות של השבוע, והוא מתעדכן ברקע. המפה של Kav יורדת בנפרד, מהמפה עצמה."),
-                    button = {
-                        AnimatedContent(shown, transitionSpec = { switching() }, label = "setupButton") { b ->
-                            when (b) {
-                                1 -> OnboardingButton(T("Done", "סיום"), onClick = onDone)
-                                2 -> OnboardingButton(T("Try again", "נסו שוב")) { start() }
-                                3 -> OnboardingButton(T("Download", "הורדה")) { start() }
-                                else -> {}
-                            }
-                        }
-                    },
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-                        // The status changes in place: the bar fades into the note or the failure, and the space eases.
-                        var why by remember { mutableStateOf("") }
-                        (week as? Timetable.State.Failed)?.why?.let { why = it }
-                        AnimatedContent(shown, transitionSpec = { switching() }, label = "setupStatus") { k ->
-                            when (k) {
-                                1 -> NoteCard(T("Got it. The timetable stays on your phone from now on.", "מוכן. מעכשיו לוח הזמנים נשאר בטלפון שלכם."))
-                                2 -> Text(T("Couldn't download the timetable. $why", "ההורדה של לוח הזמנים לא הצליחה. $why"), style = K.type.subhead, color = K.critical)
-                                0 -> DownloadBar((week as? Timetable.State.Downloading)?.progress ?: 0f, T("Downloading the timetable…", "מורידים את לוח הזמנים…"))
-                                else -> NoteCard(T("About ${WEEK_MB} MB, once.", "בערך ${megabytes(WEEK_MB.toLong())}, פעם אחת."))
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -187,18 +139,14 @@ private fun WelcomeStep(button: @Composable () -> Unit) {
     }
 }
 
-// One step of setup: its title (with an (i) when there's more to say) and its choices scroll, and its button stays at
-// the bottom, in the same place on every step. The choices sit as on Settings' pages.
+// One step of setup: its title and its choices scroll, and its button stays at the bottom, in the same place on every
+// step. The choices sit as on Settings' pages.
 @Composable
-private fun SetupStep(
-    title: String, info: String? = null, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit,
-) {
+private fun SetupStep(title: String, button: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = K.gap1)) {
             Spacer(Modifier.height(K.gap6))
-            val at = Modifier.padding(horizontal = K.gap3)
-            if (info != null) InfoHeader(title, info, at, headline = true)
-            else Text(title, style = K.type.largeTitle, modifier = at.padding(bottom = K.gap2))
+            Text(title, style = K.type.largeTitle, modifier = Modifier.padding(horizontal = K.gap3).padding(bottom = K.gap2))
             Spacer(Modifier.height(K.gap3))
             content()
             Spacer(Modifier.height(K.gap6))
@@ -207,7 +155,7 @@ private fun SetupStep(
     }
 }
 
-// One state of setup's last step fading into the next while the space it takes eases.
+// One state of the timetable's step fading into the next while the space it takes eases.
 private fun <S> androidx.compose.animation.AnimatedContentTransitionScope<S>.switching() =
     (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith
         androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)))
@@ -216,17 +164,19 @@ private fun <S> androidx.compose.animation.AnimatedContentTransitionScope<S>.swi
 @Composable
 private fun OnboardingButton(label: String, onClick: () -> Unit) = KavButton(label, onClick, wide = true)
 
-// About the size of the week's download.
-private const val WEEK_MB = 6
-
 @Composable
-internal fun DownloadBar(progress: Float, what: String = T("Downloading…", "מורידים…")) = Column(verticalArrangement = Arrangement.spacedBy(K.gap1)) {
-    // The bar fills smoothly between ticks, and its words and percentage roll.
-    val fill = androidx.compose.animation.core.animateFloatAsState(progress.coerceIn(0.02f, 1f), androidx.compose.animation.core.tween(300), label = "download").value
-    Box(Modifier.fillMaxWidth().height(6.dp).clip(K.capsule).background(K.surface4)) {
-        Box(Modifier.fillMaxWidth(fill).fillMaxHeight().background(K.accent))
+internal fun DownloadBar(progress: Float, what: String = T("Downloading…", "מורידים…")) = Column(verticalArrangement = Arrangement.spacedBy(K.gap2)) {
+    // What downloads at the start and how far at the end, apart, so the figure never runs into the words; it rolls in
+    // figures of one width. The bar under them fills from the leading side, a capsule in a capsule, smoothly between ticks.
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
+        Text(what, style = K.type.subhead, color = K.textSecondary, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        LiveText("${(progress * 100).toInt()}%", style = K.type.subhead.tabular, color = K.textSecondary)
     }
-    LiveText("$what ${(progress * 100).toInt()}%", style = K.type.caption)
+    val fill = androidx.compose.animation.core.animateFloatAsState(progress.coerceIn(0.02f, 1f), androidx.compose.animation.core.tween(300), label = "download").value
+    Box(Modifier.fillMaxWidth().height(4.dp).clip(K.capsule).background(K.surface4)) {
+        Box(Modifier.fillMaxWidth(fill).fillMaxHeight().clip(K.capsule).background(K.accent))
+    }
 }
 
 // A rider who set Kav up when it came with its timetable gets the week before anything else, once: Kav reads it

@@ -44,25 +44,29 @@ fun Modifier.glassBackdrop(liquid: LiquidBackdrop?): Modifier =
 // The floating layer: the tab bar, buttons over a map or a list, a field that stays on top. The cards' own shade and
 // hairline, so it sits with them; glass where it's chosen, that same shade over the bare page.
 // glass: how much of it is glass right now, read as it's drawn (liquidPane); none is the cards' solid shade.
+// outline: the hairline; the tab bar goes without it.
 @Composable
-fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null): Modifier {
+fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null, outline: Boolean = true): Modifier {
     val liquid = LocalLiquidBackdrop.current
-    if (!liquidGlassReady || !K.liquid || liquid == null) return panel(radius)
-    return liquidPane(liquid, radius, glass).border(0.5.dp, K.separator, RoundedCornerShape(radius))
+    if (!liquidGlassReady || !K.liquid || liquid == null) return panel(radius, outline = outline)
+    val pane = liquidPane(liquid, radius, glass)
+    return if (outline) pane.border(0.5.dp, K.separator, RoundedCornerShape(radius)) else pane
 }
 
 // A floating part over a map as panels over the live map look (liquidPane): the cards' shade, see-through, and its
 // hairline. Solid, the cards' own shade.
-fun Modifier.seeThrough(radius: Dp): Modifier {
-    if (!liquidGlassReady || !K.liquid) return panel(radius)
+fun Modifier.seeThrough(radius: Dp, outline: Boolean = true): Modifier {
+    if (!liquidGlassReady || !K.liquid) return panel(radius, outline = outline)
     val shape = RoundedCornerShape(radius)
-    return clip(shape).background(K.surface.copy(alpha = LIVE_SHADE)).border(0.5.dp, K.separator, shape)
+    val pane = clip(shape).background(K.surface.copy(alpha = LIVE_SHADE))
+    return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
 }
 
 // A card on the page: its own shade and a hairline. solid: one that floats over others, a sheet or a menu.
-fun Modifier.panel(radius: Dp = K.rCard, solid: Boolean = false): Modifier {
+fun Modifier.panel(radius: Dp = K.rCard, solid: Boolean = false, outline: Boolean = true): Modifier {
     val shape = RoundedCornerShape(radius)
-    return clip(shape).background(if (solid) K.surfaceRaised else K.surface).border(0.5.dp, K.separator, shape)
+    val pane = clip(shape).background(if (solid) K.surfaceRaised else K.surface)
+    return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
 }
 
 @Composable

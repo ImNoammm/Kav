@@ -20,7 +20,6 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -250,9 +249,10 @@ private fun waitedOn(ride: Transit.Leg, wait: Transit.Leg?, r: Transit.Resolved,
 @Composable
 fun StartButton(onClick: () -> Unit) {
     Row(
-        Modifier.clip(K.capsule).background(K.live)
-            .clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 11.dp),
+        Modifier.heightIn(min = 48.dp).clip(K.capsule).background(K.live)
+            .clickable(onClick = onClick).padding(horizontal = K.gap5),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         Canvas(Modifier.size(13.dp)) {
             val w = size.width; val h = size.height
@@ -449,11 +449,11 @@ fun NavigateScreen(
             Column(Modifier.align(Alignment.TopStart).onSizeChanged { headerHeight = it.height }
                 .then(if (compact) Modifier.width(maxWidth - panelWidth) else Modifier.fillMaxWidth())) {
                 KavPart("nav.header", trip, ::tripArgs) { Row(
-                    Modifier.fillMaxWidth().padding(K.gap3).glassSurface()
+                    Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3).glassSurface()
                         .padding(K.gap2),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    KavIconButton(Icons.AutoMirrored.Rounded.ArrowBackIos, T("Back to home", "חזרה לבית"), onExit,
+                    KavIconButton(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, T("Back to home", "חזרה לבית"), onExit,
                         tint = K.text)
                     Column(Modifier.weight(1f)) {
                         val riding = (steps.getOrNull(currentStep) as? Step.Ride)
@@ -515,7 +515,7 @@ fun NavigateScreen(
                     label = "busCard",
                 ) { showing ->
                 if (showing != null) {
-                    VehicleCard(showing.second, showing.first, r, now, Modifier.padding(horizontal = K.gap3).padding(bottom = K.gap3),
+                    VehicleCard(showing.second, showing.first, r, now, Modifier.padding(horizontal = K.gap4).padding(bottom = K.gap3),
                         onReport = { model.openReport(it) }) { tappedBus = null }
                 } else Column(if (compact) Modifier.fillMaxHeight() else Modifier) {
                 val ceiling = with(LocalDensity.current) { cardHeight.roundToPx() }
@@ -526,7 +526,7 @@ fun NavigateScreen(
                     state = pager,
                     modifier = (if (compact) Modifier.weight(1f)
                         else Modifier.pageSized(pager, pageHeights, ceiling, bottom = true)).then(cards.only),
-                    contentPadding = PaddingValues(horizontal = K.gap3),
+                    contentPadding = PaddingValues(horizontal = K.gap4),
                     pageSpacing = K.gap2,
                     verticalAlignment = Alignment.Bottom,
                     beyondViewportPageCount = 1,
@@ -548,7 +548,7 @@ fun NavigateScreen(
                     }
                 }
                 Row(
-                    Modifier.padding(K.gap3).fillMaxWidth().heightIn(min = 52.dp).glassSurface(K.rCard)
+                    Modifier.padding(horizontal = K.gap4, vertical = K.gap3).fillMaxWidth().heightIn(min = 52.dp).glassSurface(26.dp)
                         .clickable(role = Role.Button, onClick = onStop),
                     horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -573,7 +573,7 @@ private fun ReplanCard(
     failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean,
     onReplan: () -> Unit, onKeep: () -> Unit,
 ) {
-    Column(Modifier.padding(horizontal = K.gap3).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
+    Column(Modifier.padding(horizontal = K.gap4).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.WarningAmber, contentDescription = null, tint = K.critical, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(K.gap2))
@@ -612,7 +612,7 @@ internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, m
         .then(if (shown) Modifier else Modifier.clearAndSetSemantics { }),
         horizontalArrangement = if (back) Arrangement.Start else Arrangement.End) {
         Row(
-            modifier.heightIn(min = 44.dp).glassSurface(22.dp)
+            modifier.heightIn(min = 48.dp).glassSurface(24.dp)
                 .clickable(enabled = shown, role = Role.Button, onClick = onClick)
                 .padding(horizontal = K.gap3, vertical = K.gap2),
             verticalAlignment = Alignment.CenterVertically,
@@ -681,7 +681,7 @@ private fun Modifier.touched(cards: TouchedCards, key: Any): Modifier = composed
 private fun StepStrip(pager: PagerState, count: Int, live: Int, goTo: (Int) -> Unit) {
     val current = pager.currentPage
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = K.gap3).height(48.dp).glassSurface(24.dp)
+        Modifier.fillMaxWidth().padding(horizontal = K.gap4).height(48.dp).glassSurface(24.dp)
             .padding(horizontal = K.gap1),
         verticalAlignment = Alignment.CenterVertically,
     ) {

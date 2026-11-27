@@ -334,7 +334,7 @@ internal fun ExtCheckButton(onCheck: () -> Unit) {
         transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150)) },
         label = "checking") { busy ->
         if (busy) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Spinner(20.dp, track = K.fill, arc = K.textSecondary) }
-        else KavIconButton(Icons.Rounded.Refresh, T("Check now", "בדיקה עכשיו"), onCheck)
+        else KavIconButton(Icons.Rounded.Refresh, T("Check now", "בדיקה עכשיו"), onCheck, floating = true, tint = K.text)
     }
 }
 
@@ -831,7 +831,7 @@ private fun Notice(icon: androidx.compose.ui.graphics.vector.ImageVector, title:
 
 // A row's own small action (Install, Update): quiet, so a list of them doesn't shout, and still a button.
 @Composable
-private fun SmallButton(label: String, busy: Boolean, onClick: () -> Unit) {
+internal fun SmallButton(label: String, busy: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.heightIn(min = 36.dp).clip(K.capsule).background(K.fill).clickable(enabled = !busy, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .padding(horizontal = K.gap4),

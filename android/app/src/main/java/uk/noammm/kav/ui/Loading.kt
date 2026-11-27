@@ -63,7 +63,7 @@ fun LoadingBlock(label: String, modifier: Modifier = Modifier, labelAbove: Boole
 fun LoadingScreen(label: String, onBack: (() -> Unit)? = null) {
     androidx.activity.compose.BackHandler(enabled = onBack != null) { onBack?.invoke() }
     Column(Modifier.fillMaxSize()) {
-        if (onBack != null) Row(Modifier.padding(K.gap3)) { BackButton(onBack) }
+        if (onBack != null) Row(Modifier.padding(horizontal = K.gap4, vertical = K.gap3)) { BackButton(onBack) }
         LoadingBlock(label)
     }
 }

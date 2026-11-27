@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
@@ -276,26 +277,45 @@ internal fun rememberRavPass(): Boolean {
     return installed
 }
 
-// Home's one paying row, in every state: set up, it opens Rav-Pass on its bus scanner; turned on with something missing
-// since (Rav-Pass removed, a permission taken back), Action required and the setup popup; never turned on (a rider
-// updating to Kav 5), an offer to set it up, which its × hides for good (Settings' Paying stays the way back).
+// Home's pay button, under Settings and its size: set up, it opens Rav-Pass on its bus scanner; turned on with something
+// missing since (Rav-Pass removed, a permission taken back), a dot and the setup popup.
+@Composable
+internal fun PayButton() {
+    val ctx = LocalContext.current
+    val action = PayMode.lost.isNotEmpty()
+    Box {
+        KavIconButton(Icons.Rounded.QrCodeScanner, T("Pay for a ride", "תשלום על נסיעה"), floating = true, tint = K.text, onClick = {
+            if (action) PaySetup.show() else RavPass.open(ctx, RavPass.Section.BUS)
+        })
+        if (action) Box(
+            Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 6.dp).size(12.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape).background(K.bg).padding(2.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape).background(K.problem),
+        )
+    }
+}
+
+// Home's pay card: never turned on (a rider updating to Kav 5), an offer to set paying up, which its × hides for good
+// (Settings' Paying stays the way back); and the tickets and rides. Paying itself is the button under Settings.
 @Composable
 internal fun PayCard(modifier: Modifier, showPay: Boolean) {
     val ctx = LocalContext.current
     val action = PayMode.lost.isNotEmpty()
-    val offer = !Shown.payments && !action
+    val offer = !Shown.payments && !action && showPay
     Column(modifier.fillMaxWidth().panel(K.rCard).animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
-        if (showPay) {
+      // Each part under the offer starts with its hairline: with no offer above, the first one's is cut off.
+      Column(if (offer) Modifier else Modifier.layout { m, c ->
+          val p = m.measure(c)
+          val cut = kotlin.math.ceil(0.5.dp.toPx()).toInt()
+          layout(p.width, (p.height - cut).coerceAtLeast(0)) { p.place(0, -cut) }
+      }) {
+        if (offer) {
             ListRow(
                 T("Pay for a ride", "תשלום על נסיעה"),
-                subtitle = when {
-                    action -> T("Action required", "נדרשת פעולה")
-                    offer -> T("Set up paying with ${PayApp.current.label()}", "הגדרת תשלום עם ${PayApp.current.he}")
-                    else -> null
-                },
-                subtitleColor = if (action) K.problem else K.accentInk,
+                subtitle = T("Set up paying with ${PayApp.current.label()}", "הגדרת תשלום עם ${PayApp.current.he}"),
+                subtitleColor = K.accentInk,
                 leading = { Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(24.dp)) },
-                trailing = if (offer) { {
+                trailing = {
                     Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape)
                         .clickable(role = Role.Button, onClickLabel = T("Hide", "הסתרה")) {
                             if (!uk.noammm.kav.ext.Actions.take(ctx, "pay.offer.hide") { org.json.JSONObject() }) PayMode.dismissOffer(ctx)
@@ -303,21 +323,16 @@ internal fun PayCard(modifier: Modifier, showPay: Boolean) {
                         contentAlignment = Alignment.Center) {
                         Icon(Icons.Rounded.Close, contentDescription = T("Hide", "הסתרה"), tint = K.textTertiary, modifier = Modifier.size(20.dp))
                     }
-                } } else null,
-                chevron = !offer,
-                onClick = {
-                    when {
-                        action -> PaySetup.show()
-                        offer -> payMode(ctx, true, "home")
-                        else -> RavPass.open(ctx, RavPass.Section.BUS)
-                    }
                 },
+                chevron = false,
+                onClick = { payMode(ctx, true, "home") },
             )
         }
         // The tickets read from Rav-Pass, in the same card, as Kav's own tickets used to be, and the rides' summary.
         HomeTicketRows()
         if (Shown.payments || !showPay || TicketStore.history.any { it.key.startsWith("ext:") }) RideSummary()
         if (showPay) RavPassUpdatedLine(home = true)
+      }
     }
 }
 

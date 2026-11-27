@@ -221,12 +221,11 @@ private fun StationList(model: KavModel, net: Net, list: StationListState) {
             start = K.gap4, end = K.gap4, bottom = LocalBottomBarInset.current + K.gap4,
         )) {
             item(key = "search") {
-                // The search and the map on one card.
+                // The search as Home's, then the map on its own card under it.
                 KavPart("stops.search", q, { org.json.JSONObject().put("query", q) }) {
-                    Column(Modifier.fillMaxWidth().panel(K.rCard)) {
-                        KavField(q, { q = it }, T("Search stops", "חיפוש תחנות"), Modifier.fillMaxWidth(), search = true, flat = true)
-                        Separator()
-                        SelectOnMapRow(0.dp, framed = false) { onMap = true }
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(K.gap3)) {
+                        KavField(q, { q = it }, T("Search stops", "חיפוש תחנות"), Modifier.fillMaxWidth(), search = true, floating = true)
+                        Box(Modifier.fillMaxWidth().panel(K.rCard)) { SelectOnMapRow(0.dp, framed = false) { onMap = true } }
                     }
                 }
             }

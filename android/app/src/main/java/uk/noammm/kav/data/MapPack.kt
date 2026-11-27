@@ -62,12 +62,6 @@ class MapPack(
 
     fun onPhone(files: File) = parts.all { has(files, it) }
 
-    // What it takes on the phone, a download stopped half way included.
-    fun used(files: File): Long = parts.sumOf { p ->
-        file(files, p).let { if (it.isDirectory) it.walkTopDown().filter { f -> f.isFile }.sumOf { f -> f.length() } else it.length() } +
-            File(dir(files), p.name + PART).length()
-    }
-
     fun refresh(files: File) {
         if (state !is State.Downloading) state = if (onPhone(files)) State.Ready else State.Missing
     }
@@ -93,17 +87,6 @@ class MapPack(
                 state = State.Failed(why(e))
             }
         }
-    }
-
-    // Its files and anything half done go; the maps drawn from it then show what they show before a download.
-    fun remove(files: File) = synchronized(this) {
-        if (job?.isActive == true) return@synchronized
-        for (p in parts) {
-            file(files, p).deleteRecursively()
-            File(dir(files), p.name + PART).delete()
-            File(dir(files), p.kept + UNPACKING).deleteRecursively()
-        }
-        state = State.Missing
     }
 
     private fun fetch(files: File, part: Part, progress: (Long) -> Unit) {

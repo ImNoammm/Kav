@@ -169,10 +169,10 @@ fun AccentPreview(modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                 Row(
                     Modifier.weight(1f).height(32.dp).seeThrough(16.dp).padding(horizontal = K.gap3),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3),
                 ) {
-                    Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(14.dp))
-                    Text(T("Where to?", "לאן?"), fontSize = 12.sp, color = K.textSecondary)
+                    Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(14.dp))
+                    Text(T("Where to?", "לאן?"), fontSize = 12.sp, color = K.textTertiary)
                 }
                 Box(Modifier.size(32.dp).seeThrough(16.dp), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.Settings, contentDescription = null, tint = K.text, modifier = Modifier.size(16.dp))
@@ -192,13 +192,13 @@ fun AccentPreview(modifier: Modifier = Modifier) {
             }
             // The tab bar, the glass seen most: Home on the accent, as TabBar shows the chosen tab.
             Row(
-                Modifier.fillMaxWidth().height(44.dp).seeThrough(22.dp).padding(3.dp),
+                Modifier.fillMaxWidth().height(44.dp).seeThrough(15.dp, outline = false).padding(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Tab.entries.filter { it != Tab.Ext }.forEachIndexed { i, t ->
                     val ink = if (i == 0) K.onAccent else K.textSecondary
                     Column(
-                        Modifier.weight(1f).fillMaxHeight().clip(K.capsule).then(if (i == 0) Modifier.background(K.accent) else Modifier),
+                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).then(if (i == 0) Modifier.background(K.accent) else Modifier),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                     ) {
                         TabGlyph(t, ink, 14.dp)

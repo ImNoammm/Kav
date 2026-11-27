@@ -180,6 +180,8 @@ fun FavouriteStrip(
     horizontalPadding: androidx.compose.ui.unit.Dp = K.gap3,
     onReorder: ((List<Favourite>) -> Unit)? = null,
     onRemove: ((Favourite) -> Unit)? = null,
+    // Over Home's map: the tiles are glass over it (LocalLiquidBackdrop).
+    glass: Boolean = false,
 ) {
     val manage = onReorder != null
     var editMode by remember { mutableStateOf(false) }
@@ -269,11 +271,12 @@ fun FavouriteStrip(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(K.rTile))
-                        .background(if (set) K.fill else Color.Transparent)
+                    Modifier.size(48.dp)
+                        .then(if (glass) Modifier.glassSurface(K.rTile)
+                            else Modifier.clip(RoundedCornerShape(K.rTile)).background(if (set) K.fill else Color.Transparent))
                         .border(
                             if (lifted) 1.5.dp else 1.dp,
-                            if (lifted) K.accent else if (set) Color.Transparent else K.separator,
+                            if (lifted) K.accent else if (set || glass) Color.Transparent else K.separator,
                             RoundedCornerShape(K.rTile),
                         ),
                     contentAlignment = Alignment.Center,
@@ -325,13 +328,13 @@ fun FavouriteStrip(
                 if (!manage) key("add") {
                     StripTile(
                         Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
-                        on = false, onClick = onAdd, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
+                        on = false, onClick = onAdd, glass = glass, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
                     )
                 } else {
                     if (inEdit || travel > 0f) key("add") {
                         StripTile(
                             Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
-                            on = false, onClick = onAdd, enabled = inEdit,
+                            on = false, onClick = onAdd, enabled = inEdit, glass = glass,
                             modifier = Modifier.layoutId(rememberSpot(shown.size, cols)).graphicsLayer {
                                 val grown = .3f + .7f * travel.coerceAtLeast(0f)
                                 alpha = travel.coerceIn(0f, 1f)
@@ -347,7 +350,7 @@ fun FavouriteStrip(
                             if (flipped) T("Done", "סיום") else T("Edit", "עריכה"),
                             if (inEdit) T("Finish editing favorites", "סיום עריכת המועדפים")
                             else T("Sort and remove favorites", "סידור והסרה של מועדפים"),
-                            on = inEdit,
+                            on = inEdit, glass = glass,
                             onClick = { editMode = !editMode; order = null; held = null; drag = Offset.Zero },
                             modifier = Modifier.layoutId(rememberSpot(shown.size + if (inEdit) 1 else 0, cols)),
                             iconModifier = Modifier.graphicsLayer {
@@ -416,8 +419,9 @@ private fun StripTile(
     modifier: Modifier = Modifier,
     iconModifier: Modifier = Modifier,
     enabled: Boolean = true,
+    glass: Boolean = false,
 ) {
-    val fill by animateColorAsState(if (on) K.accent else K.fill, tween(220), label = "tileFill")
+    val fill by animateColorAsState(if (on) K.accent else if (glass) Color.Transparent else K.fill, tween(220), label = "tileFill")
     val ink by animateColorAsState(if (on) K.onAccent else K.textSecondary, tween(220), label = "tileInk")
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile))
@@ -426,7 +430,7 @@ private fun StripTile(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(48.dp).clip(RoundedCornerShape(K.rTile)).background(fill),
+            Modifier.size(48.dp).then(if (glass) Modifier.glassSurface(K.rTile) else Modifier).clip(RoundedCornerShape(K.rTile)).background(fill),
             contentAlignment = Alignment.Center,
         ) { Icon(icon, contentDescription = description, tint = ink, modifier = iconModifier.size(24.dp)) }
         Spacer(Modifier.height(K.gap1))

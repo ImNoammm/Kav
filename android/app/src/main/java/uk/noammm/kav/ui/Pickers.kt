@@ -14,12 +14,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,8 +109,8 @@ fun KavField(
         decorationBox = { innerTextField ->
             Row(verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically) {
                 if (search) {
-                    SearchGlyph(K.textTertiary, 20.dp)
-                    Spacer(Modifier.width(K.gap2))
+                    Icon(Icons.Rounded.Search, null, tint = K.textTertiary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(K.gap3))
                 }
                 Box(Modifier.weight(1f), contentAlignment = if (multiline) Alignment.TopStart else Alignment.CenterStart) {
                     if (value.isEmpty()) Text(placeholder, style = K.type.body, color = K.textTertiary)
@@ -144,16 +141,6 @@ internal fun stopDetail(net: Net, stop: Int, town: Boolean = true): String = lis
     net.code.getOrElse(stop) { 0 }.takeIf { it > 0 }?.let { T("Stop $it", "תחנה $it") },
     net.cityName(stop).takeIf { town && it.isNotBlank() },
 ).joinToString(" · ")
-
-// A search field's magnifier, the shape of Home's.
-@Composable
-internal fun SearchGlyph(tint: Color, size: androidx.compose.ui.unit.Dp = 18.dp) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        drawCircle(tint, w * .29f, Offset(w * .40f, w * .40f), style = Stroke(w * .09f))
-        drawLine(tint, Offset(w * .63f, w * .63f), Offset(w * .88f, w * .88f), w * .09f, StrokeCap.Round)
-    }
-}
 
 // A place as the place search's spots tell it (place.pick, search.result): its name, detail, where it is, its type and
 // mode, as plan.stop's place.
@@ -356,13 +343,13 @@ fun PlacePicker(
     Box(Modifier.fillMaxSize().graphicsLayer { alpha = under }.background(K.bg)) {
     FloatingTop(top = {
         Row(
-            Modifier.fillMaxWidth().padding(K.gap3).heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
+            Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap4, top = K.gap3).heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3),
         ) {
             BackButton(leave)
-            KavField(q, onQuery, setting?.let { T("where is ${it.label}?", "היכן נמצא ${it.label}?") } ?: title, Modifier.weight(1f), autoFocus = true, floating = true)
+            KavField(q, onQuery, setting?.let { T("where is ${it.label}?", "היכן נמצא ${it.label}?") } ?: title, Modifier.weight(1f), autoFocus = true, floating = true, search = true)
         }
-    }, estimate = 72.dp) { topSpace, backdrop ->
+    }, estimate = K.gap3 + 52.dp) { topSpace, backdrop ->
     LazyColumn(
         Modifier.fillMaxSize().then(backdrop),
         contentPadding = PaddingValues(top = topSpace, bottom = LocalBottomBarInset.current),
@@ -500,8 +487,9 @@ internal fun SelectOnMapRow(sides: androidx.compose.ui.unit.Dp = K.gap3, framed:
     }
 }
 
-// Rises in like search does, over the page it opens from, and goes back down off it the same way: drawn after that
-// page, which stays (under it, faded as under search: underSearch).
+// Fades in over the page it opens from, and out the same way: drawn after that page, which stays (under it, faded as
+// under search: underSearch). It doesn't rise as search does: the map's own surface came in at its place while the
+// header slid up to it, so the top looked late. The keyboard of the search it came from goes down as it opens.
 @Composable
 fun StopMapPicker(
     visible: Boolean,
@@ -513,8 +501,10 @@ fun StopMapPicker(
     allowPin: Boolean = false,
     onStop: ((Int) -> Unit)? = null,
 ) {
-    val rise = with(androidx.compose.ui.platform.LocalDensity.current) { 76.dp.roundToPx() }
-    androidx.compose.animation.AnimatedVisibility(visible, enter = searchIn(rise).targetContentEnter, exit = searchOut(rise).initialContentExit) {
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(visible) { if (visible) { focusManager.clearFocus(); keyboard?.hide() } }
+    androidx.compose.animation.AnimatedVisibility(visible, enter = fadeIn(tween(200)), exit = fadeOut(tween(160))) {
         VeilMaps()
         MapPickerScreen(net, here, onPick, onDismiss, onLocate, allowPin, onStop)
     }
@@ -566,13 +556,13 @@ private fun MapPickerScreen(
 }
 
 @Composable
-private fun StopMapHeader(pin: Boolean, onDismiss: () -> Unit) {
+private fun StopMapHeader(pin: Boolean, onDismiss: () -> Unit, onLocate: (() -> Unit)? = null) {
     Row(
-        Modifier.fillMaxWidth().padding(K.gap3).heightIn(min = 48.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
+        Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap4, top = K.gap3).heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3),
     ) {
         BackButton(onDismiss)
-        Box(
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { Box(
             Modifier.heightIn(min = 48.dp).glassSurface(24.dp).padding(horizontal = K.gap4),
             contentAlignment = Alignment.Center,
         ) {
@@ -581,6 +571,10 @@ private fun StopMapHeader(pin: Boolean, onDismiss: () -> Unit) {
                 style = K.type.headline,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
+        } }
+        // Back to where the rider is, in the same row and size as Back: on the map it popped in alone under the header.
+        if (onLocate != null) {
+            KavIconButton(Icons.Rounded.MyLocation, T("My location", "המיקום שלי"), onLocate, floating = true, tint = K.text)
         }
     }
 }
@@ -662,14 +656,18 @@ private fun StopMapBody(
                 ),
         )
     }
+    // A new one each tap of My location, so the same spot can be gone back to again.
+    var locateTo by remember { mutableStateOf<MapZoomTo?>(null) }
     val liquid = rememberLiquidBackdrop()
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
         Box(Modifier.fillMaxSize().background(K.bg)) {
             TileMap(
                 points,
                 Modifier.fillMaxSize().glassBackdrop(liquid),
-                contentPadding = PaddingValues(top = 72.dp),
+                contentPadding = PaddingValues(top = K.gap3 + 48.dp),
                 recenterOn = here,
+                recenterControl = false,
+                zoomTo = locateTo,
                 geometry = geometry,
                 focus = { ring.value },
                 onDotsSent = { sent -> ringOnMap = sent.firstOrNull { it.id == "pick-ring" }?.let { it.lat to it.lon } },
@@ -684,7 +682,7 @@ private fun StopMapBody(
                     }
                 },
             )
-            StopMapHeader(allowPin, onDismiss)
+            StopMapHeader(allowPin, onDismiss, here?.let { (lat, lon) -> { locateTo = MapZoomTo(lat, lon, 16f) } })
             var last by remember { mutableStateOf<MapPick?>(null) }
             LaunchedEffect(chosen) { chosen?.let { last = it } }
             androidx.compose.animation.AnimatedVisibility(

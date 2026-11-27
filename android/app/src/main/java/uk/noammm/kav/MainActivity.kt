@@ -167,6 +167,13 @@ object PendingBackup {
 }
 
 class MainActivity : ComponentActivity() {
+    private var splashStill: android.view.View? = null
+
+    private fun dropSplashStill() {
+        splashStill?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+        splashStill = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null && uk.noammm.kav.ext.SafeStart.take(this, intent)) return
@@ -182,8 +189,42 @@ class MainActivity : ComponentActivity() {
                 // In case the launch screen never hands over, 1.5 s from Kav's first frame, not from here: a slow
                 // phone can take longer than that just to draw it.
                 window.decorView.doOnPreDraw { it.postDelayed({ Openings.launched = true }, 1500) }
+                // Kav's first frame waits until the launch screen's own arrow animation (600 ms, splash_icon) has
+                // played: a quicker first frame hands over an arrow still animating, and Home showed for two frames
+                // before the flight took over.
+                // It started about when the process did, or, with Kav still in memory, about now.
+                val now = android.os.SystemClock.uptimeMillis()
+                val playedBy = android.os.Process.getStartUptimeMillis().takeIf { now - it < 2000 }.let { it ?: now } + 600
+                if (now < playedBy && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+                    val content = findViewById<android.view.View>(android.R.id.content)
+                    content.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+                        // A held frame is tried again on the next one.
+                        override fun onPreDraw(): Boolean {
+                            if (android.os.SystemClock.uptimeMillis() < playedBy) return false
+                            content.viewTreeObserver.removeOnPreDrawListener(this)
+                            return true
+                        }
+                    })
+                }
+                // Android hands its launch screen over (the exit listener under this) only once Kav's first frame is
+                // drawn, so that frame showed Home between the two. Over Kav until then: the launch screen as it ends,
+                // black with the arrow where Android draws its icon (192 dp, centered), in SplashFlight's first pose.
+                if (android.animation.ValueAnimator.areAnimatorsEnabled()) {
+                    val still = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
+                    val spot = android.view.View(this)
+                    val side = kotlin.math.round(192 * resources.displayMetrics.density).toInt()
+                    still.addView(spot, android.widget.FrameLayout.LayoutParams(side, side, android.view.Gravity.CENTER))
+                    still.addView(SplashFlight(this, spot, Long.MAX_VALUE, Prefs.accent(this)),
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                    (window.decorView as android.view.ViewGroup).addView(still,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                    splashStill = still
+                    // In case the hand-over never comes.
+                    still.postDelayed({ dropSplashStill() }, 2500)
+                }
             }
             splashScreen.setOnExitAnimationListener { splash ->
+                dropSplashStill()
                 val icon = splash.iconView
                 // With animations off (or no icon on this launch screen) there is no flight: Kav at once.
                 if (icon == null || !android.animation.ValueAnimator.areAnimatorsEnabled()) {
@@ -194,6 +235,8 @@ class MainActivity : ComponentActivity() {
                 // How far the launch screen's own animation got, so the arrow takes off from where it is.
                 val played = splash.iconAnimationStart?.let { java.time.Duration.between(it, java.time.Instant.now()).toMillis() } ?: Long.MAX_VALUE
                 val flight = SplashFlight(this, icon, played, K.accent.toArgb())
+                // Black from the first frame, before the animator's first tick sets it.
+                splash.setBackgroundColor(android.graphics.Color.BLACK)
                 splash.addView(flight, android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 android.animation.TimeAnimator().apply {
                     setTimeListener { animator, _, sinceLast ->
@@ -1466,22 +1509,19 @@ private fun ExitPrompt(tripKept: Boolean, onStay: () -> Unit, onExit: () -> Unit
             Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).background(K.surface1).padding(K.gap5),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
         ) {
-            Text(T("Exit Kav?", "לצאת מ־Kav?"), style = K.type.title)
+            Text(T("Exit Kav?", "לצאת מKav?"), style = K.type.title)
             if (tripKept) Text(T("A trip in progress is kept until you end it.", "נסיעה שמתבצעת נשמרת עד שתסיימו אותה."), fontSize = 14.sp, color = K.dim, lineHeight = 20.sp)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                KavButton(
-                    T("Stay", "השארות"), onStay, Modifier.weight(1f).heightIn(min = 52.dp), style = ButtonStyle.Secondary,
-                )
-                KavButton(T("Exit", "יציאה"), onExit, Modifier.weight(1f))
-            }
+            // Back or a tap outside stays; no Stay button beside it (Noam, 27 Nov 2026).
+            KavButton(T("Exit", "יציאה"), onExit, wide = true)
         }
     }
 }
 
 @Composable
 private fun TabBar(model: KavModel) {
-    // A glass capsule floating above the gesture area, which stays outside it. The chosen tab sits on the accent, as a
-    // segmented control's choice does, and that one highlight slides from tab to tab; no ripple, so nothing flashes.
+    // A glass block floating above the gesture area, which stays outside it, with the cards' corners and no hairline. The
+    // chosen tab sits on the accent, its corners inside the bar's, and that one highlight slides from tab to tab; no
+    // ripple, so nothing flashes.
     val pinned = ExtShown.tab
     val tabs = Tab.entries.filter { it != Tab.Ext || pinned != null }
     // Street View is a full-screen view of its own: the bar steps down while it's open, and no glass refracts the
@@ -1493,14 +1533,15 @@ private fun TabBar(model: KavModel) {
     ) {
     BoxWithConstraints(
         Modifier.navigationBarsPadding().padding(horizontal = K.gap4, vertical = K.gap2)
-            .fillMaxWidth().height(64.dp).glassSurface(32.dp).padding(4.dp),
+            .fillMaxWidth().height(64.dp).glassSurface(K.rCard, outline = false).padding(4.dp),
     ) {
+        val thumb = RoundedCornerShape(K.rCard - 4.dp)
         val each = maxWidth / tabs.size
         val at by androidx.compose.animation.core.animateDpAsState(
             each * tabs.indexOf(model.tab).coerceAtLeast(0),
             androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f), label = "tabThumb",
         )
-        Box(Modifier.offset(x = at).width(each).fillMaxHeight().clip(K.capsule).background(K.accent))
+        Box(Modifier.offset(x = at).width(each).fillMaxHeight().clip(thumb).background(K.accent))
         Row(Modifier.fillMaxSize().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { t ->
                 val on = model.tab == t
@@ -1508,7 +1549,7 @@ private fun TabBar(model: KavModel) {
                     if (on) K.onAccent else K.textSecondary, androidx.compose.animation.core.tween(150), label = "tabInk",
                 )
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().clip(K.capsule).selectable(
+                    Modifier.weight(1f).fillMaxHeight().clip(thumb).selectable(
                         on, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                         indication = null, role = Role.Tab,
                     ) {

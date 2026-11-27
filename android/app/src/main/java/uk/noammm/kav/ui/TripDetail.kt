@@ -271,19 +271,16 @@ private fun TripDetailBody(
     Column(Modifier.fillMaxSize()) {
         KavPart("trip.header", trip, about) {
         Row(
-            Modifier.fillMaxWidth().padding(K.gap3).heightIn(min = 48.dp),
+            Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(K.gap3),
         ) {
             BackButton(onBack)
-            Spacer(Modifier.width(K.gap3))
             Text(T("Trip", "נסיעה"), style = K.type.title, maxLines = 1, modifier = Modifier.weight(1f))
             ShareButton(onShare)
             val taxiOnly = trip.legs.any { it.kind == Transit.LegKind.TAXI } &&
                 trip.legs.none { it.kind == Transit.LegKind.RIDE }
-            if (!taxiOnly) {
-                Spacer(Modifier.width(K.gap2))
-                StartButton(onStart)
-            }
+            if (!taxiOnly) StartButton(onStart)
         }
         }
 
@@ -292,7 +289,7 @@ private fun TripDetailBody(
             .padding(bottom = LocalBottomBarInset.current)) {
             // Where you are and which way you face before a trip starts, as while it's under way.
             KavPart("trip.map", trip, about) {
-                RouteMap(trip, r, modifier = Modifier.padding(horizontal = K.gap3, vertical = K.gap2),
+                RouteMap(trip, r, modifier = Modifier.padding(horizontal = K.gap4, vertical = K.gap2),
                     me = me, heading = heading, onShown = onMapShown)
             }
             KavPart("trip.summary", trip, about) { Summary(trip, r) }
@@ -413,7 +410,7 @@ private fun Timeline(
         return -1
     }
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = K.gap3)
+        Modifier.fillMaxWidth().padding(horizontal = K.gap4)
             .panel(K.rCard).padding(vertical = K.gap2),
     ) {
         val start = rememberTripEnd(fromLabel, trip.legs.firstOrNull()?.shape?.firstOrNull())

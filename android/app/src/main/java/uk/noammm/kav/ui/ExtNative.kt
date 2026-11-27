@@ -104,7 +104,7 @@ object ExtNative {
         }
 
         override fun iconButton(c: Context, icon: String?, label: String, onClick: Runnable) =
-            compose(c) { KavIconButton(iconOf(icon) ?: iconOf("info")!!, label, { onClick.run() }) }
+            compose(c) { KavIconButton(iconOf(icon) ?: iconOf("info")!!, label, { onClick.run() }, floating = true, tint = K.text) }
 
         // One view at a time, each in from the side with Settings' own motion (forward, backward).
         override fun pages(c: Context, first: View): KavUi.Pages {

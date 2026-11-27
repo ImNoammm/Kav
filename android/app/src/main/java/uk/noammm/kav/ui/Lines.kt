@@ -215,14 +215,6 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
         )) {
             if (note != null) item(key = "note") { NoteCard(note, Modifier.animateItem().padding(bottom = K.gap3)) }
             item(key = "search") { LineSearch(q, { q = it }, types) { types = it } }
-            item(key = "count") {
-                val total = sections.sumOf { it.second.size }
-                // The count rolls as a search or a filter narrows the list.
-                LiveText(
-                    T.count(total, "1 line", "קו אחד", "lines", "קווים"), style = K.type.caption.tabular,
-                    modifier = Modifier.padding(horizontal = K.gap4),
-                )
-            }
             lead.forEach { (label, rows) ->
                 item(key = "lead-$label") { Box(Modifier.animateItem()) { SectionLabel(label) } }
                 itemsIndexed(rows, key = { _, it -> "lead-$label-${it.route}" }) { i, row -> Box(Modifier.animateItem()) { KavPart("lines.row", row.route, { lineRowArgs(net, row) }) { LineRowCard(model, net, row, i == 0, i == rows.lastIndex, twins) } } }
@@ -243,11 +235,9 @@ private fun LineList(model: KavModel, net: Net, list: LineListState, note: Strin
 @Composable
 private fun LineSearch(q: String, onQ: (String) -> Unit, types: IntArray, onTypes: (IntArray) -> Unit) {
     Column {
-        // The same card as the Stops tab's search.
+        // The same field as the Stops tab's search.
         KavPart("lines.search", q, { org.json.JSONObject().put("query", q) }) {
-            Box(Modifier.fillMaxWidth().panel(K.rCard)) {
-                KavField(q, onQ, T("Line number or name", "מספר או שם קו"), Modifier.fillMaxWidth(), search = true, flat = true)
-            }
+            KavField(q, onQ, T("Line number or name", "מספר או שם קו"), Modifier.fillMaxWidth(), search = true, floating = true)
         }
         Spacer(Modifier.height(K.gap2))
         KavPart("lines.filters", types, { org.json.JSONObject().put("modes", org.json.JSONArray(types.toList())) }) {
@@ -586,7 +576,6 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, get
         if (last) emptyList()
         else (0 until 7).map { d -> routes.flatMap { net.lineTimesAt(stop, it, (today + d) % 7) }.distinct().sorted() }
     }
-    val times = week.getOrElse(day) { emptyList() }
     val train = routes.any { net.rType[it] == 2 }
     var all by remember(routes, stop) { mutableStateOf(false) }
     // The stop board's own rows of the line, live where they are, so both give a bus the same time.
@@ -626,8 +615,20 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, get
                 ) {
                     for (d in 0 until 7) Chip(scheduleDay(d), d == day) { day = d }
                 }
-                if (times.isEmpty()) Text(T("Nothing leaves here that day.", "אין יציאות מכאן ביום הזה."), style = K.type.subhead, color = K.textSecondary)
-                else Text(times.joinToString("   ") { hhmm(it) }, style = K.type.subhead.tabular, lineHeight = 22.sp)
+                // The picked day's times slide in from its chip's side, the height following.
+                val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+                AnimatedContent(
+                    day,
+                    transitionSpec = {
+                        val dir = (if (targetState > initialState) 1 else -1) * (if (rtl) -1 else 1)
+                        (androidx.compose.animation.slideInHorizontally(spring(dampingRatio = 1f, stiffness = 500f)) { w -> dir * w / 5 } +
+                            fadeIn(tween(200, delayMillis = 60))) togetherWith
+                            (androidx.compose.animation.slideOutHorizontally(spring(dampingRatio = 1f, stiffness = 500f)) { w -> -dir * w / 5 } +
+                                fadeOut(tween(120))) using
+                            SizeTransform(clip = false) { _, _ -> spring(dampingRatio = 1f, stiffness = 500f) }
+                    },
+                    label = "scheduleDay",
+                ) { d -> DayTimes(week.getOrElse(d) { emptyList() }, if (d == 0) now else -1) }
             }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(K.gap2), verticalArrangement = Arrangement.spacedBy(K.gap2)) {
@@ -637,6 +638,44 @@ private fun LineAtStop(net: Net, routes: Set<Int>, stop: Int, last: Boolean, get
             )
             KavButton(T("Stop board", "לוח התחנה"), onBoard, style = ButtonStyle.Secondary)
             getOff?.let { KavButton(T("Get off here", "ירידה כאן"), it, style = ButtonStyle.Secondary) }
+        }
+    }
+}
+
+// A day's times as a stop's printed timetable has them: the hour, then its minutes. now: today's clock, so the times
+// gone are dimmed and the next one is in the accent; -1 on another day.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DayTimes(times: List<Int>, now: Int) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.fill).padding(horizontal = K.gap3, vertical = K.gap3),
+        verticalArrangement = Arrangement.spacedBy(K.gap2),
+    ) {
+        if (times.isEmpty()) {
+            Text(T("Nothing leaves here that day.", "אין יציאות מכאן ביום הזה."), style = K.type.subhead, color = K.textSecondary)
+            return@Column
+        }
+        val next = if (now >= 0) times.firstOrNull { it >= now } else null
+        for ((hour, minutes) in times.groupBy { it / 3600 }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(K.gap3)) {
+                val h = hour % 24
+                Text(
+                    if (!Shown.twelveHour) "%02d".format(java.util.Locale.US, h)
+                    else T.ltr("%d %s".format(java.util.Locale.US, (h + 11) % 12 + 1, if (h < 12) "AM" else "PM")),
+                    style = K.type.subhead.tabular.copy(fontWeight = FontWeight.SemiBold), color = K.textSecondary,
+                    modifier = Modifier.widthIn(min = if (Shown.twelveHour) 48.dp else 24.dp),
+                )
+                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(K.gap3), verticalArrangement = Arrangement.spacedBy(K.gap1)) {
+                    for (t in minutes) Text(
+                        "%02d".format(java.util.Locale.US, (t / 60) % 60), style = K.type.subhead.tabular,
+                        color = when {
+                            t == next -> K.accentInk
+                            now >= 0 && t < now -> K.textTertiary
+                            else -> K.text
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -1187,8 +1226,7 @@ private fun ScheduleLines(model: KavModel, net: Net, state: ScheduleListState, l
                 item(key = "search") { LineSearch(q, { q = it }, types) { types = it } }
                 item(key = "count") {
                     LiveText(
-                        T.count(sections.sumOf { it.second.size }, "1 line", "קו אחד", "lines", "קווים") +
-                            T(" · from ${sourceName(Schedules.source)}", " · מ־${sourceName(Schedules.source)}"),
+                        T("From ${sourceName(Schedules.source)}", "מ־${sourceName(Schedules.source)}"),
                         style = K.type.caption.tabular, modifier = Modifier.padding(horizontal = K.gap4),
                     )
                 }
@@ -1730,7 +1768,7 @@ private fun LinePage(
                     if (saved) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                     if (saved) T("Saved, tap to remove", "שמור, הקישו להסרה") else T("Save this line", "שמירת הקו"),
                     { model.saveLines(ctx, if (saved) model.savedLines - key else listOf(key) + model.savedLines) },
-                    floating = true, tint = if (saved) K.accentInk else K.textSecondary,
+                    floating = true, tint = if (saved) K.accentInk else K.text,
                 )
             }
         }

@@ -1676,6 +1676,8 @@ fun TileMap(
     away: Any? = null,
     moved: Boolean = false,
     showRouteControl: Boolean = false,
+    // False where the screen has its own way back to the rider (the stop picker's header).
+    recenterControl: Boolean = true,
     keepZoom: Boolean = false,
     // Whether a change of the map's size frames what it shows again (else only keeps the first point in view, once the
     // screen around it has settled): Live's card grows as its rows load.
@@ -2934,10 +2936,10 @@ fun TileMap(
         // One row, so a long status wraps instead of running under the buttons.
         Row(
             Modifier.align(Alignment.TopStart).fillMaxWidth()
-                .padding(start = contentPadding.calculateStartPadding(layoutDirection) + K.gap2,
-                    top = contentPadding.calculateTopPadding() + K.gap2,
-                    end = contentPadding.calculateEndPadding(layoutDirection) + K.gap3),
-            horizontalArrangement = Arrangement.spacedBy(K.gap2),
+                .padding(start = contentPadding.calculateStartPadding(layoutDirection) + K.gap4,
+                    top = contentPadding.calculateTopPadding() + K.gap3,
+                    end = contentPadding.calculateEndPadding(layoutDirection) + K.gap4),
+            horizontalArrangement = Arrangement.spacedBy(K.gap3),
             verticalAlignment = Alignment.Top,
         ) {
             Box(Modifier.weight(1f)) { status?.invoke() }
@@ -2957,13 +2959,13 @@ fun TileMap(
                                 camera.resume()
                             }
                         },
-                        floating = true, tint = if (turning) K.accent else K.text, size = 44.dp,
+                        floating = true, tint = if (turning) K.accent else K.text,
                     )
                 }
             }
             // Moved away: one round button brings the map back, following again or centred as it was.
             androidx.compose.animation.AnimatedVisibility(
-                !showHeadingControl && (camera.manual || moved),
+                recenterControl && !showHeadingControl && (camera.manual || moved),
                 enter = androidx.compose.animation.fadeIn(tween(160)) + androidx.compose.animation.scaleIn(initialScale = .8f),
                 exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.scaleOut(targetScale = .8f),
             ) {
@@ -2988,7 +2990,7 @@ fun TileMap(
                                 else -> camera.reset(worldPoints, viewport, padFraction, fitMaxZoom, scope)
                             }
                         },
-                        floating = true, tint = K.text, size = 44.dp,
+                        floating = true, tint = K.text,
                     )
                 }
             }

@@ -555,7 +555,7 @@ private fun LiveScreenForSource(model: KavModel) {
         KavPart("live.header", about, { org.json.JSONObject().put("showingInfo", about) }) {
             ScreenHeader(T("Live", "בזמן אמת")) {
                 KavIconButton(Icons.Rounded.Info, T("Where live data comes from", "מאיפה המידע בזמן אמת"), { about = !about },
-                    floating = true, tint = androidx.compose.animation.animateColorAsState(if (about) K.accentInk else K.textSecondary, tween(200), label = "aboutTint").value)
+                    floating = true, tint = androidx.compose.animation.animateColorAsState(if (about) K.accentInk else K.text, tween(200), label = "aboutTint").value)
             }
         }
         // The panel's height as it opens and closes, taken in the same layout pass as the map's (the Column measures it
@@ -685,7 +685,13 @@ private fun LiveScreenForSource(model: KavModel) {
                     onStop = { s -> openStop(s) },
                     stopRef = { s -> model.net?.code?.getOrNull(-s.id - 1)?.takeIf { it > 0 }?.let { "il.mot/gtfs/stop/$it" } },
                     status = {
-                        Column(Modifier.panel(K.rTile).padding(6.dp)) {
+                        // A capsule while it's one line; a wrapped one keeps the tile's corners. Never liquid glass: it
+                        // sits inside the map's own backdrop.
+                        var wrapped by remember { mutableStateOf(false) }
+                        Column(
+                            Modifier.onSizeChanged { wrapped = it.height > with(density) { 36.dp.roundToPx() } }
+                                .panel(if (wrapped) K.rTile else 14.dp).padding(horizontal = K.gap3, vertical = 6.dp),
+                        ) {
                             // One message fades into the next as the chip eases to its size; a count in the same one rolls.
                             val said = when {
                                 zoomedOut && model.liveShow == LiveShow.TRAFFIC ->
@@ -1533,9 +1539,9 @@ private fun TickText(text: String, style: androidx.compose.ui.text.TextStyle, co
 }
 
 // How long ago a vehicle reported, as the row shows it: seconds under a minute, minutes and seconds from there
-// ("8m 55s ago", not "535s ago").
+// ("8m 55s", not "535s"). Just the time, no "ago" (Noam, 27 Nov 2026); a screen reader still says it whole (ageSaid).
 internal fun ageShown(s: Long): String =
-    if (s < 60) T("${s}s ago", "לפני $s שנ׳") else T("${s / 60}m ${s % 60}s ago", "לפני ${s / 60} דק׳ ${s % 60} שנ׳")
+    if (s < 60) T("${s}s", "$s שנ׳") else T("${s / 60}m ${s % 60}s", "${s / 60} דק׳ ${s % 60} שנ׳")
 
 // How long ago a vehicle reported, as a screen reader says it: a ticking count of seconds, said each second, would have
 // every accessibility service told of a change every second for each vehicle listed.

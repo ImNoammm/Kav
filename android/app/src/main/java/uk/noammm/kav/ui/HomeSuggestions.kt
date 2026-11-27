@@ -144,6 +144,7 @@ private fun SuggestionsCard(model: KavModel, latest: ActiveJourney?, onLatest: (
     val found by produceState<Found?>(null, net, here) {
         if (net != null && here != null) value = withContext(Dispatchers.Default) {
             val station = nearestStation(net, here.first, here.second)
+            HomeMap.station = station?.let { net.lat[it.stop] to net.lon[it.stop] }
             Found(station, station?.let { NearLines.of(it.stops) ?: stationLines(net, it.stops, live = false) })
         }
     }
