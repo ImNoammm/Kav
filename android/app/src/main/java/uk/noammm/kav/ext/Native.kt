@@ -40,7 +40,8 @@ object Native {
     }
 
     // What one loaded extension added, by its identity. onAt: when the rider switched it on (Registry.Installed.enabledAt).
-    class Loaded(val identity: String, val name: String, val loader: ClassLoader, val sha256: String = "", val onAt: Long = 0) {
+    // nameHe: its name in Hebrew (Manifest.displayNameHe), "" when it has none.
+    class Loaded(val identity: String, val name: String, val loader: ClassLoader, val sha256: String = "", val onAt: Long = 0, val nameHe: String = "") {
         val cards = ConcurrentHashMap<String, Kav.Card>()
         val screens = ConcurrentHashMap<String, Kav.Screen>()
         val hooks = ConcurrentHashMap<String, Kav.Hook>()
@@ -83,7 +84,7 @@ object Native {
     fun provides(identity: String, hook: String) = loaded[identity]?.hooks?.containsKey(hook) == true
     // The loaded extensions that provide a hook, with when each was switched on.
     fun providing(hook: String): List<Pair<String, Long>> = loaded.values.filter { it.hooks.containsKey(hook) }.map { it.identity to it.onAt }
-    fun nameOf(identity: String): String? = loaded[identity]?.name
+    fun nameOf(identity: String): String? = loaded[identity]?.let { if (uk.noammm.kav.ui.T.rtl) it.nameHe.ifEmpty { it.name } else it.name }
 
     // The loaded extensions holding an action, and their views on a part, as Actions and Parts order them.
     fun actionsOf(name: String): List<Actions.Holder> = loaded.values.mapNotNull { l -> l.actions[name]?.let { Actions.Holder(l.identity, l.onAt, it) } }
@@ -210,7 +211,8 @@ object Native {
         val registry = hub.registry
         val dex = verifiedDex(registry.packageDir(i.identity) ?: return, i.sha256, s.dex)
         val loader = dalvik.system.InMemoryDexClassLoader(java.nio.ByteBuffer.wrap(dex), Native::class.java.classLoader)
-        val l = Loaded(i.identity, i.displayName, loader, i.sha256, i.enabledAt.takeIf { it > 0 } ?: i.installedAt)
+        val m = i.manifest
+        val l = Loaded(i.identity, m.defaultName, loader, i.sha256, i.enabledAt.takeIf { it > 0 } ?: i.installedAt, m.displayNameHe)
         synchronized(registry) {
             val current = registry.get(i.identity) ?: return
             if (current.sha256 != i.sha256 || !hub.active(current)) return

@@ -83,7 +83,8 @@ object Looks {
         return Theme(identity, name, looks, badges, corners)
     }
 
-    fun check(m: Manifest) { of(m) }
+    // Checking needs no name in the rider's language, so installing reads nothing of Kav's screens.
+    fun check(m: Manifest) { of(m, name = m.defaultName) }
 
     // Each look's colours it sets; a value that isn't a colour, a role or a look Kav doesn't know is left out.
     fun read(t: JSONObject): Map<String, Colours> {

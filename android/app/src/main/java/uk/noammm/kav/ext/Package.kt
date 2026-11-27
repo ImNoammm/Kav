@@ -7,13 +7,21 @@ import org.json.JSONObject
 // what it adds to Kav.
 class Manifest(val json: JSONObject) {
     val name: String = json.optString("name")
-    // Cleaned, as Kav prints it in its own screens (Names.clean); any script, emoji included.
-    val displayName: String = Names.clean(json.optString("displayName")).ifBlank { name }
+    // Cleaned, as Kav prints it in its own screens (Names.clean); any script, emoji included. "displayNameHe" is its
+    // name for a rider who has Kav in Hebrew, cleaned the same way; empty: none.
+    val defaultName: String = Names.clean(json.optString("displayName")).ifBlank { name }
+    val displayNameHe: String = Names.clean(json.optString("displayNameHe"))
+    // The name the rider sees: the Hebrew one while Kav is in Hebrew and there is one.
+    val displayName: String get() = if (uk.noammm.kav.ui.T.rtl) displayNameHe.ifEmpty { defaultName } else defaultName
     val version: String = json.optString("version")
     val release: Long = json.whole("release", -1)
     val minKav: Int = json.small("minKav", 0)
     val api: Int = json.small("api", 1)
-    val description: String = json.optString("description")
+    // Its description, and "descriptionHe" for a rider who has Kav in Hebrew (empty: none); description is the one the
+    // rider sees, chosen as displayName is.
+    private val defaultDescription: String = json.optString("description")
+    val descriptionHe: String = json.optString("descriptionHe")
+    val description: String get() = if (uk.noammm.kav.ui.T.rtl) descriptionHe.ifEmpty { defaultDescription } else defaultDescription
     val permissions: List<String> = json.optJSONArray("permissions").strings().sorted()
     // What it adds that Kav can't see in its code (native code draws and posts by itself): "map", "notifications",
     // "location", "settings". Words Kav says on its row and under "It can"; any other word is ignored.
@@ -58,7 +66,7 @@ class Manifest(val json: JSONObject) {
         // ("permission:<id>:<name>") and a capability can't describe itself in a sentence.
         if (permissions.any { !CONTRIBUTION.matches(it) } || contributions.any { c -> !CONTRIBUTION.matches(c.capability) || c.permissions.any { !CONTRIBUTION.matches(it) } })
             throw TrustError("bad permission or capability name")
-        if (description.length > 2000) throw TrustError("text too long")
+        if (defaultDescription.length > 2000 || descriptionHe.length > 2000) throw TrustError("text too long")
         for (u in listOf(issues, homepage)) if (u.isNotEmpty() && !u.startsWith("https://")) throw TrustError("bad link")
         val notes = json.opt("reasons") ?: json.opt("explanations")
         if (notes != null && (notes !is JSONObject || notes.keys().asSequence().any { notes.opt(it) !is JSONObject })) throw TrustError("bad reasons")
@@ -116,6 +124,15 @@ object Names {
             }
         }.trim().take(max).trimEnd()
         return if (t.isNotEmpty() && t.last().isHighSurrogate()) t.dropLast(1) else t
+    }
+
+    // The order a rider reads names in: alphabetical in Kav's language now, and while Kav is in Hebrew the names whose
+    // first letter is Latin after the rest, so the Hebrew names come first.
+    fun order(): Comparator<String> {
+        val alphabet = java.text.Collator.getInstance(uk.noammm.kav.ui.T.locale)
+        val hebrew = uk.noammm.kav.ui.T.rtl
+        return compareBy<String> { hebrew && it.firstOrNull { c -> c.isLetter() }?.let { c -> Character.UnicodeScript.of(c.code) == Character.UnicodeScript.LATIN } == true }
+            .then(alphabet)
     }
 
     private fun hebrewLetter(cp: Int) = Character.isLetter(cp) && Character.UnicodeScript.of(cp) == Character.UnicodeScript.HEBREW

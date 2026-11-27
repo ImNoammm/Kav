@@ -109,7 +109,7 @@ class ExtWidgetSetup : ComponentActivity() {
     private fun load(): List<Option> {
         if (SafeMode.active || !ExtApp.dir(this).isDirectory) return emptyList()
         val hub = ExtApp.hub(this)
-        return hub.registry.installed.filter { hub.active(it) }.flatMap { i -> Widgets.of(i.manifest).map { Option(i.identity, i.displayName, it) } }
+        return hub.registry.installed.filter { hub.active(it) }.sortedWith(compareBy(uk.noammm.kav.ext.Names.order()) { it.displayName }).flatMap { i -> Widgets.of(i.manifest).map { Option(i.identity, i.displayName, it) } }
     }
 
     private fun choose(id: Int, o: Option) {

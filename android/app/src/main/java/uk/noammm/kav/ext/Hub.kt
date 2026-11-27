@@ -105,7 +105,8 @@ class Hub(
     fun source(key: String) = sources.firstOrNull { it.key == key }
 
     // A source's extensions, in its bundle's order.
-    fun extensions(s: Source): List<Registry.Installed> = registry.installed.filter { it.source == s.key }
+    // A source's extensions in the order a rider reads their names (Names.order).
+    fun extensions(s: Source): List<Registry.Installed> = registry.installed.filter { it.source == s.key }.sortedWith(compareBy(Names.order()) { it.displayName })
 
     // -- The block list ------------------------------------------------------------------------------------------------
 

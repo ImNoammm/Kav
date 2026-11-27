@@ -424,12 +424,12 @@ private fun ThemeChoiceRow(name: String, line: String?, tile: @Composable () -> 
     })
 }
 
-// Every installed theme, Kav's own look first: one applied at a time, Apply on each, a theme's page a tap away (onOpen).
+// Every installed theme, Kav's own look first and the rest by name: one applied at a time, Apply on each, a theme's page a tap away (onOpen).
 @Composable
 internal fun ThemeList(hub: Hub, onOpen: (String) -> Unit) {
     ExtUi.tick
     val ctx = LocalContext.current
-    val themes = hub.registry.installed.filter { it.manifest.isTheme }
+    val themes = hub.registry.installed.filter { it.manifest.isTheme }.sortedWith(compareBy(uk.noammm.kav.ext.Names.order()) { it.displayName })
     val kavOwn = Themes.applied(hub.registry.installed)?.takeIf { hub.active(it) } == null && Screens.theme == null
     ListGroup(inset = K.gap4 + 40.dp + K.gap3) {
         row {
