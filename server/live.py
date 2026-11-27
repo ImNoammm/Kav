@@ -7841,12 +7841,23 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
 .get a,dialog a{color:var(--link)}.end-icon{background:var(--accent)}
 .go svg.chev path{stroke:currentColor}a:focus-visible,dialog button:focus-visible{outline-color:var(--link)}
 :root[data-theme=light] #map .leaflet-tile-pane{filter:none}
+#steps{width:100%;flex-shrink:0;margin:18px 0 8px}
+#steps ol{margin:0;padding:0;list-style:none}
+.sum{font-size:20px;font-weight:650;margin:0 0 6px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:12px 2px;border-top:1px solid var(--edge)}
+.step:first-child{border-top:0}
+.badge{flex:none;min-width:44px;height:28px;padding:0 8px;border-radius:14px;background:var(--route,#bf5af2);color:#000;font-weight:700;font-size:14px;display:grid;place-items:center}
+.badge.plain{background:var(--edge);color:var(--muted)}
+.badge:empty::before{content:"";width:10px;height:10px;border-radius:50%;background:currentColor}
+.step b{display:block;font-size:16px;font-weight:650;overflow-wrap:anywhere}
+.step small{display:block;color:var(--muted);font-size:14px;margin-top:2px;overflow-wrap:anywhere}
 </style></head><body><main>
 <header class="brand"><img class="icon" alt="" src="data:image/png;base64,KAV_ICON">
 <div><h1>Kav</h1><p class="via" id="via">Shared via Kav</p></div><a class="github" href="https://github.com/ImNoammm/kav" aria-label="GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.3 1.8 1.3 1 1.8 2.8 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.2-3.2c-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 5.1 18 5.4 18 5.4c.6 1.6.2 2.9.1 3.2a4.7 4.7 0 0 1 1.2 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.1c0 .3.2.7.8.6A12 12 0 0 0 12 .3z"/></svg></a></header>
 <h2 id="title"></h2>
 <div id="apps" style="width:100%"></div>
 <section id="preview" hidden><div id="map" aria-label="Trip map"></div></section>
+<section id="steps" hidden aria-label="Trip steps"><p class="sum" id="steps-sum"></p><ol id="steps-list"></ol></section>
 <p id="trip-note" role="status" hidden></p>
 <p class="get" id="get"><a href="RELEASES">Get Kav</a></p>
 </main>
@@ -7975,6 +7986,66 @@ a.go,dialog{background:var(--card);border-color:var(--edge)}a.go:hover,a.go:acti
     if (saved.v !== 1 || !saved.trips || saved.trips.length !== 1) throw new Error("Invalid trip");
     var trip = saved.trips[0], parts = trip.legs || [], stops = saved.stops || {}, lines = saved.lines || {};
     var rides = parts.filter(function (l) { return l.kind === "RIDE"; });
+    try {
+      var stepsList = document.getElementById("steps-list"), locale = he ? "he-IL" : "en-GB";
+      var clock = function (sec) {
+        return Number.isFinite(sec) && sec > 0 ? new Date(sec * 1000).toLocaleTimeString(locale, {hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jerusalem"}) : "";
+      };
+      var minutes = function (a, b) { return Math.max(0, Math.round((b - a) / 60)) + t(" min", " דק׳"); };
+      var distance = function (m) { return m >= 1000 ? (m / 1000).toFixed(1) + t(" km", " ק״מ") : (Math.round(m / 10) * 10) + t(" m", " מ׳"); };
+      var stopName = function (id) { var s = stops[id] || {}; return s.displayName || s.name || ""; };
+      var step = function (badge, color, plain, title, lines) {
+        var li = document.createElement("li"); li.className = "step";
+        var b = document.createElement("span"); b.className = "badge" + (plain ? " plain" : ""); b.textContent = badge;
+        if (color) b.style.setProperty("--route", color);
+        var body = document.createElement("div");
+        var h = document.createElement("b"); h.dir = "auto"; h.textContent = title.replace(/_/g, "-"); body.appendChild(h);
+        lines.forEach(function (text) {
+          if (!text) return;
+          var s = document.createElement("small"); s.dir = "auto"; s.textContent = text.replace(/_/g, "-"); body.appendChild(s);
+        });
+        li.appendChild(b); li.appendChild(body); stepsList.appendChild(li);
+      };
+      var shown = 0, ink = 0;
+      parts.forEach(function (leg) {
+        var pts = (leg.shape || []).length >= 4, walking = leg.kind === "WALK";
+        var color = walking ? null : (saved.colors || [])[ink];
+        if (!walking && pts) ink++;
+        if (!/^#[0-9a-f]{6}$/i.test(color || "")) color = walking ? null : "#bf5af2";
+        var span = minutes(leg.dep, leg.arr);
+        if (leg.kind === "RIDE") {
+          var info = lines[leg.line] || {}, hops = (leg.stops || []).length - 1;
+          var dest = (info.dest || "").slice(0, 80);
+          step((info.number || "").slice(0, 8) || t("Bus", "אוטובוס"), color, false,
+            dest ? t("To ", "לכיוון ") + dest : t("Ride", "נסיעה"),
+            [clock(leg.dep) + "  " + t("Board at ", "עלייה ב") + stopName(leg.fromStop),
+             clock(leg.arr) + "  " + t("Get off at ", "ירידה ב") + stopName(leg.toStop),
+             span + (hops > 0 ? " · " + hops + t(hops === 1 ? " stop" : " stops", hops === 1 ? " תחנה" : " תחנות") : ""),
+             (leg.alertText || "").slice(0, 200)]);
+          shown++;
+        } else if (walking) {
+          if (!(leg.m > 0)) return;
+          step(t("Walk", "הליכה"), null, true, t("Walk ", "הליכה ") + distance(leg.m), [span]);
+          shown++;
+        } else if (leg.kind === "WAIT") {
+          if (leg.arr - leg.dep >= 30) {
+            step(t("Wait", "המתנה"), null, true, t("Wait ", "המתנה ") + span, []);
+            shown++;
+          }
+        } else if (leg.kind === "TAXI") {
+          step(t("Taxi", "מונית"), color, false, t("Taxi ", "מונית ") + span, []);
+          shown++;
+        } else if (leg.kind === "BIKE") {
+          step(t("Bike", "אופניים"), color, false, t("Bike ", "אופניים ") + span, []);
+          shown++;
+        }
+      });
+      if (shown && trip.dep > 0 && trip.arr > trip.dep) {
+        document.getElementById("steps-sum").textContent = clock(trip.dep) + " → " + clock(trip.arr) + " · " + minutes(trip.dep, trip.arr);
+        step("", null, true, t("Arrive at ", "הגעה ל") + toName, [clock(trip.arr)]);
+        document.getElementById("steps").hidden = false;
+      }
+    } catch (ignored) {}
     await new Promise(function (resolve, reject) {
       var script = document.createElement("script"); script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
       script.integrity = "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH";
