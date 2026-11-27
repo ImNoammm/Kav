@@ -332,6 +332,24 @@ object Native {
             android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { uk.noammm.kav.TicketStore.putRides(app, list, removed) } }
         }
 
+        // API 5: the screen's picture and its pieces' boxes (ScreenPieces), under the crash guard, while it's loaded.
+        override fun capture(captured: Kav.Captured) {
+            declares("capture", ScreenPieces.CAPABILITY)
+            uk.noammm.kav.ui.ScreenOverlay.capture(null) { picture, _, pieces ->
+                if (loaded[i.identity] !== l) { picture?.recycle(); return@capture }
+                NativeGuard.call(i.identity, "capture") { captured.captured(picture, pieces) }
+            }
+        }
+
+        // And the screen without its pieces (ScreenOverlay), the same way.
+        override fun captureBehind(captured: Kav.CapturedBehind) {
+            declares("captureBehind", ScreenPieces.CAPABILITY)
+            uk.noammm.kav.ui.ScreenOverlay.capture(null, behind = true) { picture, behind, pieces ->
+                if (loaded[i.identity] !== l) { picture?.recycle(); behind?.recycle(); return@capture }
+                NativeGuard.call(i.identity, "captureBehind") { captured.captured(picture, behind, pieces) }
+            }
+        }
+
         private fun offMain(what: String) {
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) throw IllegalStateException("$what asks the network: call it off the main thread")
         }
@@ -387,6 +405,7 @@ object Native {
             needs("part", Parts.CAPABILITY + name)
             require(name in Parts.NAMES) { "$name isn't one of Kav's screen parts" }
             require(where in Parts.WHERE) { "where is \"before\", \"after\" or \"replace\"" }
+            require(name != ScreenPieces.PART || where == "after") { "${ScreenPieces.PART} takes only \"after\": it is over Kav's screen, never instead of it" }
             if (card == null) l.parts.remove("$name|$where") else l.parts["$name|$where"] = card
             Parts.changed(name)
         }

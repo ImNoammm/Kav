@@ -108,7 +108,7 @@ At most 64 KB.
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](/docs/extensions/screens). |
 | `widgets` | Its home screen widgets, for a `widget.provide` contribution (API 5). See [screens.md](/docs/extensions/screens#home-screen-widgets). |
-| `theme` | Its look: colors, line badges and corners, for a theme or a `theme` contribution. See [screens.md](/docs/extensions/screens#themes). |
+| `theme` | Its look: colors, line badges, corners, a font, outlines, the colors of Kav's map and pictures for some of its parts, for a theme or a `theme` contribution. See [screens.md](/docs/extensions/screens#themes). |
 | `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
 | `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |
@@ -129,6 +129,7 @@ At most 64 KB.
 | `part.<name>` (API 4) | adds a view to one of Kav's screen parts, or replaces it, `part.home.pay` for Home's pay card ([native.md](/docs/extensions/native#screen-parts)) |
 | `hooks` (API 4) | hooks on Kav's own code, each function listed under the manifest's `"hooks"` ([native.md](/docs/extensions/native#hooks-into-kav-itself)) |
 | `widget.provide` (API 5) | home screen widgets, each listed under the manifest's `"widgets"` ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
+| `results.add` (API 5) | routes from Kav's own planner, first in Kav's results ([hooks.md](/docs/extensions/hooks#kavs-own-planner-kavplan-resultsadd-and-kavswitchtrip-api-5)) |
 
 Each part of an extension has every power the manifest declares. Code you register only shows when the manifest
 declares it too ([native.md](/docs/extensions/native) has the table).

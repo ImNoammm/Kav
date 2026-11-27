@@ -89,6 +89,8 @@ A card on a trip's page and a line under a search result are told about their ro
 | `mode` | number | For a ride: the line's route type as its planner gave it. `2` is a train (Kav treats it as one), `3` a bus (what Kav assumes when a planner says nothing). `-1` when the line isn't known, and for every other leg. |
 | `trip` | string or null | For a ride: the trip's reference, `null` when Kav has none for it. `null` for every other leg. |
 | `stops` | number | For a ride: how many stops it calls at, counting the first and the last. `0` otherwise. |
+| `liveDep`, `liveArr` | number or null | API 5. For a ride: when Kav's live times have it leave the stop it's boarded at and get to the one it's left at, in seconds since 1970. `null` without a live time, and for every other leg. |
+| `turns` | object[] | API 5. For a walk: its turns as its planner gives them, each `{ way, street, metres, lat, lon }`: `way` OpenTripPlanner's relative direction (`DEPART`, `LEFT`, `SLIGHTLY_RIGHT`, `CONTINUE`...), `street` the street it goes onto (`""` for a path with no name), `metres` how far along it. Empty for a walk without them and for every other leg. |
 
 A `wait` comes before each ride. It is at one stop, the one the ride leaves from: its `from` and `to` are both that
 stop.
@@ -516,8 +518,9 @@ kav.onTrip { event ->
 - `event`: `"start"` (the rider started following it, or Kav started again with it under way), `"step"` (the rider
   moved on to another step: off a bus, the next walk or wait, and so on), `"replan"` (Kav planned a new route on the
   way; `trip` is the new one), `"shown"` (the rider swiped navigation's cards to another step, or opened or left
-  navigation; only `step.shown` changed) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or
-  `"ended"` when the rider ended it before. Ignore an event you don't know: a later Kav may add more.
+  navigation; only `step.shown` changed), `"eta"` (Kav's estimate of when the trip gets there moved to another
+  minute; only `eta` changed) or `"end"`, with `"reason": "arrived"` when it ended at its last step, or `"ended"` when
+  the rider ended it before. Ignore an event you don't know: a later Kav may add more.
 - `trip`: the trip as slots, parts and route rules get it (its legs, stops, lines and times).
 - `step`: the step the trip is on, the one navigation marks as current: its `index` and the `count` of steps, its
   `kind` (`start`, `walk`, `wait`, `ride`, `taxi`, `cycle` or `arrive`), its leg (`leg`, as a leg of `trip`; for a
@@ -531,10 +534,79 @@ kav.onTrip { event ->
   for other steps), and the `place` the step is about: where the trip starts, the stop a walk goes to, the stop a
   wait boards at, the stop a ride gets off at (a taxi's or a bike's too, when it ends at one), or where the trip ends.
   `null` when it has none.
+- `eta`: when the trip gets there as Kav estimates it now, in seconds since 1970: the trip notification's "Arrive",
+  worked out from where the bus is on a ride, otherwise from the plan and the live times Kav has. Kav works it out
+  every few seconds in its trip service, so `"eta"` events also come with Kav in the background.
 - Set while a trip is under way (from `start()`, or when the rider allows it during a trip), the listener is told that
   trip at once, as `"start"`. `null` stops it. Without a `trips.follow` contribution `kav.onTrip` throws.
 
 Both need `"api": 5` in the manifest (an older Kav has neither method). A Kav without these capabilities installs your
 extension and never calls you.
+
+## Kav's own planner: `kav.plan`, `results.add` and `kav.switchTrip` (API 5)
+
+**`kav.plan(query)`** asks Kav's own planner, as Kav's search does, and answers its routes. Off the main thread: it
+asks the network, and throws on the main one. No contribution needed.
+
+```kotlin
+val answer = kav.plan("""{"from": [32.0853, 34.7818], "to": [32.0745, 34.7920], "at": 0, "way": "d", "settings": "fnnt"}""")
+// {"routes": [{"ref": "r12", "dep": ..., "arr": ..., "legs": [...], ...}]}
+```
+
+- `from`, `to`: `[lat, lon]`, required. `at`: seconds since 1970, `0` or none for now. `way`: `"d"` to leave at `at`
+  (the default) or `"a"` to get there by it. `settings`: the planner settings' four letters, in this order: pace
+  (`s` slow, `n` normal, `f` fast), walking (`l` less, `n` normal, `m` more), changes (`n` normal, `f` fewer) and time
+  at the stop (`t` tight, `n` normal, `r` relaxed); the rider's own by default. `modes`: the route types to take
+  (all by default).
+- Each route is in the shape route rules get it ([A route](#a-route)), with a `ref`. Kav keeps the route by its
+  `ref` for 15 minutes (the last 60 of yours), for `results.add` and `kav.switchTrip`; another extension's `ref` is
+  unknown to you. No routes when the planner found none, `null` when it can't be reached. A query that isn't right
+  throws.
+
+**`results.add`: your routes first in Kav's results.** Once Kav's own planner has answered a search and its routes
+are on screen, Kav asks each extension that provides `results.add`, with a contribution of that capability. Its
+routes go first. Kav asks only for its own planner (not an extension's planner, a recent trip an extension planned,
+or a shared trip), and not for a search with stops on the way or for the last departures. The rider's route rules
+judge your routes too.
+
+```json
+"contributions": [{"id": "runs", "capability": "results.add"}]
+```
+
+```kotlin
+kav.provide("results.add") { input ->
+    val q = JSONObject(input).getJSONObject("query")
+    val faster = JSONObject(kav.plan(q.put("settings", "fnnt").toString()))
+    // The first two of them at the fast pace, leaving 2 minutes later.
+    JSONArray((0 until minOf(2, faster.getJSONArray("routes").length())).map {
+        val r = faster.getJSONArray("routes").getJSONObject(it)
+        JSONObject().put("ref", r.getString("ref")).put("start", r.getLong("dep") + 120)
+    }).toString()
+}
+```
+
+- Asked `{"query": {"from", "to", "at", "way", "now", "settings", "modes", "reason"}, "routes": [...], "trip"}`:
+  `routes` are Kav's own, `reason` is `"search"`, or `"replan"` when Kav plans a New route from here for the trip under
+  way, which also gives that `trip` (as `kav.onTrip` gives it). For `"replan"`, the first route you answer is the new
+  route.
+- Answered `[{"ref", "start", "walks"}]`: routes from `kav.plan`, at most 3. `start` is when the rider leaves, in
+  seconds since 1970 (the route's own by default); `walks` how many seconds each walk before the route's first ride
+  takes (the route's own by default; as many as those walks). Kav lays the walks and waits out from `start`, and takes
+  the route only when they reach the first ride by when it leaves, by its live time when Kav has one. Its tag
+  `likely_missed` goes, and Kav's own tags are worked out again over all the results.
+- Within 20 seconds; Kav's own routes stay on screen meanwhile. A route Kav doesn't know or can't lay out so is left
+  out, and an answer Kav can't read adds nothing.
+
+**`kav.switchTrip(change)`: the trip under way goes on with one of your routes**, from where one of its rides ends,
+as Kav's own New route from here does: the legs up to that ride stay, your route comes after them.
+
+```kotlin
+val switched = kav.switchTrip("""{"ref": "r12", "after": 1, "dep": 1795421100, "arr": 1795422900}""")
+```
+
+`after` is the ride's index in the trip's `legs`, `dep` and `arr` the trip's own as `kav.onTrip` gives them, so a
+trip that changed since is left as it is. True when it was switched; false for a `ref` Kav doesn't know, another trip,
+a ride the rider is past, or Kav's screen not running. Only while the rider allows following trips, with a
+`trips.follow` contribution (without it, it throws). From any thread. The listener is then told `"replan"`.
 
 </div>

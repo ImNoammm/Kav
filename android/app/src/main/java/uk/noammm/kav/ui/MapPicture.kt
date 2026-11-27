@@ -9,7 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -117,7 +116,7 @@ internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modi
         val journey = model.activeJourney
         if (journey != null) HomeTripMap(model, journey, model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }, padding) { drawn = true }
         else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(it, model.heading, padding) { drawn = true } }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)))
+        Box(Modifier.fillMaxSize().backdrop { drawRect(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)) })
         AnimatedVisibility(slow && !drawn, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
             Box(contentAlignment = Alignment.Center) { LoadingPulse(T("Loading the map", "טוענים את המפה")) }
         }

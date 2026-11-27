@@ -271,12 +271,12 @@ private fun TripDetailBody(
     Column(Modifier.fillMaxSize()) {
         KavPart("trip.header", trip, about) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
+            Modifier.fillMaxWidth().topBar().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(K.gap3),
         ) {
             BackButton(onBack)
-            Text(T("Trip", "נסיעה"), style = K.type.title, maxLines = 1, modifier = Modifier.weight(1f))
+            Text(T("Trip", "נסיעה"), style = K.type.title, color = topBarInk, maxLines = 1, modifier = Modifier.weight(1f))
             ShareButton(onShare)
             val taxiOnly = trip.legs.any { it.kind == Transit.LegKind.TAXI } &&
                 trip.legs.none { it.kind == Transit.LegKind.RIDE }

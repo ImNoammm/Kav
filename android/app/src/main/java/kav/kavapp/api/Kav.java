@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides, capture, captureBehind. */
     int API = 5;
 
     int apiVersion();
@@ -77,6 +77,26 @@ public interface Kav {
      *  for it a key also covers the rides an earlier bundle file of the same name left under that key. A ride that isn't
      *  right throws. From any thread. */
     default void addRides(String rides) {}
+
+    /** API 5. A picture of Kav's screen as it shows now, and where its pieces are on it, for an extension that draws over
+     *  the screen (the part "screen.overlay"). Needs a contribution with capability "screen.capture"; without it, it
+     *  throws. Told on the main thread: the picture, the size of the screen.overlay part's views, with Kav's maps and
+     *  what those views draw in it; and pieces, a JSON array of {"x", "y", "w", "h", "kind"}, the box of each piece in
+     *  the picture's pixels, kind "button", "field", "card" (a surface with its own background, whole with what it holds),
+     *  "text" or "image". Never a piece's text, and never what is typed:
+     *  each field's inside is painted over in the picture. null and "[]" when Kav isn't in front or the picture couldn't be taken. The picture is yours: recycle it
+     *  when you're done. From any thread. */
+    default void capture(Captured captured) {}
+
+    /** API 5. As capture, and with it behind: the same screen without its pieces, made off the screen, so nothing on it
+     *  changes. Where a piece is, what Kav draws behind it there: its background, a theme's background picture, a skin's
+     *  top bar or card, its maps; or, where that isn't what shows around the piece (a page of one color), the color seen
+     *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. The
+     *  picture then has only the pieces, each with only what is its own: what of its box is what is behind it (the map,
+     *  the background around a button) is clear, as is all that is in no piece; drawn over behind, it is the screen. Each
+     *  piece's box is tight to what is its own, and a piece with nothing of its own (a box only over the map) isn't
+     *  given. null, null and "[]" as with capture. From any thread. */
+    default void captureBehind(CapturedBehind captured) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -195,6 +215,17 @@ public interface Kav {
         String content(String args) throws Exception;
 
         default void tapped(String tap) throws Exception {}
+    }
+
+    /** API 5. Kav's screen as capture took it: its picture, or null, and its pieces as JSON text. */
+    interface Captured {
+        void captured(android.graphics.Bitmap picture, String pieces);
+    }
+
+    /** API 5. Kav's screen as captureBehind took it: its picture and the same screen without its pieces, or null and null,
+     *  and its pieces as JSON text. */
+    interface CapturedBehind {
+        void captured(android.graphics.Bitmap picture, android.graphics.Bitmap behind, String pieces);
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */
