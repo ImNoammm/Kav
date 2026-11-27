@@ -2135,11 +2135,13 @@ At most 64 KB.
   "format": 1,
   "name": "speed-card",
   "displayName": "Speed card",
+  "displayNameHe": "כרטיס מהירות",
   "version": "1.0.0",
   "release": 1,
   "minKav": 45,
   "api": 2,
   "description": "Your speed on Home, from the phone's GPS.",
+  "descriptionHe": "המהירות שלך במסך הבית, לפי ה-GPS של הטלפון.",
   "native": { "dex": "classes.dex", "entry": "org.example.speed.Speed" },
   "adds": ["location", "notifications"],
   "contributions": [{ "id": "card", "capability": "slot.home" }]
@@ -2151,12 +2153,14 @@ At most 64 KB.
 | `format` | `1`. |
 | `name` | `a` to `z`, digits, `.`, `_`, `-`; starts with a letter or digit; at most 64 characters. Its folder in the bundle has this name. With the source it is the extension's identity, so it never changes. |
 | `displayName` | What riders see. Any language and emoji. Kav cleans it ("Names" below) and cuts it at 64 characters; never refused. Defaults to `name`. |
+| `displayNameHe` | Optional: its name for riders who have Kav in Hebrew, shown in place of `displayName` there and cleaned the same way. Without it, or empty after cleaning, they see `displayName`. Kav 5.2 and later read it, for any `api`; an older Kav ignores it. |
 | `kind` | `"theme"` for a theme ([screens.md](https://kavapp.link/docs/extensions/screens#themes)): Kav calls it a theme, lists it with themes and applies one at a time. Anything else, or none, is an extension. API 5. |
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
 | `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks, with Kav 5.1 (`minKav` 47), `5` for planner tabs, the rider's trips, home screen widgets and Kav's timetable and live vehicles, with Kav 5.2 (`minKav` 48). Default 1. |
 | `description` | At most 2000 characters. |
+| `descriptionHe` | Optional: its description for riders who have Kav in Hebrew, in place of `description`; at most 2000 characters. Read as `displayNameHe` is. |
 | `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed, except for a theme, which may bring none. See [native.md](https://kavapp.link/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |
 | `adds` | What it adds that Kav can't see in its code: any of `"map"` (draws on Kav's maps), `"notifications"`, `"location"` (uses the phone's location) and `"settings"` (a settings view of its own). Kav says these, with what the rest of the manifest shows (a Home card, a tab, route rules), on its row in Settings › Extensions and under "It can". Another word is ignored. |
@@ -2290,7 +2294,11 @@ never refuses one for it:
 - any run of spaces one space, none at the ends;
 - at most 64 characters.
 
-A `displayName` that is empty after cleaning is the extension's `name` instead.
+A `displayName` that is empty after cleaning is the extension's `name` instead, and a `displayNameHe` that is empty
+after cleaning is no Hebrew name.
+
+Kav lists extensions (in Settings › Extensions, a source's page, the themes and the home screen widget picker) by the
+name riders see, alphabetically in Kav's language. In Hebrew, names whose first letter is Latin come after the rest.
 
 Nothing an extension draws itself is cleaned: its views, a filter's reasons and its tags are shown as they come.
 
