@@ -29,7 +29,7 @@ when tilted. Supported Nothing phones also offer Glyph alerts and trip progress 
 
 ## Line alerts
 
-Detours, delays and moved stops on your rides are a choice of their own (Settings › Providers › Detours
+Detours, delays and moved stops on your rides are a choice of their own (Settings › Privacy › Detours
 and alerts), off until you turn them on:
 
 - **Google**: Google Maps, asked from your phone about each ride of a trip you open, at most every five minutes. Google
@@ -41,7 +41,7 @@ and alerts), off until you turn them on:
 ## How busy
 
 How busy the next bus or train usually is at that hour, as Google Maps predicts it, on trips, in navigation and on a
-line's page. It's on unless you turn it off, in setup or in Settings › Providers › How busy. Kav asks Google from your
+line's page. It's on unless you turn it off, in setup or in Settings › Privacy › How busy. Kav asks Google from your
 phone about the stop you board at, at most every ten minutes, so Google sees that stop and your IP address. It's Google's
 prediction for the line at that hour, not a count of who's on board.
 

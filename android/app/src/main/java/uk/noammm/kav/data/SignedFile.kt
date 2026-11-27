@@ -13,8 +13,6 @@ import java.util.Base64
 // a day and the last good copy is kept on the phone. A copy counts only when its signature checks out against the key
 // Kav pins for it, so whoever holds the private half is the only one who can change what Kav does.
 internal class SignedFile(private val name: String, private val url: String, private val key: String) {
-    enum class Check { NEWER, SAME, FAILED }
-
     // The kept copy, when its signature checks out, handed to take without asking the network.
     fun load(ctx: Context, take: (ByteArray) -> Boolean) {
         val dir = File(ctx.filesDir, name)
@@ -26,23 +24,21 @@ internal class SignedFile(private val name: String, private val url: String, pri
     // When the network last answered about it, 0 for never.
     fun checkedAt(ctx: Context): Long = File(File(ctx.filesDir, name), "checked").lastModified()
 
-    // Hands every copy that verifies to take, the kept one first, then the published one at most once a day, or now
-    // when forced. take answers whether it used the copy, and only a used copy is kept. Blocks, so off the main thread.
-    fun refresh(ctx: Context, force: Boolean = false, take: (ByteArray) -> Boolean): Check {
+    // Hands every copy that verifies to take, the kept one first, then the published one at most once a day. take
+    // answers whether it used the copy, and only a used copy is kept. Blocks, so off the main thread.
+    fun refresh(ctx: Context, take: (ByteArray) -> Boolean) {
         val dir = File(ctx.filesDir, name).apply { mkdirs() }
         val kept = File(dir, "recipe.json")
         val keptSignature = File(dir, "recipe.json.sig")
         val checked = File(dir, "checked")
         load(ctx, take)
-        if (!force && checked.exists() && System.currentTimeMillis() - checked.lastModified() < DAY_MS) return Check.SAME
-        val body = get(url) ?: return Check.FAILED
-        val signature = get("$url.sig")?.toString(Charsets.UTF_8) ?: return Check.FAILED
+        if (checked.exists() && System.currentTimeMillis() - checked.lastModified() < DAY_MS) return
+        val body = get(url) ?: return
+        val signature = get("$url.sig")?.toString(Charsets.UTF_8) ?: return
         checked.writeText("")
-        if (!verify(body, signature)) return Check.FAILED
-        if (!take(body)) return Check.SAME
+        if (!verify(body, signature) || !take(body)) return
         kept.writeBytes(body)
         keptSignature.writeText(signature)
-        return Check.NEWER
     }
 
     // ECDSA P-256 over the file's exact bytes, as `openssl dgst -sha256 -sign` makes it.

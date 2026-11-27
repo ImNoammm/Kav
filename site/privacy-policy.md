@@ -16,7 +16,7 @@ When you pick Kav for live buses, planning or timetables, the app asks Kav's ser
 
 - live buses on the lines, stops or rough area you're looking at;
 - live buses in the rough area around you, at most every 15 seconds while Kav is open and you're moving, if you turn
-  on Recognize the bus in Settings, to see whether you're on one of them;
+  on Recognize the bus in a trip's settings, to see whether you're on one of them;
 - the next buses at the stop a home screen widget shows, about every half hour and when your saved stops change, also
   while Kav is closed;
 - trips between the start and end you plan, and the time;

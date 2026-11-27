@@ -126,13 +126,17 @@ internal class SharePrep(
     fun again() { kav = null; kavAttempt++ }
 }
 
-// fresh: anything that changes when the Link customization may have, so it's read again (the sheet opening).
+// The link's choices saved under the Share sheet's Options (LinkOptions), counted, so a prep made before them is made
+// again with them.
+internal object LinkEdits { var count by mutableIntStateOf(0) }
+
+// fresh: anything that changes when the link's choices may have, so they're read again (the sheet opening).
 @Composable
 internal fun rememberSharePrep(
     trip: Transit.Itinerary, r: Transit.Resolved, fromLabel: String, toLabel: String, active: Boolean, fresh: Any,
 ): SharePrep {
     val ctx = LocalContext.current
-    val style = remember(fresh) { Prefs.linkStyle(ctx) }
+    val style = remember(fresh, LinkEdits.count) { Prefs.linkStyle(ctx) }
     val prep = remember(trip, fromLabel, toLabel, style) {
         SharePrep(trip, fromLabel, toLabel, style, CardLook.of(ctx, trip, fromLabel, toLabel, style),
             MapPacks.STANDARD.state is MapPack.State.Ready && trip.legs.any { it.shape.size >= 2 })
@@ -182,19 +186,40 @@ internal fun SharePicture(prep: SharePrep, r: Transit.Resolved) {
 // A trip shared the way a music app shares a song: its card first, as the link's page and a chat's preview of the link
 // show it, then where to send it. The card was made while the trip's page was open (SharePrep); the link is made as the
 // sheet opens, and its line fills in once it's there: a tap that comes before it is kept, and sent the moment it is. A
-// link that can't be made says so, with a way to try again. More is Android's own chooser.
+// link that can't be made says so, with a way to try again. More is Android's own chooser. Options, under the card,
+// opens the link's choices in place; the card shows each as it's picked.
 @Composable
 internal fun ShareSheet(prep: SharePrep, r: Transit.Resolved, onDismiss: () -> Unit) {
-    LaunchedEffect(prep) { prep.wanted = true }
+    var options by remember { mutableStateOf(false) }
+    // A link made by choice picked, only once the picking has paused, so going through them doesn't make one each.
+    LaunchedEffect(prep) { if (options) delay(LINK_SETTLE_MS); prep.wanted = true }
     val made = prep.kav
     val failed = made?.isFailure == true
-    BottomSheet(onDismiss) { close ->
+    BottomSheet(onDismiss, scrolls = true) { close ->
         Column(
             Modifier.fillMaxWidth().padding(horizontal = K.gap4).padding(bottom = K.gap4),
             verticalArrangement = Arrangement.spacedBy(K.gap4),
         ) {
             ShareCard(prep.trip, r, prep.card, prep.shot, prep.mapShown, Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)),
                 mapAspect = prep.mapSize?.let { it.width / it.height.toFloat() } ?: 4f)
+            Column {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rCard)).clickable { options = !options }
+                        .padding(vertical = K.gap2),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2),
+                ) {
+                    val days = prep.style.expiryDays
+                    Text(T("The link lasts $days days", "הקישור בתוקף $days ימים"), style = K.type.subhead,
+                        modifier = Modifier.weight(1f))
+                    Text(T("Options", "אפשרויות"), style = K.type.subhead, color = K.accentInk)
+                    OptionsChevron(options)
+                }
+                AnimatedVisibility(
+                    options,
+                    enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+                    exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+                ) { Column { LinkOptions { LinkEdits.count++ } } }
+            }
             androidx.compose.animation.AnimatedVisibility(
                 failed,
                 enter = fadeIn(tween(220, delayMillis = 60)) + expandVertically(spring(dampingRatio = 1f, stiffness = 500f)),
@@ -209,6 +234,18 @@ internal fun ShareSheet(prep: SharePrep, r: Transit.Resolved, onDismiss: () -> U
             // Sent, the sheet closes and is gone, so Share opens it again and Back goes on as before.
             ShareTargets(made?.getOrNull(), failed) { send -> close { send(); onDismiss() } }
         }
+    }
+}
+
+// Down while the Options are closed, up while they're open.
+@Composable
+private fun OptionsChevron(open: Boolean) {
+    val turn by animateFloatAsState(if (open) 180f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "options")
+    val ink = K.accentInk
+    Canvas(Modifier.size(12.dp).graphicsLayer { rotationZ = turn }) {
+        val w = size.width
+        drawLine(ink, Offset(w * .2f, w * .38f), Offset(w * .5f, w * .66f), w * .12f, StrokeCap.Round)
+        drawLine(ink, Offset(w * .5f, w * .66f), Offset(w * .8f, w * .38f), w * .12f, StrokeCap.Round)
     }
 }
 
@@ -231,6 +268,8 @@ private const val CARD_BYTES = 300 * 1024
 private const val CARD_WAIT_MS = 6_000L
 // How long the trip's page shows before its card is made ready: a glance at a trip and back draws nothing.
 private const val PREP_DELAY_MS = 1_500L
+// How long a picked link choice waits for the next before its link is made.
+private const val LINK_SETTLE_MS = 700L
 // The least of the picture's height its map keeps.
 private const val CARD_MAP_SHARE = .42f
 // The link's page's accent, the same in every look: its pin at the trip's end.

@@ -79,7 +79,8 @@ internal fun kavActions(model: KavModel) {
     Actions.own("ticket.open") { _, a -> TicketStore.opened = a.optString("key").ifEmpty { null } }
     Actions.own("report") { _, _ -> model.reportOwn() }
     Actions.own("settings.page.open") { _, a ->
-        val page = a.optString("page")
+        // live was the Providers page, now part of Privacy.
+        val page = a.optString("page").let { if (it == "live") "privacy" else it }
         if (page in uk.noammm.kav.ext.Parts.SETTINGS_PAGES) {
             model.settingsOpen = true
             SettingsNav.wanted = page
