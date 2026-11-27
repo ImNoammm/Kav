@@ -247,11 +247,15 @@ internal fun OnBusCard(model: KavModel, modifier: Modifier = Modifier) {
         if (!suggest || !hasLocationPermission(ctx)) { picks = emptyList(); return@LaunchedEffect }
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             val det = RideDetector()
+            // The position Kav already has (the Live tab, a trip's map or a trip under way keep it); this asks for none of its own.
+            var seenAt = 0L
             while (true) {
-                val p = onBusFix(ctx)
-                if (p != null) {
+                val p = model.here
+                val at = model.hereAt
+                if (p != null && at != seenAt && model.hereFresh) {
+                    seenAt = at
                     val now = System.currentTimeMillis() / 1000
-                    val fix = Fix(p.first, p.second, now)
+                    val fix = Fix(p.first, p.second, at)
                     if (det.moving(fix)) {
                         val area = try {
                             withContext(Dispatchers.IO) { KavLive.area(KavLive.box(p.first, p.second, 0.5)) }
@@ -264,6 +268,8 @@ internal fun OnBusCard(model: KavModel, modifier: Modifier = Modifier) {
                     } else {
                         picks = emptyList()
                     }
+                } else if (!model.hereFresh) {
+                    picks = emptyList()
                 }
                 delay(15_000)
             }
@@ -362,7 +368,7 @@ private fun OnBusPickBus(model: KavModel, onPick: (BusPick) -> Unit) {
         failed = false
         val number = query.trim()
         if (number.isNotEmpty()) delay(500)
-        val here: Pair<Double, Double>? = if (number.isNotEmpty()) model.here ?: onBusFix(ctx) else onBusFix(ctx) ?: model.here
+        val here: Pair<Double, Double>? = if (number.isNotEmpty()) model.here ?: onBusFix(ctx) else model.here?.takeIf { model.hereFresh } ?: onBusFix(ctx) ?: model.here
         val area: KavLive.Area? = try {
             withContext(Dispatchers.IO) {
                 if (number.isNotEmpty()) KavLive.line(number)
