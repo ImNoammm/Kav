@@ -92,7 +92,7 @@ object ExtLook {
     @Volatile private var palettes: Map<String, Palette> = emptyMap()
     @Volatile private var font: FontFamily? = null
     @Volatile private var skin: Skin? = null
-    // The extensions folder, where a theme's font is read from (ExtShown.start).
+    // The extensions folder, where a theme's font and skin are read from (ExtShown.start, ExtApp.hub).
     @Volatile internal var root: java.io.File? = null
     private var holds by mutableIntStateOf(0)
     // A protected surface is on the screen: extension pages under it pause.

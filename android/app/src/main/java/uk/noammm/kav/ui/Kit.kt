@@ -428,6 +428,16 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
         if (layoutDirection == LayoutDirection.Ltr) drawLine(line, Offset(start, w / 2), Offset(size.width, w / 2), w)
         else drawLine(line, Offset(0f, w / 2), Offset(size.width - start, w / 2), w)
     }
+    // A skin's field as one box round the whole group, the ends that belong to other rows pushed out of sight.
+    val field = K.skin?.get("field")
+    if (field != null) return clip(shape).drawWithContent {
+        val s = field.scale * density
+        val top = if (first) 0f else -field.insets[1] * s - 1
+        val bottom = if (last) size.height else size.height + field.insets[3] * s + 1
+        nineSlice(field, top = top, bottom = bottom)
+        drawContent()
+        divider(.5.dp.toPx())
+    }
     // A theme's outline round the card, worked out once for the row's size, its ends pushed out of sight as Kav's are.
     val style = K.outline
     if (style != null) return clip(shape).background(K.surface).drawWithCache {

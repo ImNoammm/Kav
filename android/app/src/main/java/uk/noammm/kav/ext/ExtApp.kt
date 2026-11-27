@@ -34,6 +34,8 @@ object ExtApp {
 
     @Synchronized fun hub(ctx: Context): Hub = hub ?: Hub(dir(ctx), Http, BuildConfig.VERSION_CODE, blockListKey, images = SourceImages(dir(ctx), Http)).also {
         hub = it
+        // A Kav that started with no extensions folder learns it here, before a first theme's font and skin are read.
+        uk.noammm.kav.ui.ExtLook.root = dir(ctx)
         Selections.installed = it::manifestOf
         Hooks.attach(ctx, it)
         addDefaults(it)
