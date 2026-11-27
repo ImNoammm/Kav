@@ -563,8 +563,9 @@ fun ItineraryCard(it: Transit.Itinerary, r: Transit.Resolved, asked: Long = 0, f
             }
             // Said in words, as the arrow between the times isn't. A route whose time to leave has come leaves now: its own
             // time, often the very time asked (the margin at the stop goes back to it), would read as gone.
-            val leaving = leavesNow(it, now)
-            val dep = if (leaving) T("Now", "עכשיו") else hm.format(Date(it.dep * 1000))
+            val leave = leaveTime(it, r, emptyMap(), now)
+            val leaving = leave?.now ?: leavesNow(it, now)
+            val dep = if (leaving) T("Now", "עכשיו") else hm.format(Date((leave?.at ?: it.dep) * 1000))
             val arr = hm.format(Date(it.arr * 1000))
             Row(
                 Modifier.clearAndSetSemantics {
