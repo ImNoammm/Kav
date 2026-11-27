@@ -605,8 +605,11 @@ val switched = kav.switchTrip("""{"ref": "r12", "after": 1, "dep": 1795421100, "
 ```
 
 `after` is the ride's index in the trip's `legs`, `dep` and `arr` the trip's own as `kav.onTrip` gives them, so a
-trip that changed since is left as it is. True when it was switched; false for a `ref` Kav doesn't know, another trip,
-a ride the rider is past, or Kav's screen not running. Only while the rider allows following trips, with a
-`trips.follow` contribution (without it, it throws). From any thread. The listener is then told `"replan"`.
+trip that changed since is left as it is. `start` and `walks`, both optional, lay the route out first as for
+`results.add` (a run from the stop where the ride ends, say). True when it was switched; false for a `ref` Kav doesn't
+know, another trip, a ride the rider is past, walks that don't reach the route's first ride in time, a trip with
+stops on the way still ahead (a route of `kav.plan` goes through none), or Kav's screen not running. Only while the
+rider allows following trips, with a `trips.follow` contribution (without it, it throws). From any thread. The
+listener is then told `"replan"`.
 
 </div>

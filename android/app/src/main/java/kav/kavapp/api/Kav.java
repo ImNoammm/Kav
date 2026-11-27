@@ -95,8 +95,8 @@ public interface Kav {
      *  index in the trip's legs, dep and arr the trip's own as onTrip gives them, start and walks (optional) the route
      *  laid out as for "results.add". True when it was switched; false for a ref it doesn't know, another trip, a ride
      *  the rider is past, walks that don't reach the ride in time, stops on the way still ahead, or Kav's screen not
-     *  running. Only while the rider allows following trips; needs a contribution with capability "trips.follow", without it, it throws. From any
-     *  thread. */
+     *  running. Only while the rider allows following trips; needs a contribution with capability "trips.follow",
+     *  without it, it throws. From any thread. */
     default boolean switchTrip(String change) { return false; }
 
     /** API 5. Wakes Kav at atMillis (milliseconds since 1970), with Kav closed too, and tells onAlarm's listener id once

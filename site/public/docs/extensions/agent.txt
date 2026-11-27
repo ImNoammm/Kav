@@ -880,10 +880,12 @@ public interface Kav {
     default String plan(String query) { return null; }
 
     /** API 5. The trip under way goes on with a route plan() gave, from where one of its rides ends, as Kav's own New
-     *  route from here does: change, as JSON text, {"ref", "after", "dep", "arr"}, after the ride's index in the trip's
-     *  legs, dep and arr the trip's own as onTrip gives them. True when it was switched; false for a ref it doesn't
-     *  know, another trip, a ride the rider is past, or Kav's screen not running. Only while the rider allows following
-     *  trips; needs a contribution with capability "trips.follow", without it, it throws. From any thread. */
+     *  route from here does: change, as JSON text, {"ref", "after", "dep", "arr", "start", "walks"}, after the ride's
+     *  index in the trip's legs, dep and arr the trip's own as onTrip gives them, start and walks (optional) the route
+     *  laid out as for "results.add". True when it was switched; false for a ref it doesn't know, another trip, a ride
+     *  the rider is past, walks that don't reach the ride in time, stops on the way still ahead, or Kav's screen not
+     *  running. Only while the rider allows following trips; needs a contribution with capability "trips.follow",
+     *  without it, it throws. From any thread. */
     default boolean switchTrip(String change) { return false; }
 
     /** API 5. Wakes Kav at atMillis (milliseconds since 1970), with Kav closed too, and tells onAlarm's listener id once
@@ -1842,9 +1844,12 @@ val switched = kav.switchTrip("""{"ref": "r12", "after": 1, "dep": 1795421100, "
 ```
 
 `after` is the ride's index in the trip's `legs`, `dep` and `arr` the trip's own as `kav.onTrip` gives them, so a
-trip that changed since is left as it is. True when it was switched; false for a `ref` Kav doesn't know, another trip,
-a ride the rider is past, or Kav's screen not running. Only while the rider allows following trips, with a
-`trips.follow` contribution (without it, it throws). From any thread. The listener is then told `"replan"`.
+trip that changed since is left as it is. `start` and `walks`, both optional, lay the route out first as for
+`results.add` (a run from the stop where the ride ends, say). True when it was switched; false for a `ref` Kav doesn't
+know, another trip, a ride the rider is past, walks that don't reach the route's first ride in time, a trip with
+stops on the way still ahead (a route of `kav.plan` goes through none), or Kav's screen not running. Only while the
+rider allows following trips, with a `trips.follow` contribution (without it, it throws). From any thread. The
+listener is then told `"replan"`.
 
 
 ## Screens: cards, pages, settings, the Home body, themes and home screen widgets
