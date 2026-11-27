@@ -316,6 +316,8 @@ private fun Style.ensureKavLayers() {
         PropertyFactory.circleStrokeWidth(Expression.toNumber(Expression.get("strokeWidth"))),
         PropertyFactory.circleSortKey(sort),
     ))
+    // The rider's arrow under the vehicles and groups, which fade where they're over it (OverArrow).
+    addLayer(markLayer(RIDER_LAYER, SRC_RIDER, turns = true).withFilter(Expression.literal(true)))
     // The vehicles that go with a focus: their layers' opacity is a plain number times each one's own alpha (a vehicle
     // merging into a group fades out, featureAlpha).
     for ((id, source, turns) in listOf(Triple(MARK_OUT, SRC_LIVE_MARKS, false), Triple(TURN_OUT, SRC_LIVE_MARKS, true),
@@ -326,7 +328,6 @@ private fun Style.ensureKavLayers() {
     for ((id, source, turns) in listOf(Triple("kav-live-mark", SRC_LIVE_MARKS, false), Triple("kav-live-turn", SRC_LIVE_MARKS, true),
         Triple(GLIDE_MARK, SRC_GLIDE_MARKS, false), Triple(GLIDE_TURN, SRC_GLIDE_MARKS, true))) addLayer(markLayer(id, source, turns)
         .withFilter(Expression.all(Expression.eq(Expression.get("turns"), Expression.literal(turns)), Expression.not(fading(FOCUS_OUT)))))
-    addLayer(markLayer(RIDER_LAYER, SRC_RIDER, turns = true).withFilter(Expression.literal(true)))
 }
 
 // A layer's opacity times a; a mark keeps its own alpha under it.
@@ -377,9 +378,17 @@ private class LiveAlpha(private val style: Style) {
     // source says, they may), and what each layer was last given.
     private val asked = HashMap<String, Float>()
     private val own = HashMap<String, Boolean>()
-    private val given = HashMap<String, Pair<Float, Boolean>>()
+    private val given = HashMap<String, Triple<Float, Boolean, Map<String, Float>>>()
+    // The vehicles over the rider's arrow and the share of their opacity each keeps (OverArrow); none most of the time.
+    private var over: Map<String, Float> = emptyMap()
 
     fun layer(id: String, a: Float) { asked[id] = a; give(id) }
+
+    fun over(kept: Map<String, Float>) {
+        if (kept == over) return
+        over = kept
+        for (id in OVER_LAYERS) give(id)
+    }
 
     fun source(source: String, hasOwn: Boolean) {
         if (own.put(source, hasOwn) == hasOwn) return
@@ -389,13 +398,81 @@ private class LiveAlpha(private val style: Style) {
     private fun give(id: String) {
         val a = asked[id] ?: return
         val hasOwn = own[LIVE_SOURCE[id]] ?: true
-        if (given[id] == a to hasOwn || !style.isFullyLoaded) return
+        val near = if (id in OVER_LAYERS) over else emptyMap()
+        val now = Triple(a, hasOwn, near)
+        if (given[id] == now || !style.isFullyLoaded) return
         when (val layer = style.getLayer(id)) {
             is CircleLayer -> layer.setProperties(if (hasOwn) PropertyFactory.circleOpacity(featureAlpha(a)) else PropertyFactory.circleOpacity(a))
-            is SymbolLayer -> layer.setProperties(if (hasOwn) PropertyFactory.iconOpacity(featureAlpha(a)) else PropertyFactory.iconOpacity(a))
+            is SymbolLayer -> layer.setProperties(when {
+                near.isNotEmpty() -> PropertyFactory.iconOpacity(Expression.product(
+                    if (hasOwn) featureAlpha(a) else Expression.literal(a),
+                    Expression.match(Expression.toString(Expression.get("id")), Expression.literal(1f),
+                        *near.flatMap { (v, k) -> listOf(Expression.stop(v, k), Expression.stop("$v:turn", k)) }.toTypedArray()),
+                ))
+                hasOwn -> PropertyFactory.iconOpacity(featureAlpha(a))
+                else -> PropertyFactory.iconOpacity(a)
+            })
             else -> return
         }
-        given[id] = a to hasOwn
+        given[id] = now
+    }
+}
+
+// The layers of the vehicles and groups, which fade where they're over the rider's arrow.
+private val OVER_LAYERS = listOf(MARK_OUT, TURN_OUT, GLIDE_MARK_OUT, GLIDE_TURN_OUT, "kav-live-mark", "kav-live-turn", GLIDE_MARK, GLIDE_TURN)
+
+// A vehicle or group over the rider's arrow is drawn above it and fades, so neither hides the other: to OVER_ALPHA once
+// its middle is within OVER_NEAR_DP of the arrow's on the screen, whole again from OVER_FAR_DP (the arrow and a mark
+// about touching). Its opacity goes there over OVER_MS, so one put somewhere at once doesn't blink. Only while one is
+// near do the layers read it, so a map with none near draws as before.
+private const val OVER_ALPHA = 0.3f
+private const val OVER_NEAR_DP = 16f
+private const val OVER_FAR_DP = 30f
+private const val OVER_MS = 220f
+
+private class OverArrow(private val map: MapLibreMap, private val alpha: LiveAlpha, private val dp: Float) {
+    // Where each vehicle, group and the rider are drawn (the live layer's places), and the rider's own mark's place.
+    var places: Map<String, Pair<Double, Double>> = emptyMap()
+    var rider: () -> Pair<Double, Double>? = { null }
+    private val goal = HashMap<String, Float>()
+    private val shown = HashMap<String, Float>()
+    val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+
+    // Each near one's opacity as it should be from where they're drawn now. On the main thread.
+    fun aim() {
+        goal.clear()
+        val me = rider() ?: places["me"]
+        if (me != null) {
+            val projection = map.projection
+            val at = projection.toScreenLocation(LatLng(me.first, me.second))
+            // Twice the reach in metres where the arrow is, for the map's tilt: farther up the screen a pixel is more.
+            val within = 2 * OVER_FAR_DP * dp * projection.getMetersPerPixelAtLatitude(me.first)
+            for ((id, p) in places) {
+                if (!id.startsWith("v") && !id.startsWith(GROUP_ID)) continue
+                if (metres(me.first, me.second, p.first, p.second) > within) continue
+                val q = projection.toScreenLocation(LatLng(p.first, p.second))
+                val d = kotlin.math.hypot(q.x - at.x, q.y - at.y) / dp
+                val k = ((d - OVER_NEAR_DP) / (OVER_FAR_DP - OVER_NEAR_DP)).coerceIn(0f, 1f)
+                if (k < 1f) goal[id] = OVER_ALPHA + (1f - OVER_ALPHA) * k
+            }
+        }
+        if (goal.isNotEmpty() || shown.isNotEmpty()) wake.trySend(Unit)
+    }
+
+    // A step of ms toward them; true while some are still on their way.
+    fun step(ms: Float): Boolean {
+        val most = ms * (1f - OVER_ALPHA) / OVER_MS
+        var going = false
+        for (id in goal.keys + shown.keys) {
+            val to = goal[id] ?: 1f
+            val from = shown[id] ?: 1f
+            val now = if (abs(to - from) <= most) to else from + most * kotlin.math.sign(to - from)
+            if (now >= 1f) shown.remove(id) else shown[id] = now
+            if (now != to) going = true
+        }
+        // In steps of a fiftieth, so a vehicle gliding past doesn't have its layers set at every frame for nothing.
+        alpha.over(shown.mapValues { (it.value * 50).roundToInt() / 50f })
+        return going
     }
 }
 
@@ -2052,6 +2129,27 @@ fun TileMap(
     // The vehicles fading in when they first come (below), which the ones going with a focus take too.
     val liveFade = remember { Animatable(0f) }
     val liveAlpha = remember(style) { style?.let { LiveAlpha(it) } }
+    // The vehicles over the rider's arrow fade (OverArrow): looked at again as they're drawn and as the camera moves.
+    val overArrow = remember(style, map) { liveAlpha?.let { a -> map?.let { OverArrow(it, a, density.density) } } }
+    LaunchedEffect(overArrow) {
+        val over = overArrow ?: return@LaunchedEffect
+        val m = map ?: return@LaunchedEffect
+        over.rider = { placedRider[0]?.let { it.lat to it.lon } }
+        val moved = MapLibreMap.OnCameraMoveListener { over.aim() }
+        m.addOnCameraMoveListener(moved)
+        try {
+            while (true) {
+                over.wake.receive()
+                var before = -1L
+                while (true) {
+                    val t = withFrameMillis { it }
+                    val going = over.step(if (before < 0) 16f else (t - before).toFloat())
+                    before = t
+                    if (!going) break
+                }
+            }
+        } finally { m.removeOnCameraMoveListener(moved) }
+    }
     LaunchedEffect(style) {
         val s = style?.takeIf { it.isFullyLoaded } ?: return@LaunchedEffect
         val alpha = liveAlpha ?: return@LaunchedEffect
@@ -2404,6 +2502,7 @@ fun TileMap(
                 val dots = f.features.dots.takeIf { f.g.dots != liveSentDots }
                 liveSentDots = f.g.dots
                 times.send { s.setKavLiveHalos(halos, dots); s.setKavLiveMarks(marks); s.placeRider(drawn["me"]) }
+                overArrow?.let { it.places = HashMap(drawn); it.aim() }
                 for ((id, a) in f.fades) shownAlpha[id] = a.first + (a.second - a.first) * eased
                 f.t = t
                 sent = at
@@ -2638,6 +2737,7 @@ fun TileMap(
                         awaited = taken + 1
                         sentMs = android.os.SystemClock.uptimeMillis()
                         times.send { s.setKavGlide(halos, marks) }
+                        overArrow?.let { it.places = HashMap(drawn); it.aim() }
                     }
                     if (t >= 1f && !leaving) break
                 }
