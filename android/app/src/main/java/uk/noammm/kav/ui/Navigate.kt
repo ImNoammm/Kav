@@ -399,13 +399,14 @@ fun NavigateScreen(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     fun tripArgs() = org.json.JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(trip, r))
     fun failureArgs(f: Failure) = tripArgs().put("reason", f.kind.name.lowercase()).put("key", f.key)
-    // Under the step dots (nav.banner): the step the rider is on, its kind, and its leg with the leg's index when it has one.
+    // Under the step dots (nav.banner): the step the rider is on, its kind, and its leg with the leg's index when it has
+    // one; and the step card the rider swiped to (shown).
     fun bannerArgs(): org.json.JSONObject {
         val s = steps.getOrNull(currentStep)
         val leg = uk.noammm.kav.ext.TripEvents.legOf(s, chosen)
         return tripArgs().put("step", currentStep).put("kind", uk.noammm.kav.ext.TripEvents.kind(s))
             .put("leg", leg?.let { uk.noammm.kav.ext.Pipeline.legJson(it, r) } ?: org.json.JSONObject.NULL)
-            .put("index", uk.noammm.kav.ext.TripEvents.legIndex(s, trip))
+            .put("index", uk.noammm.kav.ext.TripEvents.legIndex(s, trip)).put("shown", pager.settledPage)
     }
     fun showStep(step: Int) { scope.launch { pager.animateScrollToPage(step) } }
     fun keep(f: Failure) { kept = kept + f.key; replanFailed = false }
@@ -480,7 +481,7 @@ fun NavigateScreen(
                 } }
                 if (!compact) {
                     StepStrip(pager, steps.size, currentStep, ::stepTapped)
-                    KavPart("nav.banner", Triple(trip, currentStep, chosen), ::bannerArgs, inset = K.gap3,
+                    KavPart("nav.banner", listOf(trip, currentStep, chosen, pager.settledPage), ::bannerArgs, inset = K.gap3,
                         surface = Modifier.padding(top = K.gap2).glassSurface(K.rCard)) {}
                 }
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
@@ -497,7 +498,7 @@ fun NavigateScreen(
             ) {
                 if (compact) {
                     StepStrip(pager, steps.size, currentStep, ::stepTapped)
-                    KavPart("nav.banner", Triple(trip, currentStep, chosen), ::bannerArgs, inset = K.gap3,
+                    KavPart("nav.banner", listOf(trip, currentStep, chosen, pager.settledPage), ::bannerArgs, inset = K.gap3,
                         surface = Modifier.padding(top = K.gap2).glassSurface(K.rCard)) {}
                     Spacer(Modifier.height(K.gap2))
                 } else {

@@ -1037,12 +1037,13 @@ private fun Shell(model: KavModel) {
             was = now; wasJourney = journey
             if (events.isEmpty() || !uk.noammm.kav.ext.Native.listensToTrips()) return@collect
             val stepsNow = steps?.second.orEmpty()
+            val fix = model.fix
             withContext(Dispatchers.Default) {
                 for (e in events) runCatching {
                     val json = if (e == "end" && ended != null && before != null)
                         uk.noammm.kav.ext.TripEvents.json(e, ended, before.step, buildSteps(ended.trip, ended.fromLabel, ended.toLabel),
-                            uk.noammm.kav.ext.TripEvents.reason(before), before.shown)
-                    else if (journey != null) uk.noammm.kav.ext.TripEvents.json(e, journey, step, stepsNow, shown = shown)
+                            uk.noammm.kav.ext.TripEvents.reason(before), before.shown, fix)
+                    else if (journey != null) uk.noammm.kav.ext.TripEvents.json(e, journey, step, stepsNow, shown = shown, fix = fix)
                     else null
                     json?.let { uk.noammm.kav.ext.Native.tripEvent(it.toString()) }
                 }
@@ -1189,6 +1190,9 @@ private fun Shell(model: KavModel) {
                 arrivedAt = 0L
                 if (next != model.journeyStep) model.journeyStep = next
             }
+            // The trip service tells extensions the arrival (TripEvents.arrival); with notifications off it doesn't run.
+            if (!TripService.showing) model.activeJourney?.let { j -> val step = model.journeyStep; val fix = model.fix
+                withContext(Dispatchers.Default) { uk.noammm.kav.ext.TripEvents.arrival(j, step, fix) } }
             delay(2000)
         }
     }
@@ -1218,6 +1222,10 @@ private fun Shell(model: KavModel) {
                 else model.track(it.lat, it.lon, it.speed, it.at, it.accuracy)
             }
             TripBridge.fixNow = { model.fix }
+            // The step first, then the trip, as Kav's own New route from here sets them (ui/Navigate.kt).
+            TripBridge.switchTo = { was, next, step ->
+                (model.activeJourney === was).also { if (it) { model.journeyStep = step; model.activeJourney = next } }
+            }
         }
         onDispose {
             TripBridge.end = null
@@ -1225,6 +1233,7 @@ private fun Shell(model: KavModel) {
             TripBridge.shown = null
             TripBridge.fix = null
             TripBridge.fixNow = null
+            TripBridge.switchTo = null
         }
     }
     LaunchedEffect(model.navigating) {

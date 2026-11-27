@@ -112,6 +112,13 @@ private fun along(run: Run, live: Fix?, now: Long): Double {
     return if (span > 0) ((now - run.dep).toDouble() / span).coerceIn(0.0, 1.0) * run.metres else 0.0
 }
 
+// When the trip gets there as Kav estimates it now, the notification's "Arrive": on a ride by where it is, otherwise by
+// the plan and the live times it has. Extensions are told it too (TripEvents).
+internal fun journeyArrival(journey: ActiveJourney, steps: List<Step>, step: Int, fix: Fix?, now: Long): Long {
+    val riding = (steps.getOrNull(step) as? Step.Ride)?.let { boardingChoice(it.ride, it.wait, journey.chosen[it.legIndex] ?: 0).first }
+    return tripArrival(journey.trip, journey.resolved, journey.chosen, riding, fix?.takeIf { it.isFresh(now) }, now)
+}
+
 internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Long, accent: Int): TripNotice? {
     val steps = buildSteps(journey.trip, journey.fromLabel, journey.toLabel)
     if (steps.isEmpty()) return null
@@ -272,8 +279,7 @@ internal fun tripNotice(journey: ActiveJourney, current: Int, fix: Fix?, now: Lo
             )
         }
     }
-    val riding = (steps[index] as? Step.Ride)?.let { pick(it.ride, it.wait, it.legIndex).first }
-    val arrive = tripArrival(journey.trip, r, journey.chosen, riding, live, now)
+    val arrive = journeyArrival(journey, steps, index, live, now)
     return TripNotice(
         say.title, say.text, T("Arrive ${time(arrive)}", "הגעה ב-${time(arrive)}"),
         say.chip, parts, progress, say.glyph, say.tint, dueText = say.dueText, due = say.due, stops = stops,

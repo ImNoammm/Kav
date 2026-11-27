@@ -56,7 +56,7 @@ import uk.noammm.kav.data.Net
 import java.util.Calendar
 
 // Kav's own pickers for an extension's settings (ext/Pages.kt: place, stop, time, date, number, color), and Kav's place
-// search for a native extension that asks (Kav.pickPlace).
+// search and Android's file picker for a native extension that asks (Kav.pickPlace, Kav.pickFile).
 
 // A place or stop someone is waiting for: the search draws over everything (ExtPickHost) and gives back
 // {"name", "lat", "lon"} (and "code" for a stop), or null when the rider closed it.
@@ -79,12 +79,45 @@ internal object ExtPicks {
         asking = null
         a.answer(value)
     }
+
+    // A file someone is waiting for (Kav.pickFile): Android's photo picker when it asks for images only, else Android's
+    // file picker, opened by ExtPickHost; null when the rider closed it. launched: opened already, so a screen made
+    // again (a rotation) doesn't open it twice.
+    class FileAsk(val types: List<String>, val answer: (android.net.Uri?) -> Unit) { var launched = false }
+
+    var file by mutableStateOf<FileAsk?>(null)
+        private set
+
+    fun file(types: List<String>, answer: (android.net.Uri?) -> Unit) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            file?.answer?.invoke(null)
+            file = FileAsk(types, answer)
+        }
+    }
+
+    fun fileDone(uri: android.net.Uri?) {
+        val f = file ?: return
+        file = null
+        f.answer(uri)
+    }
 }
 
 // At the root of Kav's screen, over everything: Kav's place search, rising in as it does everywhere else.
 @Composable
 internal fun ExtPickHost(model: KavModel) {
     val ctx = LocalContext.current
+    val photo = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { ExtPicks.fileDone(it) }
+    val document = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { ExtPicks.fileDone(it) }
+    val asked = ExtPicks.file
+    androidx.compose.runtime.LaunchedEffect(asked) {
+        if (asked == null || asked.launched) return@LaunchedEffect
+        asked.launched = true
+        runCatching {
+            if (asked.types.all { it.startsWith("image/") }) photo.launch(androidx.activity.result.PickVisualMediaRequest(
+                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+            else document.launch(asked.types.toTypedArray())
+        }.onFailure { ExtPicks.fileDone(null) }
+    }
     var kept by remember { mutableStateOf<ExtPicks.Ask?>(null) }
     ExtPicks.asking?.let { kept = it }
     androidx.compose.animation.AnimatedVisibility(ExtPicks.asking != null, enter = modalIn(), exit = modalOut()) {
