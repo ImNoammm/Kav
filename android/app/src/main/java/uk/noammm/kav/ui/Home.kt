@@ -89,7 +89,7 @@ internal fun HomeScreen(
     // with the map as the list scrolls.
     val mapShown = ext == null && HomeMap.shown(ctx, model.here)
     val mapLiquid = rememberLiquidBackdrop()
-    val payButton = Shown.payments || PayMode.lost.isNotEmpty()
+    val payButton = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val payFade = with(LocalDensity.current) { 56.dp.toPx() }
     val payGone by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset >= payFade } }
@@ -190,11 +190,10 @@ internal fun HomeScreen(
                 // Extensions' cards (ExtSlots.kt), only those the rider switched on, under Kav's own.
                 if (ExtShown.slots.isNotEmpty()) item(key = "ext-slots") { HomeSlots(model, listMotion()) }
                 // Extension tickets and their ride history stay on Home after the payment extension is switched off.
-                // The card only with something in it: the offer to set paying up, tickets or rides.
+                // The card only with something in it: tickets or rides.
                 val showPay = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
-                val payOffer = !Shown.payments && PayMode.lost.isEmpty() && PayMode.offer
                 if ((showPay || TicketStore.kept.any { it.key.startsWith("ext:") } || TicketStore.history.any { it.key.startsWith("ext:") }) &&
-                    (payOffer || TicketStore.kept.isNotEmpty() || TicketStore.history.isNotEmpty())) item(key = "payments") {
+                    (TicketStore.kept.isNotEmpty() || TicketStore.history.isNotEmpty())) item(key = "payments") {
                     KavPart("home.pay", Unit, { JSONObject() }, ownGap = true) { PayCard(listMotion().padding(top = K.gap4), showPay) }
                 }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
