@@ -149,6 +149,24 @@ internal fun alongNext(at: Pair<Double, Double>, path: List<Pair<Double, Double>
 // Clearly nearer: a stretch passed already beats every one ahead by this much.
 private const val BACK_CLEAR_M = 50.0
 
+// How far along a walk the rider is, going on from where they were last, as on a ride (RideAlong): a walk that comes
+// back by where it set out (up one street and back along the next) isn't taken for where they are. Where the fix can't
+// tell two passes apart (within its accuracy), it's the one the walk gets to first: the nearest pass alone had the
+// rider halfway along a walk they hadn't begun.
+internal object WalkAlong {
+    private val last = HashMap<String, Double>()
+
+    fun of(shape: List<Pair<Double, Double>>, dep: Long, fix: Fix): Double {
+        if (shape.size < 2) return 0.0
+        val key = "$dep:${shape.first()}:${shape.last()}"
+        synchronized(last) {
+            val a = alongNext(fix.lat to fix.lon, shape, (last[key] ?: 0.0) - 30.0, max(15.0, fix.accuracy.toDouble()))
+            last[key] = a
+            return a
+        }
+    }
+}
+
 // How far along a ride the rider or their bus is, going on from where it was last: the road passing the same corner
 // again later (line 37's loop) isn't taken for where they are now, which showed the loop ridden while it was still ahead.
 internal object RideAlong {

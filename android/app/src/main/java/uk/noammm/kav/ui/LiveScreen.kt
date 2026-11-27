@@ -33,6 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
@@ -123,7 +125,7 @@ internal fun liveAreaCurrent(fetched: Long, next: Long, now: Long) =
 internal fun liveAreaStays(fetched: Long, now: Long) = fetched > 0 && now - fetched in 0L..120L
 
 // What the Live tab showed last, so opening it again shows the buses at once while they refresh.
-private object LiveMemory {
+internal object LiveMemory {
     // Every bus around, as last asked.
     var area: KavLive.Area? = null
     var areaAt = 0L
@@ -1325,7 +1327,23 @@ private fun LiveList(
         }
         shownOrder[0] = order
     }
-    LazyColumn(modifier, state = state, contentPadding = PaddingValues(
+    // The rows share one card, each drawing its own part of it: as they glide past each other to new places (one coming
+    // in from below the list the furthest), the page would show between them. The card is drawn whole behind them, from
+    // the first row to the last as laid out, so the rows move over it.
+    val surface = K.surface
+    val radius = K.rCard
+    val backed = modifier.drawBehind {
+        val info = state.layoutInfo
+        val rows = info.visibleItemsInfo
+        if (rows.isEmpty()) return@drawBehind
+        val r = radius.toPx()
+        val first = rows.first()
+        val last = rows.last()
+        val top = if (first.index == 0) (first.offset - info.viewportStartOffset).toFloat() else -r
+        val bottom = if (last.index == info.totalItemsCount - 1) (last.offset + last.size - info.viewportStartOffset).toFloat() else size.height + r
+        clipRect { drawRoundRect(surface, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(size.width, bottom - top), androidx.compose.ui.geometry.CornerRadius(r)) }
+    }
+    LazyColumn(backed, state = state, contentPadding = PaddingValues(
         top = K.gap1, bottom = K.gap4 + LocalBottomBarInset.current,
     )) {
         itemsIndexed(sorted, key = { _, it -> it.tripId }) { i, v ->
@@ -1513,30 +1531,33 @@ private fun BusRail(stops: List<Transit.Stop>, progress: Float) {
 }
 
 // A count that ticks once a second (a position's age): only the digits that changed roll, briefly, each its own layer
-// moved and faded in the draw phase, so a roll draws no text again and the frames between ticks do nothing. The number
-// keeps its digits left to right in Hebrew too.
+// moved and faded in the draw phase, so a roll draws no text again and the frames between ticks do nothing. Every
+// number in it rolls (the minutes and the seconds of "1m 5s"), each keeping its digits left to right in Hebrew too.
 // said: what a screen reader is told, one phrase that changes far less often than the digits roll.
 @Composable
 private fun TickText(text: String, style: androidx.compose.ui.text.TextStyle, color: Color, said: String) {
-    val number = remember(text) { Regex("\\d+").find(text) }
-    if (number == null) { Text(text, style = style, color = color, maxLines = 1); return }
-    // A digit place that comes in later (9 to 10) rolls in too; on the first look nothing rolls.
+    val parts = remember(text) { tickParts(text) }
+    // A digit place that comes in later (9 to 10, or the minutes at 1m) rolls in too; on the first look nothing rolls.
     var seen by remember { mutableStateOf(false) }
     SideEffect { seen = true }
     Row(Modifier.clearAndSetSemantics { contentDescription = said }) {
-        val before = text.substring(0, number.range.first)
-        val after = text.substring(number.range.last + 1)
-        if (before.isNotEmpty()) Text(before, style = style, color = color, maxLines = 1)
-        CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
-            Row {
-                val digits = number.value
-                // Each digit is known by its place from the right, so the ones stay the ones when the number grows.
-                digits.forEachIndexed { i, d -> key(digits.length - i) { RollingDigit(d, style, color, seen) } }
+        // Each part is known by its place from the end, so the seconds stay the seconds when the minutes come in.
+        parts.forEachIndexed { i, part ->
+            key(parts.size - i) {
+                if (!part[0].isDigit()) Text(part, style = style, color = color, maxLines = 1)
+                else CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                    Row {
+                        // Each digit is known by its place from the right, so the ones stay the ones when the number grows.
+                        part.forEachIndexed { j, d -> key(part.length - j) { RollingDigit(d, style, color, seen) } }
+                    }
+                }
             }
         }
-        if (after.isNotEmpty()) Text(after, style = style, color = color, maxLines = 1)
     }
 }
+
+// A ticking text in its numbers and the words between them, in order: "1m 5s" is 1, "m ", 5 and "s".
+internal fun tickParts(text: String): List<String> = Regex("\\d+|\\D+").findAll(text).map { it.value }.toList()
 
 // How long ago a vehicle reported, as the row shows it: seconds under a minute, minutes and seconds from there
 // ("8m 55s", not "535s"). Just the time, no "ago" (Noam, 27 Nov 2026); a screen reader still says it whole (ageSaid).

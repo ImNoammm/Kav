@@ -172,11 +172,26 @@ internal const val BUILDINGS_FROM_Z = 18f
 // The 3D buildings from that zoom on a screen of this density. The map engine counts its zoom in density-independent
 // pixels and in tiles twice the size of Kav's, so one zoom of Kav's is another of the engine's on each screen: a number
 // fixed in the style file (it holds the one for density 2) would begin them after a ride's zoom on a denser screen.
+// They rise from the ground there, in the flat ones' color, to their whole height and their own color by
+// BUILDINGS_RISEN_Z: a pinch held about where they begin no longer has them stand up whole and vanish again by turns.
+// The map engine works the heights out for each frame's zoom as it draws, so nothing is laid out again as they rise.
 internal fun buildingsFrom(style: JSONObject, density: Float): JSONObject = style.apply {
     val layers = getJSONArray("layers")
-    for (i in 0 until layers.length()) layers.getJSONObject(i).takeIf { it.optString("id") == "buildings_3d" }
-        ?.put("minzoom", BUILDINGS_FROM_Z - 1.0 - log2(density.toDouble()))
+    val all = (0 until layers.length()).map { layers.getJSONObject(it) }
+    val flat = all.firstOrNull { it.optString("id") == "buildings" }?.optJSONObject("paint")?.opt("fill-color")
+    all.firstOrNull { it.optString("id") == "buildings_3d" }?.let { layer ->
+        val from = BUILDINGS_FROM_Z - 1.0 - log2(density.toDouble())
+        val risen = from + (BUILDINGS_RISEN_Z - BUILDINGS_FROM_Z)
+        fun rising(start: Any, whole: Any) = JSONArray(listOf("interpolate", JSONArray(listOf("linear")), JSONArray(listOf("zoom")), from, start, risen, whole))
+        layer.put("minzoom", from)
+        val paint = layer.getJSONObject("paint")
+        for (key in listOf("fill-extrusion-height", "fill-extrusion-base")) paint.put(key, rising(0, paint.get(key)))
+        flat?.let { paint.put("fill-extrusion-color", rising(it, paint.get("fill-extrusion-color"))) }
+    }
 }
+
+// Kav's zoom the 3D buildings have risen whole by: a ride's (Navigate's Follow).
+internal const val BUILDINGS_RISEN_Z = 18.3f
 
 // Road numbers drawn as Israel's route markers (traffic sign 611): the number in the colour of the road's class on a
 // white plate, in a frame of that colour. Freeways blue, main roads red, regional roads green and local roads black, as

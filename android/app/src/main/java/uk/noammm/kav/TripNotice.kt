@@ -23,7 +23,7 @@ import uk.noammm.kav.ui.Step
 import uk.noammm.kav.ui.T
 import uk.noammm.kav.ui.aboard
 import uk.noammm.kav.ui.RideAlong
-import uk.noammm.kav.ui.alongPath
+import uk.noammm.kav.ui.WalkAlong
 import uk.noammm.kav.ui.boardingChoice
 import uk.noammm.kav.ui.buildSteps
 import uk.noammm.kav.ui.chosenLegs
@@ -105,7 +105,7 @@ private fun lengthOf(leg: Transit.Leg): Double =
 private fun along(run: Run, live: Fix?, now: Long): Double {
     if (live != null && run.shape.size >= 2 && distanceToPath(live.lat, live.lon, run.shape) < 150) {
         return (if (run.ride != null) RideAlong.of(run.ride, live.lat to live.lon)
-            else alongPath(live.lat, live.lon, run.shape)).coerceIn(0.0, run.metres)
+            else WalkAlong.of(run.shape, run.dep, live)).coerceIn(0.0, run.metres)
     }
     if (run.walk) return 0.0
     val span = run.arr - run.dep

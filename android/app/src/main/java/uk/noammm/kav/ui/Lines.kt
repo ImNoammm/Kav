@@ -845,6 +845,9 @@ private fun serverLineLive(number: String, name: String, last: String?, codes: L
     return LineLive(checked = true, vehicles = area.buses.filter { it.route in routes }.map { KavLive.busArrival(it) }, shape = shape, routes = routes)
 }
 
+// The share of their size a line's stops keep with the whole line in view (MapDot.far).
+private const val STOP_FAR = 0.4f
+
 @Composable
 private fun LineRouteMap(
     calls: List<Pair<Double, Double>>, shape: List<Pair<Double, Double>>, rt: Int,
@@ -896,7 +899,8 @@ private fun LineRouteMap(
         MapGeometry(
             lines = listOf(MapLine(drawn, tint, 4f, casing = 8f)),
             dots = if (between) emptyList() else stops.drop(1).dropLast(1).flatMap { (lat, lon) ->
-                listOf(MapDot(lat, lon, MapInk.bg, 6f), MapDot(lat, lon, Color.Transparent, 3.5f, tint, 2f))
+                // Small beads on the line seen whole, as the main map's stops are, growing to its stops' size close in.
+                listOf(MapDot(lat, lon, MapInk.bg, 6f, far = STOP_FAR), MapDot(lat, lon, Color.Transparent, 3.5f, tint, 2f, far = STOP_FAR))
             } + listOf(
                 MapDot(start.first, start.second, MapInk.bg, 7f),
                 MapDot(start.first, start.second, Color.Transparent, 5f, MapInk.text, 2f),

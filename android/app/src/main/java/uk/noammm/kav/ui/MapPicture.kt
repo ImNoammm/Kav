@@ -2,25 +2,25 @@ package uk.noammm.kav.ui
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.DirectionsBus
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,7 +28,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,15 +35,16 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -54,6 +54,9 @@ import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
+import uk.noammm.kav.ActiveJourney
+import uk.noammm.kav.KavModel
+import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
 import uk.noammm.kav.data.MapPacks
@@ -61,114 +64,148 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
-// Home's map: a still picture of the streets around the rider, tilted a little, with no buildings standing up, drawn off
-// screen from Kav's own map on the phone (MapSnapshotter): nothing is asked of a server for it. The last one is kept in
-// the cache folder, so a start shows it from the first frame; there is none until the map is on the phone and the
-// rider's place has been known once.
-internal class HomeMapShot(val key: String, val image: ImageBitmap, val rider: Offset?, val station: Offset?)
-
+// Home's map, live, from under the search to under the places' tiles: the step of the trip on now as the trip's own map
+// shows it (NavigateMap), or with no trip the vehicles around the rider as the Live tab draws them, from the same asking
+// of Kav's server (KavLive.area). It turns with the way the phone faces, or with the trip's road, and leans as the trip's
+// map does. Drawn from Kav's own map on the phone alone: nothing is asked of a map server for it.
 internal object HomeMap {
-    var shot by mutableStateOf<HomeMapShot?>(null)
+    // Where the rider was last, kept in the cache folder: the map shows there from the first frame, before the phone
+    // says where they are now. There is none until the rider's place has been known once.
+    private var last: Pair<Double, Double>? = null
+    private var read = false
 
-    // The nearest station Home's card shows (HomeSuggestions), marked on the picture.
-    var station by mutableStateOf<Pair<Double, Double>?>(null)
+    private fun file(ctx: Context) = File(ctx.cacheDir, "home-map.txt")
 
-    private fun png(ctx: Context) = File(ctx.cacheDir, "home-map.png")
-    private fun about(ctx: Context) = File(ctx.cacheDir, "home-map.txt")
+    fun place(ctx: Context): Pair<Double, Double>? {
+        if (!read) {
+            read = true
+            last = runCatching { file(ctx).readText().trim().split(',').let { it[0].toDouble() to it[1].toDouble() } }.getOrNull()
+        }
+        return last
+    }
+
+    suspend fun keep(ctx: Context, here: Pair<Double, Double>) {
+        last = here
+        withContext(Dispatchers.IO) { runCatching { file(ctx).writeText("${here.first},${here.second}") } }
+    }
 
     // Whether Home leaves the map its room: decided from the first frame, so the list never moves when it comes.
     fun shown(ctx: Context, here: Pair<Double, Double>?) = MapPacks.STANDARD.state is MapPack.State.Ready &&
-        uk.noammm.kav.hasLocationPermission(ctx) && (here != null || shot != null || png(ctx).exists())
+        uk.noammm.kav.hasLocationPermission(ctx) && (here != null || place(ctx) != null)
+}
 
-    suspend fun load(ctx: Context) {
-        if (shot != null) return
-        shot = withContext(Dispatchers.IO) {
-            runCatching {
-                val lines = about(ctx).readLines()
-                val image = BitmapFactory.decodeFile(png(ctx).path)?.asImageBitmap() ?: return@runCatching null
-                fun at(s: String?) = s?.split(',')?.takeIf { it.size == 2 }?.let { Offset(it[0].toFloat(), it[1].toFloat()) }
-                HomeMapShot(lines[0], image, at(lines.getOrNull(1)), at(lines.getOrNull(2)))
-            }.getOrNull()
-        } ?: shot
-    }
+// Kav's zoom of Home's map with no trip: a kilometer or so across, the vehicles near enough to take.
+private const val HOME_Z = 16.5f
 
-    private suspend fun save(ctx: Context, s: HomeMapShot) = withContext(Dispatchers.IO) {
-        runCatching {
-            png(ctx).outputStream().use { s.image.asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-            fun line(o: Offset?) = o?.let { "${it.x},${it.y}" }.orEmpty()
-            about(ctx).writeText("${s.key}\n${line(s.rider)}\n${line(s.station)}\n")
+// Home's map turns by this many degrees at a time with the compass: each degree it drifts would have it drawn again.
+private const val HOME_TURN = 15f
+
+// The map, fading into the page at its foot. padding: what of it the search and the tiles cover, so what it shows is in
+// the part between them. Kav's pulse shows there if the map takes a while to draw.
+@Composable
+internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    // The compass is on while it shows (MainActivity's heading).
+    DisposableEffect(Unit) { model.homeMapShown = true; onDispose { model.homeMapShown = false } }
+    LaunchedEffect(model.here) { model.here?.let { HomeMap.keep(ctx, it) } }
+    val heading = model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }
+    var drawn by remember { mutableStateOf(false) }
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(600); slow = true }
+    Box(modifier) {
+        val journey = model.activeJourney
+        if (journey != null) HomeTripMap(model, journey, heading, padding) { drawn = true }
+        else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(it, heading, padding) { drawn = true } }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)))
+        AnimatedVisibility(slow && !drawn, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
+            Box(contentAlignment = Alignment.Center) { LoadingPulse(T("Loading the map", "טוענים את המפה")) }
         }
-    }
-
-    // w x h: the picture in dp, scale its pixels to a dp.
-    suspend fun take(ctx: Context, key: String, here: Pair<Double, Double>, station: Pair<Double, Double>?, look: Look,
-        rtl: Boolean, w: Int, h: Int, scale: Float): HomeMapShot? {
-        uk.noammm.kav.data.GovMapTiles.mapLibre(ctx)
-        val map = MapFile.styleJson(ctx, MapFile.Type.STANDARD, look, MapFile.labels, preview = false) ?: return null
-        val camera = CameraPosition.Builder().target(LatLng(here.first, here.second)).zoom(15.5).tilt(40.0).bearing(0.0).build()
-        val (image, at) = snapshot(ctx, { named -> flat(RouteShots.labelled(map, rtl, named)) }, camera, w, h, scale, listOfNotNull(here, station))
-            ?: return null
-        val shot = HomeMapShot(key, image, at.getOrNull(0), station?.let { at.getOrNull(1) })
-        save(ctx, shot)
-        return shot
-    }
-
-    // The style without buildings standing up (Settings' 3D buildings is for the map itself), and without the names of
-    // towns and neighborhoods, which stood over the rider's dot.
-    private fun flat(style: String): String {
-        val json = org.json.JSONObject(style)
-        val layers = json.getJSONArray("layers")
-        val kept = org.json.JSONArray()
-        for (i in 0 until layers.length()) layers.getJSONObject(i).let {
-            if (it.optString("type") != "fill-extrusion" && it.optString("source-layer") != "places") kept.put(it)
-        }
-        return json.put("layers", kept).toString()
     }
 }
 
-// The picture, height tall and as wide as the screen, fading into the page at its foot, with the rider and the nearest
-// station marked where they are on it. Drawn again (and kept) when the rider moves, the station changes or the look does.
+// The trip's step on now, as the trip's map shows it, followed as it is there.
 @Composable
-internal fun HomeMapPicture(here: Pair<Double, Double>?, height: Dp, modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
-    val density = LocalDensity.current.density
-    val width = LocalConfiguration.current.screenWidthDp
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val look = K.look
-    val station = HomeMap.station
-    LaunchedEffect(Unit) { HomeMap.load(ctx) }
-    if (here != null) {
-        fun r(v: Double) = (v * 10_000).roundToInt()
-        val key = "2|${r(here.first)},${r(here.second)}|${station?.let { "${r(it.first)},${r(it.second)}" }}|$look|${MapFile.labels}|$rtl|" +
-            "${width}x${height.value.roundToInt()}|$density"
-        LaunchedEffect(key) {
-            if (HomeMap.shot?.key == key) return@LaunchedEffect
-            // The station is worked out a moment after the place: one picture for both.
-            delay(300)
-            HomeMap.take(ctx, key, here, station, look, rtl, width, height.value.roundToInt(), density)?.let { HomeMap.shot = it }
+private fun HomeTripMap(model: KavModel, journey: ActiveJourney, heading: Float?, padding: PaddingValues, onDrawn: () -> Unit) {
+    val steps = remember(journey.trip, journey.fromLabel, journey.toLabel) { buildSteps(journey.trip, journey.fromLabel, journey.toLabel) }
+    val current = model.journeyStep.coerceIn(0, steps.lastIndex)
+    val step = steps.getOrNull(current)
+    var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); now = System.currentTimeMillis() / 1000 } }
+    // As the trip's screen has them (NavigateScreen): the bus waited for, and the fix the map follows.
+    val waitingFor = steps.drop(current).takeWhile { it !is Step.Ride }.firstOrNull { it is Step.Wait }
+        ?.let { it as Step.Wait }?.let { boardingChoice(it.ride, it.wait, journey.chosen[it.legIndex] ?: 0) }
+    val fix = model.fix
+    val seen = model.roughFix?.takeIf { rough -> fix == null || rough.at > fix.at + 10 } ?: fix
+    NavigateMap(journey.trip, journey.resolved, step, journey.chosen, waitingFor, model.here, seen, heading, now,
+        riding = step is Step.Ride, modifier = Modifier.fillMaxSize(), contentPadding = padding, attribution = false,
+        still = true, onDrawn = onDrawn)
+}
+
+// The vehicles around the rider, merged where they'd lie on one another as on the Live tab, asked about while Home is
+// in front as often as the Live tab asks. Kept for the Live tab too, which then opens with them (LiveMemory).
+@Composable
+private fun HomeBusesMap(here: Pair<Double, Double>, heading: Float?, padding: PaddingValues, onDrawn: () -> Unit) {
+    val density = LocalDensity.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var area by remember { mutableStateOf(LiveMemory.recentArea(here)) }
+    // Asked about again once the rider is 300 m from where they were, as the Live tab's stops are.
+    var at by remember { mutableStateOf(here) }
+    LaunchedEffect(here) { if (metres(here.first, here.second, at.first, at.second) > 300) at = here }
+    LaunchedEffect(at, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val wait = try {
+                    val answer = withContext(Dispatchers.IO) { KavLive.area(KavLive.box(at.first, at.second, 1.5)) }
+                    area = answer
+                    LiveMemory.area = answer; LiveMemory.areaCentre = at
+                    LiveMemory.areaAt = System.currentTimeMillis() / 1000; LiveMemory.source = KavLive.origin
+                    answer.next - System.currentTimeMillis() / 1000
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    15L
+                }
+                delay(wait.coerceIn(5, 30) * 1000L)
+            }
         }
     }
-    Crossfade(HomeMap.shot, modifier, animationSpec = tween(400), label = "homeMap") { shot ->
-        Box(Modifier.fillMaxSize()) {
-            if (shot == null) return@Box
-            Image(shot.image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            shot.station?.let { at ->
-                Box(
-                    Modifier.offset { IntOffset((at.x.dp - 14.dp).roundToPx(), (at.y.dp - 14.dp).roundToPx()) }.size(28.dp)
-                        .clip(CircleShape).background(K.accent),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.DirectionsBus, contentDescription = null, tint = K.onAccent, modifier = Modifier.size(18.dp)) }
-            }
-            // The rider as Kav's maps draw them: a halo, and a dot in the text's colour ringed in the page's.
-            shot.rider?.let { at ->
-                Box(Modifier.offset { IntOffset((at.x.dp - 15.dp).roundToPx(), (at.y.dp - 15.dp).roundToPx()) }.size(30.dp)
-                    .clip(CircleShape).background(MapInk.text.copy(alpha = .16f)))
-                Box(Modifier.offset { IntOffset((at.x.dp - 7.dp).roundToPx(), (at.y.dp - 7.dp).roundToPx()) }.size(14.dp)
-                    .clip(CircleShape).background(MapInk.text).border(2.dp, MapInk.bg, CircleShape))
-            }
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)))
+    val mergeAt = with(density) { GROUP_MERGE_DP.dp.toPx().toDouble() }
+    val splitAt = with(density) { GROUP_SPLIT_DP.dp.toPx().toDouble() }
+    val coverAt = with(density) { (GROUP_MARK_R + VEHICLE_MARK_R).dp.toPx().toDouble() }
+    val groupAt = with(density) { (2 * GROUP_MARK_R).dp.toPx().toDouble() }
+    // No halos: their pulse would have the map drawn thirty times a second for as long as Home is open.
+    val vehicles = remember(area, density, MapInk.icons) {
+        val buses = area?.buses.orEmpty().sortedByDescending { metres(here.first, here.second, it.spot.lat, it.spot.lon) }
+        val lines = area?.lines.orEmpty()
+        val g = vehicleGeometry(buses.map { KavLive.busArrival(it) to modeOf(lines[it.route]?.type ?: 3) }, density)
+        // The look in each image's name, as the Live tab names them: an image added again under one name kept its old look.
+        val images = HashMap<String, ImageBitmap>()
+        val markers = g.markers.map { m -> "kav-live-${m.id}~${m.icon}".let { images[it] = g.images.getValue(m.icon); m.copy(icon = it) } }
+        val points = buses.map { KavLive.busArrival(it) }.map { GroupPoint(vehicleMarkId(it), it.lat, it.lon) }
+        val groups = groupVehicles(points, HOME_Z.toDouble(), mergeAt, splitAt, coverPx = coverAt, groupPx = groupAt)
+        val seen = buses.associate { vehicleMarkId(KavLive.busArrival(it)) to it.spot.at }
+        val now = System.currentTimeMillis() / 1000
+        g.copy(markers = markers, images = images).merged(groups) { group ->
+            val tint = mapFreshColour(freshnessOf(group.ids.maxOf { seen[it] ?: 0L }, now))
+            val (name, image) = groupMark(group.ids.size, tint, density)
+            images[name] = image
+            name to tint
+        }.let { m ->
+            // Group marks are made to go with a focus (FOCUS_OUT), which a map without one draws at no opacity.
+            m.copy(markers = m.markers.map { it.copy(fade = 0) }, halos = emptyList(), images = images)
         }
     }
+    // They fade in as they come, not at once.
+    val come = animateFloatAsState(if (area != null) 1f else 0f, tween(350), label = "homeVehicles")
+    val me = remember(here, heading != null, density, K.look, MapInk.icons) { riderArrowGeometry(here, heading?.let { 0f }, density) }
+    val k = come.value
+    val live = MapGeometry(
+        markers = if (k < 1f) vehicles.markers.map { it.copy(alpha = it.alpha * k) } else vehicles.markers,
+        images = vehicles.images + me.images, tracks = vehicles.tracks, together = true,
+    )
+    TileMap(listOf(here), Modifier.fillMaxSize(), follow = Follow(here.first, here.second, heading ?: 0f, HOME_Z),
+        contentPadding = padding, live = live, rider = me.markers.firstOrNull(), riderHeading = heading,
+        recenterControl = false, attribution = false, onDrawn = onDrawn, touch = false, name = "home")
 }
 
 // One still picture of a map, w x h dp at scale pixels to a dp, drawn off screen (MapSnapshotter), with where the points

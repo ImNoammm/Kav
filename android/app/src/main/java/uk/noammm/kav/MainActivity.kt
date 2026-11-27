@@ -622,6 +622,8 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
     var tripMapShown by mutableStateOf(false)
     // A line's page is open, with its map: the same, for where you are on the line.
     var lineMapShown by mutableStateOf(false)
+    // Home's map is on screen: it turns with the way you face.
+    var homeMapShown by mutableStateOf(false)
 
     var filters by mutableStateOf(ctx?.let { Prefs.filters(it) } ?: ResultFilter.entries.toSet())
         private set
@@ -1236,7 +1238,7 @@ private fun Shell(model: KavModel) {
     LaunchedEffect(mapShown) {
         if (mapShown) tripMapKept = true else { delay(MAP_SENSORS_KEPT_MS); tripMapKept = false }
     }
-    val headingWanted = model.navigating || tripMapKept || model.tab == Tab.Live
+    val headingWanted = model.navigating || tripMapKept || model.tab == Tab.Live || model.homeMapShown
     var headingKept by remember { mutableStateOf(false) }
     LaunchedEffect(headingWanted) {
         if (headingWanted) headingKept = true else { delay(MAP_SENSORS_KEPT_MS); headingKept = false }

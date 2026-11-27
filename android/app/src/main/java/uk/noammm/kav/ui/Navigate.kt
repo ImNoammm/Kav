@@ -1292,7 +1292,7 @@ internal fun shownArrival(ride: Transit.Leg, waitingFor: Pair<Transit.Leg, Trans
 }
 
 @Composable
-private fun NavigateMap(
+internal fun NavigateMap(
     trip: Transit.Itinerary,
     r: Transit.Resolved,
     step: Step?,
@@ -1310,6 +1310,10 @@ private fun NavigateMap(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
     attribution: Boolean = true,
+    // Only shown, as Home shows the step on now (MapPicture.kt): no buttons, no taps, and no halos, whose pulse would
+    // have the map drawn thirty times a second for as long as Home is open.
+    still: Boolean = false,
+    onDrawn: (() -> Unit)? = null,
 ) {
     val picked = chosenLegs(trip, chosen)
     val legs = picked.filter { it.shape.size >= 2 }
@@ -1434,10 +1438,11 @@ private fun NavigateMap(
         TileMap(framedPoints, modifier, focusKey = step to chosenRide?.tripId, name = "trip view",
             fitMaxZoom = if (step is Step.Walk || step is Step.Arrive) 18.4f else Geo.MAX_Z.toFloat(),
             recenterOn = if (step is Step.Ride) null else remember(shownHere, legs) { recentreOn(shownHere, legs.map { it.shape }) },
-            showRouteControl = step is Step.Ride && follow == null,
+            showRouteControl = !still && step is Step.Ride && follow == null,
+            recenterControl = !still, touch = !still,
             contentPadding = contentPadding, follow = follow,
-            riderHeading = heading, headingUpOn = shownHere.takeIf { following && !riding && step is Step.Walk },
-            geometry = geometry, live = live, attribution = attribution,
+            riderHeading = heading, headingUpOn = shownHere.takeIf { !still && following && !riding && step is Step.Walk },
+            geometry = geometry, live = if (still) live.copy(halos = emptyList()) else live, attribution = attribution, onDrawn = onDrawn,
             onTap = { at, proj ->
                 onTap(vehicles.map { it to (proj.point(it.lat, it.lon) - at).getDistance() }
                     .filter { it.second <= reach }.minByOrNull { it.second }?.first?.tripId

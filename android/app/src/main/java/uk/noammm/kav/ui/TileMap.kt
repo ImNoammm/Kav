@@ -129,7 +129,14 @@ data class MapDot(
     val fade: Int = 0,
     // Seen through, 0 to 1; one at 0 isn't sent at all (TileMap's live layer).
     val alpha: Float = 1f,
+    // The share of its size (radius and stroke) it keeps zoomed out to DOT_FAR_Z, growing to all of it by DOT_NEAR_Z:
+    // a line's many stops stay small beads on it seen whole, rather than rings piled on each other.
+    val far: Float = 1f,
 )
+
+// The Kav zooms a dot is at its far share (MapDot.far) and at its whole size.
+const val DOT_FAR_Z = 13.0
+const val DOT_NEAR_Z = 15.5
 
 // What comes in as a map's focus does (TileMap's focus: a picked vehicle's road and stops), and what goes as it does
 // (the other vehicles and the stops around).
@@ -266,11 +273,16 @@ private fun Style.ensureKavLayers() {
     // Each fade (MapDot.fade) in its own layer, so a focus coming in only changes their opacities: nothing is sent or
     // laid out again, and every frame of it is drawn at once.
     fun fading(fade: Int) = Expression.eq(Expression.toNumber(Expression.get("fade")), Expression.literal(fade))
+    // A dot's size by the zoom (MapDot.far), the map's zoom being Kav's less 1 and the screen's density steps.
+    val shift = 1.0 + ln(android.content.res.Resources.getSystem().displayMetrics.density.toDouble()) / ln(2.0)
+    fun byZoom(size: Expression) = Expression.interpolate(Expression.linear(), Expression.zoom(),
+        Expression.stop(DOT_FAR_Z - shift, Expression.product(size, Expression.toNumber(Expression.get("far")))),
+        Expression.stop(DOT_NEAR_Z - shift, size))
     fun dotLayer(id: String, fade: Int) = CircleLayer(id, SRC_DOTS).withProperties(
         PropertyFactory.circleColor(colour),
-        PropertyFactory.circleRadius(Expression.toNumber(Expression.get("r"))),
+        PropertyFactory.circleRadius(byZoom(Expression.toNumber(Expression.get("r")))),
         PropertyFactory.circleStrokeColor(Expression.toColor(Expression.get("strokeColour"))),
-        PropertyFactory.circleStrokeWidth(Expression.toNumber(Expression.get("strokeWidth"))),
+        PropertyFactory.circleStrokeWidth(byZoom(Expression.toNumber(Expression.get("strokeWidth")))),
         PropertyFactory.circleSortKey(sort),
     ).withFilter(fading(fade)).apply { circleOpacityTransition = snap; circleStrokeOpacityTransition = snap }
     addLayer(dotLayer(DOT_OUT, FOCUS_OUT))
@@ -598,6 +610,7 @@ private fun dotFeatures(dots: List<MapDot>): List<Feature> = dots.mapIndexed { i
         addNumberProperty("sort", i)
         addNumberProperty("fade", d.fade)
         addNumberProperty("alpha", d.alpha)
+        addNumberProperty("far", d.far)
         if (d.id == "me:halo") addBooleanProperty("rider", true)
     }
 }
@@ -1480,7 +1493,7 @@ internal fun focalPadding(anchor: Offset, w: Float, h: Float): DoubleArray = dou
 
 // Kav's own map shows its buildings flat until it leans back: the 3D ones stand over them once it has, so straight
 // down they cost nothing (a layer at no opacity isn't drawn) and a tilted map, navigation's own included, shows them
-// in 3D. They stand as Google Maps' do, from the style's minzoom: whole and at once, never see-through. The
+// in 3D. They rise from the ground from the style's minzoom (buildingsFrom), solid, never see-through. The
 // map draws see-through buildings in two passes, their depth first, and goes on drawing a tile's so for as long as it
 // holds the tile, so buildings faded in by their opacity cost both passes for as long as the map then stays tilted.
 // Only the opacity changes: a change to the heights or to whether the layer shows has the whole map's tiles laid out
@@ -1507,10 +1520,13 @@ private const val BUILDINGS_DOWN_DEG = 4f
 // The graphics driver builds the 3D buildings' shaders the first time one is drawn, and the map stands still for the
 // tenth of a second that takes: at the first zoom into a town after Kav opens. So a style that has them draws one as
 // soon as it's set, in no color and solid as the real ones are drawn, and lets it go once a whole frame has had it.
-// Its height and base come from the feature and its color is one for all, as the real ones' are (MapFadesTest), or
-// the driver would build other shaders than theirs.
+// Its height and base are the real ones' own and its color is one for all, as theirs is by the zoom (MapFadesTest),
+// or the driver would build other shaders than theirs.
 private suspend fun warmBuildings(view: MapView, map: MapLibreMap, style: Style) {
-    if (!style.isFullyLoaded || style.getLayer("buildings_3d") == null) return
+    if (!style.isFullyLoaded) return
+    val real = style.getLayer("buildings_3d") as? FillExtrusionLayer ?: return
+    val height = real.fillExtrusionHeight.expression ?: return
+    val base = real.fillExtrusionBase.expression ?: return
     val seen = map.projection.visibleRegion.latLngBounds
     val (lat, lon) = seen.center.latitude to seen.center.longitude
     val (h, w) = seen.latitudeSpan / 40 to seen.longitudeSpan / 40
@@ -1527,8 +1543,8 @@ private suspend fun warmBuildings(view: MapView, map: MapLibreMap, style: Style)
         style.addSource(GeoJsonSource(SRC_3D_WARM, Feature.fromGeometry(square)))
         style.addLayer(FillExtrusionLayer(SRC_3D_WARM, SRC_3D_WARM).withProperties(
             PropertyFactory.fillExtrusionColor(android.graphics.Color.TRANSPARENT),
-            PropertyFactory.fillExtrusionHeight(Expression.coalesce(Expression.get("height"), Expression.literal(0))),
-            PropertyFactory.fillExtrusionBase(Expression.coalesce(Expression.get("min_height"), Expression.literal(0))),
+            PropertyFactory.fillExtrusionHeight(height),
+            PropertyFactory.fillExtrusionBase(base),
             PropertyFactory.fillExtrusionOpacity(1f)))
         kotlinx.coroutines.withTimeoutOrNull(3000) { drawn.await() }
     } finally {
@@ -1570,6 +1586,9 @@ private object MapPool {
     var warmed by mutableStateOf(false)
     // The kept map was let go while Kav was out of sight (drop): none is drawn in its place until Kav is back.
     var resting by mutableStateOf(false)
+    // Screens in front that took the kept map: none is drawn in its place until they go. Made and then put away in the
+    // first seconds of the screen that took it, a new one held its main thread for two long frames as it loaded.
+    var holders by mutableIntStateOf(0)
 
     fun drop() {
         kept?.let { unwatch(it); it.view.onDestroy() }
@@ -1578,7 +1597,7 @@ private object MapPool {
         resting = true
     }
 
-    // refill: another is drawn out of sight a little later, for the screen after this one (the Live tab keeps the one
+    // refill: another is drawn out of sight once this screen goes, for the screen after it (the Live tab keeps the one
     // it takes for as long as the app is open).
     fun take(ctx: android.content.Context, refill: Boolean = true): KeptMap? {
         val k = kept ?: return null
@@ -1699,6 +1718,9 @@ fun TileMap(
     extOn: String? = null,
     // What the map is, in its log lines ("trip view", "trip page", "Live").
     name: String? = null,
+    // False for a map that only shows (Home's): no gesture or tap of its own, so its screen's taps and scrolls go on
+    // over it as they would.
+    touch: Boolean = true,
 ) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
@@ -1858,6 +1880,14 @@ fun TileMap(
             } else mapView.onDestroy()
         }
     }
+    // Holds back the next warm-up map while this screen, which took the kept one, is in front (MapPool.holders).
+    if (pooled != null && !warming) DisposableEffect(lifecycle) {
+        var holding = false
+        fun hold(on: Boolean) { if (on != holding) { holding = on; MapPool.holders += if (on) 1 else -1 } }
+        val observer = LifecycleEventObserver { _, _ -> hold(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); hold(false) }
+    }
     // On its own surface, its still for what draws Kav's own layer where its hole is (MapStills) while it's in front: taken
     // once it has rested a moment, and again at most once a second while it draws anything new at rest (the vehicles);
     // dropped for its plain ground as it moves.
@@ -1953,7 +1983,13 @@ fun TileMap(
         val json = MapFile.styleJson(ctx, type, K.look, labels, preview = remote) ?: return@LaunchedEffect
         val kept = pooled?.style
         if (style == null && json == held[0] && kept != null && kept.isFullyLoaded) style = kept
-        else map?.setStyle(Style.Builder().fromJson(json).withShields(ctx)) { held[0] = json; style = it; fresh = it }
+        else map?.setStyle(Style.Builder().fromJson(json).withShields(ctx)) {
+            // No fade of MapLibre's own as marks are placed: a tile drawn new as the zoom crossed a whole level placed
+            // the vehicles' marks again, each fading in from nothing over 300 ms while their halos showed at once, so
+            // vehicles seemed to vanish under the fingers. Kav fades its own marks; colors still change over 300 ms.
+            it.transition = org.maplibre.android.style.layers.TransitionOptions(300, 0, false)
+            held[0] = json; style = it; fresh = it
+        }
     }
     LaunchedEffect(fresh) { warmBuildings(mapView, map ?: return@LaunchedEffect, fresh ?: return@LaunchedEffect) }
     fun Style.ensureKavIcons() {
@@ -2837,7 +2873,9 @@ fun TileMap(
         val markReach = with(density) { 22.dp.toPx() }
         Box(
             Modifier.fillMaxSize()
-                .then(if (onTap == null && extOn == null) Modifier else Modifier.pointerInput(anchor) {
+                // Still what's under the finger, taking nothing: the map's view under it gets none either.
+                .then(if (touch) Modifier else Modifier.pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } })
+                .then(if (!touch || onTap == null && extOn == null) Modifier else Modifier.pointerInput(anchor) {
                     detectTapGestures { at ->
                         // A native extension's shape under the finger is its tap, not the map's.
                         if (extOn != null) map?.extShapeAt(at.x, at.y)?.takeIf(uk.noammm.kav.ext.NativeMap::takesTap)?.let { uk.noammm.kav.ext.NativeMap.tapped(it, ctx); return@detectTapGestures }
@@ -2854,7 +2892,7 @@ fun TileMap(
                             ?: unrotate(at, anchor, current.rotation), flat)
                     }
                 })
-                .pointerInput(Unit) {
+                .then(if (!touch) Modifier else Modifier.pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         touching.value = true
@@ -2922,7 +2960,7 @@ fun TileMap(
                         } while (e.changes.any { it.pressed })
                         camera.tilting = false
                     }
-                },
+                }),
         )
 
         if (!mapReady) MapDownloadCard(
@@ -3048,15 +3086,15 @@ private class PulseClock {
     }
 }
 
-// A map drawn out of sight a little after the app opens, and again a little after a screen takes it, where the rider is
-// and then as the trip of Home's latest route frames it, then kept (MapPool): the next screen with a map takes it with
-// its style, fonts and the tiles of both loaded, and shows the map whole at once instead of an empty box filling in. It
-// takes no room and isn't seen or read out.
+// A map drawn out of sight a little after the app opens, and again a little after the screen that took it goes, where
+// the rider is and then as the trip of Home's latest route frames it, then kept (MapPool): the next screen with a map
+// takes it with its style, fonts and the tiles of both loaded, and shows the map whole at once instead of an empty box
+// filling in. It takes no room and isn't seen or read out.
 @Composable
 fun MapWarmUp(here: Pair<Double, Double>?) {
     // Only a map drawn from the phone: one that loads online would ask its server for where the rider is, unasked.
     val provider = MapFile.provider()
-    if (MapPool.warmed || MapPool.resting || provider.online() || provider.pack.state !is MapPack.State.Ready) return
+    if (MapPool.warmed || MapPool.resting || MapPool.holders > 0 || provider.online() || provider.pack.state !is MapPack.State.Ready) return
     // 0: not yet, 1: where the rider is, 2: the latest route, in its trip page's map (RouteMap). The same map goes on
     // from one to the other: given back to the pool between them, its surface was let go and made again for nothing.
     var step by remember { mutableIntStateOf(0) }
