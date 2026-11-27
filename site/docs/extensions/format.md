@@ -108,7 +108,7 @@ At most 64 KB.
 | `icon` | Optional: a picture in its folder (`.png`, `.jpg`, `.jpeg` or `.webp`), shown where it is listed. |
 | `pages`, `settings` | Its own screens and what the rider can set. See [screens.md](/docs/extensions/screens). |
 | `widgets` | Its home screen widgets, for a `widget.provide` contribution (API 5). See [screens.md](/docs/extensions/screens#home-screen-widgets). |
-| `theme` | Its look: colors, line badges and corners, for a theme or a `theme` contribution. See [screens.md](/docs/extensions/screens#themes). |
+| `theme` | Its look: colors, line badges, corners, a font, outlines, the colors of Kav's map and pictures for some of its parts, for a theme or a `theme` contribution. See [screens.md](/docs/extensions/screens#themes). |
 | `hooks` | For a `hooks` contribution: each function of Kav's it hooks, `{ "class", "method", "params": [types] }`. See [native.md](/docs/extensions/native#hooks-into-kav-itself). |
 | `tags` | For an annotator: words for up to 32 of its tags, `"id": { "en": "words", "he": "words" }`. `en` is needed, each at most 40 characters. |
 | `reasons` | Your own short reason under a line Kav shows riders. See "Reasons" below. Its old name, `explanations`, is still read. |

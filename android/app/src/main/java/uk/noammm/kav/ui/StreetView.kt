@@ -230,7 +230,7 @@ private fun StopLookScreen(shown: StopLook, onClose: () -> Unit) {
                     Text(
                         T("Google has no Street View here", "ל-Google אין כאן Street View"), style = K.type.subhead, color = K.text,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = K.gap3)
-                            .heightIn(min = 36.dp).glassSurface(18.dp).padding(horizontal = K.gap4, vertical = K.gap2),
+                            .heightIn(min = 36.dp).glassSurface(K.pill(18.dp)).padding(horizontal = K.gap4, vertical = K.gap2),
                     )
                 }
                 is PanoState.Found -> StreetPane(shown, now.pano) { ready = true }

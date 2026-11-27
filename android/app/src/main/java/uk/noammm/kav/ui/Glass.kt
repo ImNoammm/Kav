@@ -2,7 +2,6 @@ package uk.noammm.kav.ui
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -14,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.onSizeChanged
@@ -44,29 +45,42 @@ fun Modifier.glassBackdrop(liquid: LiquidBackdrop?): Modifier =
 // The floating layer: the tab bar, buttons over a map or a list, a field that stays on top. The cards' own shade and
 // hairline, so it sits with them; glass where it's chosen, that same shade over the bare page.
 // glass: how much of it is glass right now, read as it's drawn (liquidPane); none is the cards' solid shade.
-// outline: the hairline; the tab bar goes without it.
+// outline: the hairline; the tab bar goes without it. One at the card corner on a skin's card is that card (panel).
 @Composable
-fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null, outline: Boolean = true): Modifier {
+fun Modifier.glassSurface(radius: Dp = K.rCard, glass: (() -> Float)? = null, outline: Boolean = true): Modifier {
     val liquid = LocalLiquidBackdrop.current
-    if (!liquidGlassReady || !K.liquid || liquid == null) return panel(radius, outline = outline)
+    if (radius == K.rCard && (K.skin?.get("card") != null || K.skin?.get("cardTitle") != null)) return panel(radius, outline = outline)
+    if (!liquidGlassReady || !K.liquid || liquid == null) return shade(radius, outline = outline)
     val pane = liquidPane(liquid, radius, glass).cardPiece()
-    return if (outline) pane.border(0.5.dp, K.separator, RoundedCornerShape(radius)) else pane
+    return if (outline) pane.cardOutline(RoundedCornerShape(radius)) else pane
 }
 
 // A floating part over a map as panels over the live map look (liquidPane): the cards' shade, see-through, and its
 // hairline. Solid, the cards' own shade.
 fun Modifier.seeThrough(radius: Dp, outline: Boolean = true): Modifier {
-    if (!liquidGlassReady || !K.liquid) return panel(radius, outline = outline)
+    if (!liquidGlassReady || !K.liquid) return shade(radius, outline = outline)
     val shape = RoundedCornerShape(radius)
     val pane = clip(shape).background(K.surface.copy(alpha = LIVE_SHADE)).cardPiece()
-    return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
+    return if (outline) pane.cardOutline(shape) else pane
 }
 
-// A card on the page: its own shade and a hairline. solid: one that floats over others, a sheet or a menu.
+// A card on the page: its own shade and a hairline. solid: one that floats over others, a sheet or a menu. A card (one
+// at the card corner) on a skin's card piece, and with its cardTitle strip across the top, the content below it.
 fun Modifier.panel(radius: Dp = K.rCard, solid: Boolean = false, outline: Boolean = true): Modifier {
+    val card = K.skin?.get("card")
+    val title = K.skin?.get("cardTitle")
+    if (radius != K.rCard || (card == null && title == null)) return shade(radius, solid, outline)
+    val face = if (card != null) clip(RoundedCornerShape(radius)).skin(card).cardPiece() else shade(radius, solid, outline)
+    if (title == null) return face
+    val strip = (title.image.height * title.scale).dp
+    return face.drawBehind { nineSlice(title, bottom = strip.toPx()) }.padding(top = strip)
+}
+
+// The cards' shade and hairline, never a skin's: the floating layer's when it isn't glass.
+private fun Modifier.shade(radius: Dp, solid: Boolean = false, outline: Boolean = true): Modifier {
     val shape = RoundedCornerShape(radius)
     val pane = clip(shape).background(if (solid) K.surfaceRaised else K.surface).cardPiece()
-    return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
+    return if (outline) pane.cardOutline(shape) else pane
 }
 
 @Composable

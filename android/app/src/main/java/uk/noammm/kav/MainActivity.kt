@@ -38,9 +38,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -317,11 +318,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val light = K.light
             val bg = K.bg
+            // Over a skin's top and tab bars, the bars' icons as their ink reads.
+            val lightTop = K.skin?.get("topBar")?.ink?.let { it.luminance() < .5f } ?: light
+            val lightBottom = K.skin?.get("tabBar")?.ink?.let { it.luminance() < .5f } ?: light
             val view = androidx.compose.ui.platform.LocalView.current
             androidx.compose.runtime.SideEffect {
                 val bars = androidx.core.view.WindowCompat.getInsetsController(window, view)
-                bars.isAppearanceLightStatusBars = light
-                bars.isAppearanceLightNavigationBars = light
+                bars.isAppearanceLightStatusBars = lightTop
+                bars.isAppearanceLightNavigationBars = lightBottom
                 // Before Android 10 the navigation bar keeps a light scrim behind dark-theme icons.
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) window.navigationBarColor = bg.toArgb()
             }
@@ -1293,11 +1297,13 @@ private fun Shell(model: KavModel) {
     val liquid = rememberLiquidBackdrop()
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
     Box(Modifier.fillMaxSize()) {
-    Box(Modifier.fillMaxSize().background(K.bg))
+    Box(Modifier.fillMaxSize().background(K.bg).then(K.skin?.background?.let { Modifier.drawBehind { cover(it) } } ?: Modifier))
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.safeDrawing).background(K.bg))
+            // Clear over a skin's topBar, which screens draw on up behind it (topBar).
+            Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.safeDrawing)
+                .background(if (K.skin?.get("topBar") != null) Color.Transparent else K.bg))
         },
         bottomBar = {
             // Settings covers the bar in the overlay above this scaffold; its opening doesn't resize the tabs.
@@ -1320,7 +1326,7 @@ private fun Shell(model: KavModel) {
         Box(Modifier.padding(
             start = pad.calculateStartPadding(direction), top = pad.calculateTopPadding(),
             end = pad.calculateEndPadding(direction),
-        ).fillMaxSize().clipToBounds()) {
+        ).fillMaxSize().clipUnderTopBar()) {
         CompositionLocalProvider(LocalLiquidBackdrop provides null) {
             // Only the tabs feed the bar's glass.
             Box(Modifier.fillMaxSize()
@@ -1345,7 +1351,7 @@ private fun Shell(model: KavModel) {
         Box(Modifier.padding(
             start = safe.calculateStartPadding(direction), top = safe.calculateTopPadding(),
             end = safe.calculateEndPadding(direction),
-        ).fillMaxSize().clipToBounds()) {
+        ).fillMaxSize().clipUnderTopBar()) {
             // Prepare Settings after the first screen is drawn, before its first slide.
             var settingsReady by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { delay(500); settingsReady = true }
@@ -1543,22 +1549,27 @@ private fun TabBar(model: KavModel) {
         enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
         exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
     ) {
+    // A skin's tabBar goes edge to edge and down behind the gesture area, its chosen tab on tabSelected.
+    val bar = K.skin?.get("tabBar")
+    val chosen = K.skin?.get("tabSelected")
     BoxWithConstraints(
-        Modifier.navigationBarsPadding().padding(horizontal = K.gap4, vertical = K.gap2)
+        if (bar != null) Modifier.skin(bar).navigationBarsPadding().fillMaxWidth().height(56.dp)
+        else Modifier.navigationBarsPadding().padding(horizontal = K.gap4, vertical = K.gap2)
             .fillMaxWidth().height(64.dp).glassSurface(K.rCard, outline = false).padding(4.dp),
     ) {
-        val thumb = RoundedCornerShape(K.rCard - 4.dp)
+        val thumb = if (chosen != null) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(maxOf(K.rCard - 4.dp, 0.dp))
         val each = maxWidth / tabs.size
         val at by androidx.compose.animation.core.animateDpAsState(
             each * tabs.indexOf(model.tab).coerceAtLeast(0),
             androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f), label = "tabThumb",
         )
-        Box(Modifier.offset(x = at).width(each).fillMaxHeight().clip(thumb).background(K.accent))
+        Box(Modifier.offset(x = at).width(each).fillMaxHeight().clip(thumb)
+            .then(if (chosen != null) Modifier.skin(chosen) else Modifier.background(K.accent)))
         Row(Modifier.fillMaxSize().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { t ->
                 val on = model.tab == t
                 val ink by animateColorAsState(
-                    if (on) K.onAccent else K.textSecondary, androidx.compose.animation.core.tween(150), label = "tabInk",
+                    if (on) chosen?.ink ?: K.onAccent else bar?.ink ?: K.textSecondary, androidx.compose.animation.core.tween(150), label = "tabInk",
                 )
                 Column(
                     Modifier.weight(1f).fillMaxHeight().clip(thumb).selectable(

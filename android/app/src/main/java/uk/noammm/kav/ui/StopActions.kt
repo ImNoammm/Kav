@@ -86,7 +86,7 @@ internal fun RowScope.ActionTile(
         Modifier
             .weight(1f)
             .heightIn(min = 64.dp)
-            .clip(RoundedCornerShape(K.rCard - 4.dp))
+            .clip(RoundedCornerShape(maxOf(K.rCard - 4.dp, 0.dp)))
             .semantics(mergeDescendants = true) { contentDescription = description; selected = lit }
             .clickable(interactionSource = source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
             .padding(horizontal = 2.dp, vertical = 10.dp)

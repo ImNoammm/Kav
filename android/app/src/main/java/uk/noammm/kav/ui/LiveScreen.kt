@@ -692,7 +692,7 @@ private fun LiveScreenForSource(model: KavModel) {
                         var wrapped by remember { mutableStateOf(false) }
                         Column(
                             Modifier.onSizeChanged { wrapped = it.height > with(density) { 36.dp.roundToPx() } }
-                                .panel(if (wrapped) K.rTile else 14.dp).padding(horizontal = K.gap3, vertical = 6.dp),
+                                .panel(if (wrapped) K.rTile else K.pill(14.dp)).padding(horizontal = K.gap3, vertical = 6.dp),
                         ) {
                             // One message fades into the next as the chip eases to its size; a count in the same one rolls.
                             val said = when {

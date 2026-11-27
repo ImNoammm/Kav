@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -56,12 +55,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.text
@@ -110,9 +112,15 @@ fun KavButton(
         ButtonStyle.Secondary, ButtonStyle.Destructive -> K.fill
         ButtonStyle.Plain -> Color.Transparent
     }, tween(200), label = "buttonFill")
+    // A skin's button piece in place of the fill: pressed, the main one's, or the button's.
+    val piece = K.skin?.let { sk ->
+        if (style == ButtonStyle.Plain) null
+        else (if (pressed) sk["buttonPressed"] else null) ?: (if (style == ButtonStyle.Primary) sk["buttonPrimary"] else null) ?: sk["button"]
+    }
     val ink by animateColorAsState(when {
         !enabled -> K.textTertiary
-        style == ButtonStyle.Primary -> K.onAccent
+        piece?.ink != null && style != ButtonStyle.Destructive -> piece.ink
+        style == ButtonStyle.Primary -> if (piece != null) K.text else K.onAccent
         style == ButtonStyle.Secondary -> K.text
         style == ButtonStyle.Plain -> K.accentInk
         else -> K.critical
@@ -124,7 +132,8 @@ fun KavButton(
             .heightIn(min = 52.dp)
             .graphicsLayer { scaleX = press; scaleY = press }
             .clip(K.capsule)
-            .background(fill)
+            .then(if (piece != null) Modifier.skin(piece) else Modifier.background(fill))
+            .then(if (style == ButtonStyle.Plain || piece != null) Modifier else Modifier.controlOutline())
             .clickable(source, LocalIndication.current, enabled = enabled && !busy, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (style == ButtonStyle.Plain) K.gap4 else K.gap5),
         verticalAlignment = Alignment.CenterVertically,
@@ -210,7 +219,8 @@ fun KavIconButton(
     Box(
         modifier
             .size(size)
-            .then(if (floating) Modifier.glassSurface(size / 2) else Modifier.clip(CircleShape).background(K.fill))
+            .then(K.skin?.get("button")?.let { Modifier.clip(K.capsule).skin(it) }
+                ?: if (floating) Modifier.glassSurface(K.pill(size / 2)) else Modifier.clip(K.capsule).background(K.fill).controlOutline())
             .semantics { contentDescription = label }
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -234,8 +244,16 @@ fun KavChip(
     // A chip that can't be used yet: in place, greyed and not tappable, as a disabled button is.
     enabled: Boolean = true,
 ) {
+    // On a skin, a chosen chip is its button pressed.
+    val piece = K.skin?.let { sk -> (if (selected) sk["buttonPressed"] else null) ?: sk["button"] }
     val fill by animateColorAsState(if (selected) K.accent else K.fill, tween(150), label = "chipFill")
-    val ink by animateColorAsState(if (selected) K.onAccent else if (enabled) K.textSecondary else K.textTertiary, tween(150), label = "chipInk")
+    val ink by animateColorAsState(when {
+        !enabled -> K.textTertiary
+        piece != null -> piece.ink ?: K.text
+        selected -> K.onAccent
+        else -> K.textSecondary
+    }, tween(150), label = "chipInk")
+    val face = if (piece != null) Modifier.clip(K.capsule).skin(piece) else Modifier.clip(K.capsule).background(fill).controlOutline()
     val ticked by animateFloatAsState(if (selected) 1f else 0f, tween(150), label = "chipTick")
     // With a tick, the label stays centred in room that fits the tick at its start, so choosing moves nothing.
     if (check) {
@@ -243,8 +261,7 @@ fun KavChip(
             modifier
                 .minimumInteractiveComponentSize()
                 .heightIn(min = 36.dp)
-                .clip(K.capsule)
-                .background(fill)
+                .then(face)
                 .semantics { this.selected = selected }
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
@@ -261,8 +278,7 @@ fun KavChip(
         modifier
             .minimumInteractiveComponentSize()
             .heightIn(min = 36.dp)
-            .clip(K.capsule)
-            .background(fill)
+            .then(face)
             .semantics { this.selected = selected }
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = K.gap4),
@@ -287,7 +303,11 @@ fun KavSegmented(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val style = K.type.subhead
-    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule).background(K.fill).padding(3.dp)) {
+    // On a skin, the track is a field and the chosen one a button on it.
+    val track = K.skin?.get("field")
+    val thumb = K.skin?.get("button")
+    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule)
+        .then(if (track != null) Modifier.skin(track) else Modifier.background(K.fill).controlOutline()).padding(3.dp)) {
         val n = options.size.coerceAtLeast(1)
         val widths = remember(options, maxWidth, style, density) {
             if (n < 4) List(n) { maxWidth / n } else {
@@ -302,7 +322,8 @@ fun KavSegmented(
         val start = widths.take(selected.coerceIn(0, widths.size)).fold(0.dp) { a, b -> a + b }
         val at by animateDpAsState(start, spring(dampingRatio = 1f, stiffness = 500f), label = "thumb")
         val wide by animateDpAsState(widths.getOrElse(selected) { 0.dp }, spring(dampingRatio = 1f, stiffness = 500f), label = "thumbWidth")
-        Box(Modifier.offset(x = at).width(wide).fillMaxHeight().clip(K.capsule).background(K.accent))
+        Box(Modifier.offset(x = at).width(wide).fillMaxHeight().clip(K.capsule)
+            .then(if (thumb != null) Modifier.skin(thumb) else Modifier.background(K.accent)))
         Row(Modifier.fillMaxSize()) {
             options.forEachIndexed { i, option ->
                 Box(
@@ -313,7 +334,7 @@ fun KavSegmented(
                 ) {
                     val ink by animateColorAsState(
                         when {
-                            i == selected -> K.onAccent
+                            i == selected -> if (thumb != null) thumb.ink ?: K.text else K.onAccent
                             enabled(i) -> K.textSecondary
                             else -> K.textTertiary
                         },
@@ -400,6 +421,36 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
         bottomStart = if (last) r else 0.dp, bottomEnd = if (last) r else 0.dp,
     )
     val line = K.separator
+    // The hairline between this row and the one above it, from the text's start.
+    fun DrawScope.divider(w: Float) {
+        if (first) return
+        val start = inset.toPx()
+        if (layoutDirection == LayoutDirection.Ltr) drawLine(line, Offset(start, w / 2), Offset(size.width, w / 2), w)
+        else drawLine(line, Offset(0f, w / 2), Offset(size.width - start, w / 2), w)
+    }
+    // A skin's field as one box round the whole group, the ends that belong to other rows pushed out of sight.
+    val field = K.skin?.get("field")
+    if (field != null) return clip(shape).drawWithContent {
+        val s = field.scale * density
+        val top = if (first) 0f else -field.insets[1] * s - 1
+        val bottom = if (last) size.height else size.height + field.insets[3] * s + 1
+        nineSlice(field, top = top, bottom = bottom)
+        drawContent()
+        divider(.5.dp.toPx())
+    }
+    // A theme's outline round the card, worked out once for the row's size, its ends pushed out of sight as Kav's are.
+    val style = K.outline
+    if (style != null) return clip(shape).background(K.surface).drawWithCache {
+        val radius = r.toPx()
+        val top = if (first) 0f else -radius * 2 - 8.dp.toPx()
+        val bottom = if (last) size.height else size.height + radius * 2 + 8.dp.toPx()
+        val edge = outlineOf(style, RoundRect(0f, top, size.width, bottom, CornerRadius(radius)), line, card = true)
+        onDrawWithContent {
+            drawContent()
+            edge.over(this)
+            divider(.5.dp.toPx())
+        }
+    }
     return clip(shape).background(K.surface).drawWithContent {
         drawContent()
         val w = .5.dp.toPx()
@@ -410,11 +461,7 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
         drawRoundRect(
             line, Offset(w / 2, top), Size(size.width - w, bottom - top), CornerRadius(radius - w / 2), style = Stroke(w),
         )
-        if (!first) {
-            val start = inset.toPx()
-            if (layoutDirection == LayoutDirection.Ltr) drawLine(line, Offset(start, w / 2), Offset(size.width, w / 2), w)
-            else drawLine(line, Offset(0f, w / 2), Offset(size.width - start, w / 2), w)
-        }
+        divider(w)
     }
 }
 
@@ -510,13 +557,13 @@ fun ScreenHeader(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().topBar().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(K.gap3),
     ) {
         if (back != null) BackButton(back)
         Text(
-            title, style = if (large) K.type.largeTitle else K.type.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            title, style = if (large) K.type.largeTitle else K.type.title, color = topBarInk, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         actions()
@@ -562,8 +609,8 @@ fun SheetHeader(title: String, onClose: () -> Unit, subtitle: String? = null) {
 fun KavSwitch(on: Boolean, modifier: Modifier = Modifier) {
     val track by animateColorAsState(if (on) K.accent else K.fillStrong, label = "track")
     val at by animateDpAsState(if (on) 22.dp else 2.dp, spring(dampingRatio = 1f, stiffness = 500f), label = "thumb")
-    Box(modifier.size(52.dp, 32.dp).clip(K.capsule).background(track)) {
-        Box(Modifier.offset(x = at, y = 2.dp).size(28.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White))
+    Box(modifier.size(52.dp, 32.dp).clip(K.capsule).background(track).controlOutline()) {
+        Box(Modifier.offset(x = at, y = 2.dp).size(28.dp).shadow(2.dp, K.capsule).clip(K.capsule).background(Color.White))
     }
 }
 

@@ -22,6 +22,10 @@ class Registry(val dir: File) {
 
         // The folder and file name an identity's things are kept under.
         fun stateKey(identity: String) = sha256(identity.toByteArray()).copyOf(16).hex()
+
+        // The folder a package's files are kept in under dir, by its digest: for reading one of them (a theme's font)
+        // before the registry is open.
+        fun packageDir(dir: File, sha256: String) = File(File(dir, "pkgs"), sha256)
     }
 
     // enabled: the rider's switch, off until they turn it on, and enabledAt when it last was (0 before Kav kept it).

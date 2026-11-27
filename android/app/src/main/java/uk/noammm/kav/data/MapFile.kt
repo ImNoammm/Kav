@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import uk.noammm.kav.ext.Looks
 import uk.noammm.kav.ui.Lang
 import uk.noammm.kav.ui.Look
 
@@ -52,11 +53,15 @@ object MapFile {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 6
     }
 
-    suspend fun styleJson(ctx: Context, t: Type, look: Look, labels: Lang, preview: Boolean): String? {
+    // tone: a theme's colors for Kav's own map (K.mapTone); every other map type is drawn as it is.
+    suspend fun styleJson(ctx: Context, t: Type, look: Look, labels: Lang, preview: Boolean, tone: Looks.MapTone? = null): String? {
         val p = provider(t)
-        val key = "$t|$look|$labels|$preview|${p.pack.state is MapPack.State.Ready}|$buildings3d|${ctx.resources.displayMetrics.density}"
+        val toned = tone?.takeIf { t == Type.STANDARD }
+        val key = "$t|$look|$labels|$preview|${p.pack.state is MapPack.State.Ready}|$buildings3d|${ctx.resources.displayMetrics.density}|$toned"
         synchronized(made) { made[key] }?.let { return it }
-        val json = withContext(Dispatchers.Default) { p.style(ctx, look, labels, preview)?.toString() } ?: return null
+        val json = withContext(Dispatchers.Default) {
+            p.style(ctx, look, labels, preview)?.let { if (toned != null) toned(it, toned) else it }?.toString()
+        } ?: return null
         synchronized(made) { made[key] = json }
         return json
     }
@@ -82,6 +87,53 @@ object MapFile {
             }
         }
         return style.put("layers", kept)
+    }
+
+    // Kav's own map in a theme's two colors: each of its colors, all greys, is placed by its lightness between the land's
+    // (the ground) and the town names' (the ink), and drawn as far between the theme's ground and ink, a little past
+    // either end where Kav's map goes past them (buildings darker than the land). The water takes its own color when the
+    // theme gives one, and its names' edge with it. Israel's road number markers (MapShields) keep their own colors.
+    internal fun toned(style: JSONObject, tone: Looks.MapTone): JSONObject {
+        val layers = style.getJSONArray("layers")
+        fun layer(id: String) = (0 until layers.length()).map { layers.getJSONObject(it) }.firstOrNull { it.optString("id") == id }
+        val land = layer("earth")?.optJSONObject("paint")?.opt("fill-color") as? String ?: return style
+        val names = layer("places_locality")?.optJSONObject("paint")?.opt("text-color") as? String ?: return style
+        val from = lightness(land) ?: return style
+        val to = lightness(names)?.takeIf { it != from } ?: return style
+        fun mix(a: Int, b: Int, t: Float) = (a + (b - a) * t).toInt().coerceIn(0, 255)
+        fun shade(c: String): String {
+            val t = ((lightness(c) ?: return c) - from) / (to - from)
+            val g = tone.ground; val k = tone.ink
+            return "#%02x%02x%02x".format(
+                mix(g shr 16 and 0xff, k shr 16 and 0xff, t), mix(g shr 8 and 0xff, k shr 8 and 0xff, t), mix(g and 0xff, k and 0xff, t))
+        }
+        fun walk(v: Any?): Any? = when (v) {
+            is String -> if (HEX.matches(v)) shade(v) else v
+            is JSONArray -> JSONArray().apply { for (i in 0 until v.length()) put(walk(v.get(i))) }
+            else -> v
+        }
+        val water = tone.water?.let { "#%06x".format(it and 0xffffff) }
+        for (i in 0 until layers.length()) {
+            val layer = layers.getJSONObject(i)
+            if (layer.optString("source") == MapShields.SOURCE) continue
+            val paint = layer.optJSONObject("paint") ?: continue
+            for (k in paint.keys().asSequence().toList()) if (k.endsWith("color")) paint.put(k, walk(paint.get(k)))
+            if (water != null && layer.optString("source-layer") == "water") when (layer.optString("type")) {
+                "fill" -> paint.put("fill-color", water)
+                "line" -> paint.put("line-color", water)
+                "symbol" -> if (paint.has("text-halo-color")) paint.put("text-halo-color", water)
+            }
+        }
+        return style
+    }
+
+    private val HEX = Regex("#[0-9a-fA-F]{6}")
+
+    // How light a "#rrggbb" color is, 0 to 255.
+    private fun lightness(c: String): Float? {
+        if (!HEX.matches(c)) return null
+        val n = c.substring(1).toInt(16)
+        return .2126f * (n shr 16 and 0xff) + .7152f * (n shr 8 and 0xff) + .0722f * (n and 0xff)
     }
 
     // The black map's names are dark grey, which a photo swallows: white with a dark edge instead. Road numbers keep

@@ -1975,7 +1975,7 @@ fun TileMap(
     // Another map type, or its names in another language, is a new picture: the map fades out, and in again once the
     // new one is drawn whole.
     var drawnAs by remember { mutableStateOf(type to labels) }
-    LaunchedEffect(map, mapReady, onPhone, K.look, type, labels, MapFile.buildings3d) {
+    LaunchedEffect(map, mapReady, onPhone, K.look, type, labels, MapFile.buildings3d, K.mapTone) {
         if (type to labels != drawnAs) {
             drawnAs = type to labels
             if (drawn) animate(showing(), 0f, animationSpec = tween(150)) { v, _ -> show(v) }
@@ -1986,7 +1986,7 @@ fun TileMap(
         // none (0), a trip view's camera moving to its next step showed the style's ground in black chunks until the
         // new tiles were in.
         map?.setPrefetchZoomDelta(4)
-        val json = MapFile.styleJson(ctx, type, K.look, labels, preview = remote) ?: return@LaunchedEffect
+        val json = MapFile.styleJson(ctx, type, K.look, labels, preview = remote, tone = K.mapTone) ?: return@LaunchedEffect
         val kept = pooled?.style
         if (style == null && json == held[0] && kept != null && kept.isFullyLoaded) style = kept
         else map?.setStyle(Style.Builder().fromJson(json).withShields(ctx)) {
