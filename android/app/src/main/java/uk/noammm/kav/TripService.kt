@@ -227,8 +227,14 @@ class TripService : Service() {
         alertedLegs = journey.trip.legs
         val latest = listOfNotNull(fix, TripBridge.fixNow?.invoke()).maxByOrNull { it.at }
         val now = System.currentTimeMillis() / 1000
+        // The leave alert leaves the shade once the walk is on its way past the first stop, or the bus has gone.
+        if (lastAlert.startsWith("leave-") && !leaveStillDue(journey, step, now)) {
+            NotificationManagerCompat.from(this).cancel(ALERT_ID)
+            lastAlert = ""
+        }
         val due = listOfNotNull(
             replanAlert(journey, step, latest, now),
+            leaveAlert(journey, step, latest, now, fired),
             tripAlert(journey, step, latest, now),
             transferAlert(journey, step, TicketStore.kept, now * 1000),
         ).firstOrNull { it.key !in fired } ?: return

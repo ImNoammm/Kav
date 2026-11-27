@@ -416,7 +416,7 @@ private fun Timeline(
     ) {
         val start = rememberTripEnd(fromLabel, trip.legs.firstOrNull()?.shape?.firstOrNull())
         Rail(Mark.START, null, walk, node = endNode(start)) {
-            val (time, label) = leaveEndpoint(trip, System.currentTimeMillis() / 1000)
+            val (time, label) = leaveEndpoint(trip, System.currentTimeMillis() / 1000, r)
             Endpoint(fromLabel, time, label, start)
         }
         var boarded = -1
@@ -685,9 +685,16 @@ internal fun summaryTimes(trip: Transit.Itinerary, r: Transit.Resolved): Pair<St
 // you are or a pinned spot.
 // The trip's leave time and what it is, as its card says it: "Now" while leaving now still makes the first ride
 // (leavesNow()), else the time to leave at.
-internal fun leaveEndpoint(trip: Transit.Itinerary, now: Long): Pair<String, String> =
-    if (leavesNow(trip, now)) T("Now", "עכשיו") to T("Leave", "יציאה")
+internal fun leaveEndpoint(trip: Transit.Itinerary, now: Long, r: Transit.Resolved? = null): Pair<String, String> {
+    // A route that begins with a walk goes by the bus's live time less the walk and a margin.
+    val leave = if (r != null) leaveTime(trip, r, emptyMap(), now) else null
+    if (leave != null) {
+        return if (leave.now) T("Now", "עכשיו") to T("Leave", "יציאה")
+        else hm.format(Date(leave.at * 1000)) to T("Leave at", "יציאה בשעה")
+    }
+    return if (leavesNow(trip, now)) T("Now", "עכשיו") to T("Leave", "יציאה")
     else hm.format(Date(trip.dep * 1000)) to T("Leave at", "יציאה בשעה")
+}
 
 @Composable
 private fun Endpoint(label: String, time: String, when_: String, end: TripEnd? = null) {

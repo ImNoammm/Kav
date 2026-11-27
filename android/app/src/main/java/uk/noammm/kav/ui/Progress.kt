@@ -325,7 +325,7 @@ private fun done(
     val target = stepTarget(step, r, chosen)
     val slack = live?.slack ?: 0.0
     return when (step) {
-        is Step.Start -> startNow || now >= step.time || live != null && target != null &&
+        is Step.Start -> startNow || now >= (step.leave?.let { lastLeave(it, r, chosen) } ?: step.time) || live != null && target != null &&
             live.distanceTo(target) > 60 + 3 * slack &&
             (fromHere || distanceToPath(live.lat, live.lon, firstWalk) < ON_WALK_M + slack)
         is Step.Walk -> {
