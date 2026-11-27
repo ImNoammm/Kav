@@ -264,7 +264,13 @@ fun FavouriteStrip(
                 .combinedClickable(
                     role = Role.Button,
                     onClick = { if (inEdit) onEdit(f) else onPick(f) },
-                    onLongClick = if (inEdit) null else ({ onEdit(f) }),
+                    // Where the row can be sorted, holding a favorite starts sorting it; elsewhere it opens its editor.
+                    onLongClickLabel = if (manage) T("Sort and remove favorites", "סידור והסרה של מועדפים") else null,
+                    onLongClick = when {
+                        inEdit -> null
+                        manage -> ({ editMode = true; order = null; held = null; drag = Offset.Zero })
+                        else -> ({ onEdit(f) })
+                    },
                 )
                 .padding(horizontal = K.gap1, vertical = K.gap2),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -318,7 +324,7 @@ fun FavouriteStrip(
     Column(Modifier.fillMaxWidth()) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = K.gap2)) {
             val cols = ((maxWidth + K.gap2) / SLOT).toInt().coerceAtLeast(1)
-            // Editing adds the Add tile before Done, so the grid gains a cell.
+            // Editing adds Done after the Add tile, so the grid gains a cell.
             val slots = shown.size + if (inEdit) 2 else 1
             SpotGrid(
                 cols, slots, pitch,
@@ -331,31 +337,23 @@ fun FavouriteStrip(
                         on = false, onClick = onAdd, glass = glass, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
                     )
                 } else {
-                    if (inEdit || travel > 0f) key("add") {
+                    // A quiet Add tile with an empty favorite's look; holding a favorite sorts and removes them.
+                    key("add") {
                         StripTile(
                             Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
-                            on = false, onClick = onAdd, enabled = inEdit, glass = glass,
-                            modifier = Modifier.layoutId(rememberSpot(shown.size, cols)).graphicsLayer {
+                            on = false, onClick = onAdd, quiet = true, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
+                        )
+                    }
+                    if (inEdit || travel > 0f) key("done") {
+                        StripTile(
+                            Icons.Rounded.Check, T("Done", "סיום"), T("Finish editing favorites", "סיום עריכת המועדפים"),
+                            on = true, enabled = inEdit, glass = glass,
+                            onClick = { editMode = false; order = null; held = null; drag = Offset.Zero },
+                            modifier = Modifier.layoutId(rememberSpot(shown.size + 1, cols)).graphicsLayer {
                                 val grown = .3f + .7f * travel.coerceAtLeast(0f)
                                 alpha = travel.coerceIn(0f, 1f)
                                 scaleX = grown
                                 scaleY = grown
-                            },
-                        )
-                    }
-                    key("edit") {
-                        val flipped = travel > .5f
-                        StripTile(
-                            if (flipped) Icons.Rounded.Check else Icons.Rounded.Edit,
-                            if (flipped) T("Done", "סיום") else T("Edit", "עריכה"),
-                            if (inEdit) T("Finish editing favorites", "סיום עריכת המועדפים")
-                            else T("Sort and remove favorites", "סידור והסרה של מועדפים"),
-                            on = inEdit, glass = glass,
-                            onClick = { editMode = !editMode; order = null; held = null; drag = Offset.Zero },
-                            modifier = Modifier.layoutId(rememberSpot(shown.size + if (inEdit) 1 else 0, cols)),
-                            iconModifier = Modifier.graphicsLayer {
-                                rotationY = travel * 180f - if (flipped) 180f else 0f
-                                cameraDistance = 12f * density
                             },
                         )
                     }
@@ -417,12 +415,13 @@ private fun StripTile(
     on: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    iconModifier: Modifier = Modifier,
     enabled: Boolean = true,
     glass: Boolean = false,
+    // An empty favorite's look: no fill, a thin edge and a faint icon, over the map too.
+    quiet: Boolean = false,
 ) {
-    val fill by animateColorAsState(if (on) K.accent else if (glass) Color.Transparent else K.fill, tween(220), label = "tileFill")
-    val ink by animateColorAsState(if (on) K.onAccent else K.textSecondary, tween(220), label = "tileInk")
+    val fill by animateColorAsState(if (on) K.accent else if (glass || quiet) Color.Transparent else K.fill, tween(220), label = "tileFill")
+    val ink by animateColorAsState(if (on) K.onAccent else if (quiet) K.textTertiary else K.textSecondary, tween(220), label = "tileInk")
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
@@ -430,9 +429,10 @@ private fun StripTile(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(48.dp).then(if (glass) Modifier.glassSurface(K.rTile) else Modifier).clip(RoundedCornerShape(K.rTile)).background(fill),
+            Modifier.size(48.dp).then(if (glass && !quiet) Modifier.glassSurface(K.rTile) else Modifier).clip(RoundedCornerShape(K.rTile)).background(fill)
+                .then(if (quiet) Modifier.border(1.dp, K.separator, RoundedCornerShape(K.rTile)) else Modifier),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, contentDescription = description, tint = ink, modifier = iconModifier.size(24.dp)) }
+        ) { Icon(icon, contentDescription = description, tint = ink, modifier = Modifier.size(24.dp)) }
         Spacer(Modifier.height(K.gap1))
         Text(label, style = K.type.caption, color = K.textSecondary)
     }
