@@ -2,7 +2,7 @@
 
 package uk.noammm.kav.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
@@ -12,6 +12,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,8 @@ import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.Transit.Place
 import uk.noammm.kav.data.TripLink
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.LocationOff
+import androidx.compose.material.icons.rounded.SentimentDissatisfied
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import uk.noammm.kav.data.RailTrip
@@ -738,8 +741,7 @@ fun DirectionsOnline(model: KavModel) {
     if (linkError != null) {
         Column(Modifier.fillMaxSize()) {
             ScreenHeader(T("Shared trip", "נסיעה משותפת"), back = { linkError = null; showResults = false })
-            Note(linkError.orEmpty(), Modifier.padding(K.gap4))
-            KavButton(T("Try again", "נסו שוב"), { model.pendingLink = lastLink }, Modifier.padding(horizontal = K.gap2), style = ButtonStyle.Plain)
+            PlanFailed(linkError.orEmpty(), Modifier.weight(1f).padding(K.gap4), { model.pendingLink = lastLink })
         }
         return@AnimatedContent
     }
@@ -870,27 +872,18 @@ fun DirectionsOnline(model: KavModel) {
                 ruleFailure != null && error == null -> {
                     tabsRow()
                     item(key = "rule-failed") {
-                        Column(listMotion().padding(K.gap4)) {
-                            Note(ruleFailed(ruleFailure!!))
-                            Text(T("Try again", "נסו שוב"), color = K.accentInk,
-                                modifier = Modifier.clickable { planAgain++ }.padding(vertical = K.gap3))
-                            // The one fallback, asked for by the rider: Kav's routes, said not to be checked.
-                            Text(T("Show routes without this check", "הצגת המסלולים בלי הבדיקה הזו"), color = K.accentInk,
-                                modifier = Modifier.clickable {
-                                    ruleNote = notChecked(ruleFailure!!); raw = unchecked; ruleFailure = null
-                                }.padding(vertical = K.gap3))
-                        }
+                        // The one fallback, asked for by the rider: Kav's routes, said not to be checked.
+                        PlanFailed(ruleFailed(ruleFailure!!), listMotion().fillParentMaxHeight(.6f).padding(K.gap4), { planAgain++ },
+                            T("Show routes without this check", "הצגת המסלולים בלי הבדיקה הזו") to {
+                                ruleNote = notChecked(ruleFailure!!); raw = unchecked; ruleFailure = null
+                            })
                     }
                 }
                 error != null -> {
                     tabsRow()
                     item(key = "error") {
-                        KavPartRow("results.empty", "error" to error, { emptyArgs("error") }, listMotion().padding(K.gap4)) { m ->
-                        Column(m) {
-                            Note(error.orEmpty())
-                            Text(T("Try again", "נסו שוב"), color = K.accentInk,
-                                modifier = Modifier.clickable { planAgain++ }.padding(vertical = K.gap3))
-                        }
+                        KavPartRow("results.empty", "error" to error, { emptyArgs("error") }, listMotion().fillParentMaxHeight(.6f).padding(K.gap4)) { m ->
+                            PlanFailed(error.orEmpty(), m, { planAgain++ })
                         }
                     }
                 }
@@ -909,13 +902,10 @@ fun DirectionsOnline(model: KavModel) {
                     fadeOutSpec = androidx.compose.animation.core.tween(120), placementSpec = null,
                 ).fillParentMaxHeight(.6f)) }
                 fromLL == null -> item(key = "no-start") {
-                    Column(listMotion().padding(K.gap4)) {
-                        if (findHereFailed) Note(T("Couldn't get an accurate location. Try again or choose a start.",
-                            "לא התקבל מיקום מדויק. נסו שוב או בחרו נקודת התחלה."))
-                        else NoteCard(T("Choose a start to find routes.", "בחרו נקודת התחלה כדי למצוא מסלולים."))
-                        if (findHereFailed && !findingHere) Text(T("Try again", "נסו שוב"), color = K.accentInk,
-                            modifier = Modifier.clickable { hereRetry++ }.padding(vertical = K.gap3))
-                    }
+                    if (findHereFailed) PlanFailed(T("Couldn't get an accurate location. Try again or choose a start.",
+                        "לא התקבל מיקום מדויק. נסו שוב או בחרו נקודת התחלה."), listMotion().fillParentMaxHeight(.6f).padding(K.gap4),
+                        { if (!findingHere) hereRetry++ }, icon = Icons.Rounded.LocationOff)
+                    else NoteCard(T("Choose a start to find routes.", "בחרו נקודת התחלה כדי למצוא מסלולים."), listMotion().padding(K.gap4))
                 }
                 planning || plannedFor != planKey -> {
                     tabsRow()
@@ -1271,3 +1261,29 @@ private fun ruleFailed(f: uk.noammm.kav.ext.Pipeline.Failure): String =
 
 private fun notChecked(f: uk.noammm.kav.ext.Pipeline.Failure): String =
     T("Not checked with ${ruleName(f).replaceFirstChar { it.lowercase() }} (\u2068${f.pinned.label}\u2069).", "המסלולים לא נבדקו לפי ${ruleName(f)} (\u2068${f.pinned.label}\u2069).")
+
+// A plan that failed: a sad face, what went wrong, and Try again as a button, centered where Finding routes was. Another
+// way out, when there is one, sits under it as a plain button.
+@Composable
+private fun PlanFailed(
+    text: String, modifier: Modifier, onRetry: () -> Unit, other: Pair<String, () -> Unit>? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Rounded.SentimentDissatisfied,
+) {
+    Column(
+        modifier.fillMaxWidth().padding(bottom = LocalBottomBarInset.current),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(72.dp).clip(androidx.compose.foundation.shape.CircleShape).background(K.fill), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(
+                icon,
+                contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(40.dp),
+            )
+        }
+        Spacer(Modifier.height(K.gap4))
+        Text(text, style = K.type.subhead, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Spacer(Modifier.height(K.gap4))
+        KavButton(T("Try again", "נסו שוב"), onRetry, style = ButtonStyle.Secondary)
+        other?.let { (label, go) -> KavButton(label, go, Modifier.padding(top = K.gap2), style = ButtonStyle.Plain) }
+    }
+}
