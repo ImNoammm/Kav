@@ -3,7 +3,7 @@ package uk.noammm.kav.data
 // The leave-now alert's time logic on plain values, with nothing Android in it, so the same code the app runs is
 // the code plain JVM tests run. LeaveNow reads departures and preferences into these types, asks, and only posts
 // notifications and sets alarms from what comes back. All times are epoch seconds.
-object LeaveNow {
+object LeaveNowTimes {
 
     // One departure of a chosen trip at the alert's stop: its line's number, where the trip ends (how trains are
     // told apart), the timetable's time, and the server's live expected time (0 when the server has none).
@@ -36,6 +36,10 @@ object LeaveNow {
     // What to do this run: which alerts fire now, and when to wake next.
     class Plan(val fire: List<Long>, val wakeAt: Long?)
 
+    // An inexact alarm may be held back by up to three quarters of the time until it, so a wake far off is aimed
+    // at in steps (the same rule as nextWake for line alerts): each step comes in time however late it runs.
+    fun approach(at: Long, now: Long): Long = if (at - now <= 120) at else now + (at - now) * 4 / 7
+
     // Fires an alert whose leave moment has come and whose bus has not left, unless it already fired for this
     // departure (quietUntil reaches its leave moment). Alerts still ahead wake the alarm at their leave moment.
     fun plan(states: List<State>, now: Long): Plan {
@@ -47,6 +51,9 @@ object LeaveNow {
                 s.leaveAt <= now && now < s.depAt -> if (!quieted) fire.add(s.id)
                 s.leaveAt > now -> if (!quieted && s.leaveAt < wakeAt) wakeAt = s.leaveAt
             }
+            // Already alerted (or swiped) for this departure: wake when it leaves, so the next departure in the
+            // same window gets its own alert rather than waiting for tomorrow's window.
+            if (quieted && s.depAt > now && s.depAt < wakeAt) wakeAt = s.depAt
         }
         return Plan(fire, if (wakeAt == Long.MAX_VALUE) null else wakeAt)
     }
