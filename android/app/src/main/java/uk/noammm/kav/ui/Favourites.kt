@@ -324,8 +324,9 @@ fun FavouriteStrip(
     Column(Modifier.fillMaxWidth()) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = K.gap2)) {
             val cols = ((maxWidth + K.gap2) / SLOT).toInt().coerceAtLeast(1)
-            // Editing adds Done after the Add tile, so the grid gains a cell.
-            val slots = shown.size + if (inEdit) 2 else 1
+            // Where the row sorts, Add shows only while sorting (next to Done) or while no favorite is set yet.
+            val bare = manage && favourites.none { it.place != null }
+            val slots = shown.size + if (inEdit) 2 else if (!manage || bare) 1 else 0
             SpotGrid(
                 cols, slots, pitch,
                 Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 1f, stiffness = 500f)),
@@ -338,10 +339,19 @@ fun FavouriteStrip(
                     )
                 } else {
                     // A quiet Add tile with an empty favorite's look; holding a favorite sorts and removes them.
-                    key("add") {
+                    // Once a favorite is set it comes in with Done, so Home shows only the favorites.
+                    if (bare || inEdit || travel > 0f) key("add") {
                         StripTile(
                             Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
-                            on = false, onClick = onAdd, quiet = true, modifier = Modifier.layoutId(rememberSpot(shown.size, cols)),
+                            on = false, onClick = onAdd, quiet = true, enabled = bare || inEdit,
+                            modifier = Modifier.layoutId(rememberSpot(shown.size, cols)).graphicsLayer {
+                                if (!bare) {
+                                    val grown = .3f + .7f * travel.coerceAtLeast(0f)
+                                    alpha = travel.coerceIn(0f, 1f)
+                                    scaleX = grown
+                                    scaleY = grown
+                                }
+                            },
                         )
                     }
                     if (inEdit || travel > 0f) key("done") {
