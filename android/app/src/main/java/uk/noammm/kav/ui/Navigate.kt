@@ -340,6 +340,18 @@ fun NavigateScreen(
     fun failureArgs(f: Failure) = tripArgs().put("reason", f.kind.name.lowercase()).put("key", f.key)
     fun showStep(step: Int) { scope.launch { pager.animateScrollToPage(step) } }
     fun keep(f: Failure) { kept = kept + f.key; replanFailed = false }
+    // Off the walking route: a new route after a short countdown, unless the rider stays or turns it off for this trip.
+    var autoLeft by remember(trip) { mutableStateOf(-1) }
+    var ignoreAuto by remember(trip.guid) { mutableStateOf(false) }
+    val autoOn = AutoReroute.enabled(androidx.compose.ui.platform.LocalContext.current)
+    LaunchedEffect(failure?.key, ignoreAuto, autoOn) {
+        val f = failure
+        if (f == null || f.kind != Broken.OFF_ROUTE || ignoreAuto || !autoOn) { autoLeft = -1; return@LaunchedEffect }
+        autoLeft = 5
+        while (autoLeft > 0) { kotlinx.coroutines.delay(1000); autoLeft-- }
+        autoLeft = -1
+        replan(f)
+    }
     fun stepTapped(step: Int) {
         if (step !in steps.indices) return
         if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.step") { tripArgs().put("step", step).put("current", currentStep).put("steps", steps.size) }) showStep(step)
@@ -399,9 +411,10 @@ fun NavigateScreen(
                 if (!compact) StepStrip(pager, steps.size, currentStep, ::stepTapped)
                 // At the top: the step cards' pager reaches up over what's just above it, and would take its taps.
                 if (failure != null) KavPart("nav.problem", failure.key, { failureArgs(failure) }) {
-                    ReplanCard(failure, r, now, replanning, replanFailed,
+                    ReplanCard(failure, r, now, replanning, replanFailed, autoLeft,
                         onReplan = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(failure) }) replan(failure) },
-                        onKeep = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(failure) }) keep(failure) })
+                        onKeep = { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(failure) }) keep(failure) },
+                        onIgnore = { ignoreAuto = true; keep(failure) })
                 }
             }
 
@@ -480,8 +493,8 @@ fun NavigateScreen(
 // The plan stopped working: why, and a new route from here in one tap; the close button keeps the route.
 @Composable
 private fun ReplanCard(
-    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean,
-    onReplan: () -> Unit, onKeep: () -> Unit,
+    failure: Failure, r: Transit.Resolved, now: Long, planning: Boolean, failed: Boolean, auto: Int,
+    onReplan: () -> Unit, onKeep: () -> Unit, onIgnore: () -> Unit,
 ) {
     Column(Modifier.padding(horizontal = K.gap3).padding(top = K.gap2).fillMaxWidth().glassSurface(K.rCard).padding(K.gap3)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -499,9 +512,14 @@ private fun ReplanCard(
                 .clickable(enabled = !planning, role = Role.Button, onClick = onReplan).padding(horizontal = K.gap3),
             horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (planning) T("Finding a new route…", "מחפשים מסלול חדש…") else T("New route from here", "מסלול חדש מכאן"),
+            Text(if (planning) T("Finding a new route…", "מחפשים מסלול חדש…")
+                else if (auto > 0) T("New route in $auto s. Tap × to stay", "מסלול חדש בעוד $auto שנ׳. X כדי להישאר")
+                else T("New route from here", "מסלול חדש מכאן"),
                 style = K.type.bodyStrong, color = K.onAccent)
         }
+        if (auto > 0) Text(T("Ignore for this trip", "להתעלם בנסיעה הזו"),
+            Modifier.fillMaxWidth().clickable { onIgnore() }.padding(top = K.gap2),
+            style = K.type.subhead, color = K.textSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (failed) Text(T("Couldn't find a new route. Try again.", "לא נמצא מסלול חדש. נסו שוב."),
             style = K.type.subhead, color = K.critical, modifier = Modifier.padding(top = K.gap1))
     }
