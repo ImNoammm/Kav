@@ -112,7 +112,10 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     }
     // Let post notifications, the alarm that was left off for them is set.
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) uk.noammm.kav.LineAlerts.reschedule(ctx)
+        if (granted) {
+            uk.noammm.kav.LineAlerts.reschedule(ctx)
+            uk.noammm.kav.LeaveNow.reschedule(ctx)
+        }
     }
     BottomSheet(onDismiss, scrolls = true) { close ->
         SheetHeader(T("Line alerts", "התראות קווים"), { close(onDismiss) }, subtitle = net.stopName(stop))
@@ -203,8 +206,11 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                         val mins = withContext(Dispatchers.IO) {
                             runCatching {
                                 KavPlan.plan(lat to lon, net.lat[stop] to net.lon[stop], 0L, Transit.TIME_DEPARTURE, emptyList(), false, at = at)
-                                    .plan.itineraries.firstOrNull()
-                                    ?.legs?.filter { it.kind == Transit.LegKind.WALK }
+                                    .plan.itineraries.firstOrNull()?.legs
+                                    // A plan that rides anything is not a walk to the stop: its walk legs alone would be
+                                    // too short, so it counts as not measured and the rider chooses.
+                                    ?.takeIf { legs -> legs.none { it.kind == Transit.LegKind.RIDE } }
+                                    ?.filter { it.kind == Transit.LegKind.WALK }
                                     ?.sumOf { ((it.arr - it.dep) / 60).toInt().coerceAtLeast(1) }
                             }.getOrNull()
                         }
@@ -244,8 +250,8 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
             )
             NoteCard(
                 if (leaveMin > 0) T(
-                    "On those days and hours, one alert goes up the walk's length before each of their departures. The walk is measured from your location when you turn this on, and the choices above change it.",
-                    "בימים ובשעות האלה, תופיע התראה אחת כמה דקות הליכה לפני כל יציאה שלהם. ההליכה נמדדת מהמיקום שלכם בהפעלה, והבחירה למעלה משנה אותה.",
+                    "On those days and hours, one alert goes up the walk's length before each of their departures. The walk is measured from your location when you turn this on: your location is sent to Kav's trip planner for that, and only then. The choices above change it.",
+                    "בימים ובשעות האלה, תופיע התראה אחת כמה דקות הליכה לפני כל יציאה שלהם. ההליכה נמדדת מהמיקום שלכם בהפעלה: המיקום נשלח למתכנן המסלולים של Kav לצורך זה בלבד. הבחירה למעלה משנה אותה.",
                 ) else if (numbers.isEmpty()) T(
                     "On those days and hours, the next trains to these places stay in your notifications, refreshed about every minute.",
                     "בימים ובשעות האלה, הרכבות הבאות ליעדים האלה יופיעו בהתראות, ויתעדכנו בערך כל דקה.",
