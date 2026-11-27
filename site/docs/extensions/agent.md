@@ -528,7 +528,7 @@ when the part next shows.
 | `results.route` | `{"trip", "index"}` | each route's card in a search's results (`ui/DirectionsOnline.kt`) | `ui/DirectionsOnline.kt:1037` |
 | `stop.header` | `{"stop", "name"}` | a stop board's name, picture and buttons (`ui/Stations.kt`) | `ui/Stations.kt:363` |
 | `stop.board` | `{"stop", "name"}` | its departures, as rows of their own | `ui/Stations.kt:449` |
-| `line.header` | `{"number", "operator"}` | a line page's name and star (`ui/Lines.kt`) | `ui/Lines.kt:1658` |
+| `line.header` | `{"number", "operator"}` | a line page's badge and ends (`ui/Lines.kt`) | `ui/Lines.kt:1658` |
 | `settings.root` | `{}` | Settings' list of pages (`ui/Settings.kt`) | `ui/Settings.kt:263` |
 | `tabbar` | `{"tab"}` | the tab bar (`MainActivity.kt`) | `MainActivity.kt:1241` |
 | `settings.page.header` | `{"page", "title"}` | A Settings subpage's heading and navigation controls. | `ui/Settings.kt:277` |
@@ -551,7 +551,7 @@ when the part next shows.
 | `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:191` |
 | `settings.page.look` | `{"page", "title"}` | The Look Settings page body. | `ui/Settings.kt:284` |
-| `settings.page.language` | `{"page", "title"}` | The Language and time Settings page body. | `ui/Settings.kt:284` |
+| `settings.page.language` | `{"page", "title"}` | The Language and time body, which opens in a sheet over Settings. | `ui/Settings.kt:284` |
 | `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.privacy` | `{"page", "title"}` | The Privacy Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.extensions` | `{"page", "title"}` | The Extensions Settings page body. | `ui/Settings.kt:284` |
@@ -566,7 +566,7 @@ when the part next shows.
 | `nav.wait.details` | `{"trip", "leg", "index", "option"}` | In a step's Wait for card, after how busy the line usually is, once for each line the rider can take there. `leg` is that line's ride, `index` its place in `trip.legs`, `option` the line's place among them (0 the planned one). Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:876` |
 | `nav.ride.details` | `{"trip", "leg", "index"}` | In a step's Ride card, after the line's row and above paying. `leg` is the ride the rider chose, `index` its place in `trip.legs`. Kav draws nothing here itself. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:922` |
 | `nav.banner` | `{"trip", "step", "kind", "leg", "index"}` | Under navigation's row of step dots, as wide as the row. `step` is the step the trip is on (from zero) and `kind` its kind (as in [trip events](https://kavapp.link/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)); `leg` is that step's leg, for a wait or a ride the line the rider chose, and `index` its place in `trip.legs` (`null` and `-1` for a step with no leg of its own, as a walk, the start and the end). Made again as the trip moves on to another step or the rider picks another line. Kav draws nothing here itself: each view sits on a glass card as wide as the row of dots, since it's over the map, and with no view navigation looks as it always did. Needs `"api": 5`: a Kav with API 4 has no such part, and `kav.part` throws there. | `ui/Navigate.kt:464` |
-| `ride.pay` | `{"trip", "leg", "index"}` | The pay row of a ride's card, on a trip's page and in navigation's cards: "Pay for this ride" (or a station's) and what to do, under which Kav shows the ride's ticket instead once it has one (and then no part). `leg` is the ride, `index` its place in `trip.legs`. Replaced, your view sits in Kav's own rounded row and is all of it, so its taps are yours. Kav 5.1 and older have no such part, and `kav.part` throws there. | `ui/RavPass.kt:337` |
+| `ride.pay` | `{"trip", "leg", "index"}` | The pay row of a ride's card, on a trip's page, in navigation's cards and on Home's current trip card: "Pay for this ride" (or a station's) and what to do, under which Kav shows the ride's ticket instead once it has one (and then no part). `leg` is the ride, `index` its place in `trip.legs`. Replaced, your view sits in Kav's own rounded row and is all of it, so its taps are yours. Kav 5.1 and older have no such part, and `kav.part` throws there. | `ui/RavPass.kt:337` |
 | `share.targets` | `{"link"}` | The share sheet's row of targets. | `ui/ShareSheet.kt:588` |
 | `ticket.codes` | `ticket.header`'s, with `"code"` and `"codes"` | The ticket's codes and the line under them. `code` is the one shown, from zero. | `ui/TicketCard.kt:311` |
 | `pay.setup` | `{"page": "get" \| "allow" \| "reader" \| "done"}` | The paying setup popup's page. | `ui/PaySetup.kt:137` |
@@ -585,7 +585,7 @@ when the part next shows.
 | `results.hidden` | `{"count", "reasons"}` | The row of routes the rider's rules hid, and why. Needs `"api": 5`. | `ui/DirectionsOnline.kt:927` |
 | `alert.sheet` | `{"label", "ids"}` | A service alert's notices, under its heading. Needs `"api": 5`. | `ui/Common.kt:611` |
 | `report.step` | `report`'s args, with `"step"` | Each page of the report form: `about`, `what`, `ride`, `more`, `you` or `check`. Needs `"api": 5`. | `ui/Report.kt:713` |
-| `search.result` | `{"place", "section", "index"}` | Each result of Kav's place search. `place` is as `place.pick` gives it; `section` is `recent`, `places` or `stops`. Needs `"api": 5`. | `ui/Pickers.kt:443` |
+| `search.result` | `{"place", "section", "index"}` | Each result of Kav's place search. `place` is as `place.pick` gives it; `section` is `frequent` (places the rider often goes to), `recent`, `around` (busy stations around the rider's town, while nothing is typed), `places` or `stops`. Needs `"api": 5`. | `ui/Pickers.kt:443` |
 
 `{"trip"}` is the route as route rules get it ([hooks.md](https://kavapp.link/docs/extensions/hooks)); `leg` one of its `legs`, and `index` its place
 in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
