@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -60,7 +59,7 @@ fun DrawScope.nineSlice(p: SkinPiece, left: Float = 0f, top: Float = 0f, right: 
     }
 }
 
-fun Modifier.skin(p: SkinPiece): Modifier = drawBehind { nineSlice(p) }
+fun Modifier.skin(p: SkinPiece): Modifier = backdrop { nineSlice(p) }
 
 // The page's background picture over the whole box, cropped to fill it from its middle.
 fun DrawScope.cover(img: ImageBitmap) {
@@ -76,7 +75,7 @@ fun DrawScope.cover(img: ImageBitmap) {
 fun Modifier.topBar(): Modifier {
     val p = K.skin?.get("topBar") ?: return this
     val up = WindowInsets.safeDrawing.getTop(LocalDensity.current).toFloat()
-    return drawBehind { nineSlice(p, top = -up) }
+    return backdrop { nineSlice(p, top = -up) }
 }
 
 // Clipped to the box, except that over a skin's topBar it draws on up behind the status bar too (topBar).

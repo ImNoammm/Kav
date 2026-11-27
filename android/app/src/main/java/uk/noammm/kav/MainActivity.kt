@@ -38,7 +38,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -1297,7 +1296,7 @@ private fun Shell(model: KavModel) {
     val liquid = rememberLiquidBackdrop()
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
     Box(Modifier.fillMaxSize()) {
-    Box(Modifier.fillMaxSize().background(K.bg).then(K.skin?.background?.let { Modifier.drawBehind { cover(it) } } ?: Modifier))
+    Box(Modifier.fillMaxSize().backdrop(maps = true) { drawRect(K.bg); K.skin?.background?.let { cover(it) } })
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {

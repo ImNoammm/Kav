@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides, capture. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides, capture, captureBehind. */
     int API = 5;
 
     int apiVersion();
@@ -87,6 +87,13 @@ public interface Kav {
      *  each field's inside is painted over in the picture. null and "[]" when Kav isn't in front or the picture couldn't be taken. The picture is yours: recycle it
      *  when you're done. From any thread. */
     default void capture(Captured captured) {}
+
+    /** API 5. As capture, and with it behind: the same screen without its pieces, made off the screen, so nothing on it
+     *  changes. Where a piece is, what Kav draws behind it there: its background, a theme's background picture, a skin's
+     *  top bar or card, its maps; or, where that isn't what shows around the piece (a page of one color), the color seen
+     *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. null,
+     *  null and "[]" as with capture. From any thread. */
+    default void captureBehind(CapturedBehind captured) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -210,6 +217,12 @@ public interface Kav {
     /** API 5. Kav's screen as capture took it: its picture, or null, and its pieces as JSON text. */
     interface Captured {
         void captured(android.graphics.Bitmap picture, String pieces);
+    }
+
+    /** API 5. Kav's screen as captureBehind took it: its picture and the same screen without its pieces, or null and null,
+     *  and its pieces as JSON text. */
+    interface CapturedBehind {
+        void captured(android.graphics.Bitmap picture, android.graphics.Bitmap behind, String pieces);
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */

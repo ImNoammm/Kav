@@ -335,9 +335,18 @@ object Native {
         // API 5: the screen's picture and its pieces' boxes (ScreenPieces), under the crash guard, while it's loaded.
         override fun capture(captured: Kav.Captured) {
             declares("capture", ScreenPieces.CAPABILITY)
-            uk.noammm.kav.ui.ScreenOverlay.capture(null) { picture, pieces ->
+            uk.noammm.kav.ui.ScreenOverlay.capture(null) { picture, _, pieces ->
                 if (loaded[i.identity] !== l) { picture?.recycle(); return@capture }
                 NativeGuard.call(i.identity, "capture") { captured.captured(picture, pieces) }
+            }
+        }
+
+        // And the screen without its pieces (ScreenOverlay), the same way.
+        override fun captureBehind(captured: Kav.CapturedBehind) {
+            declares("captureBehind", ScreenPieces.CAPABILITY)
+            uk.noammm.kav.ui.ScreenOverlay.capture(null, behind = true) { picture, behind, pieces ->
+                if (loaded[i.identity] !== l) { picture?.recycle(); behind?.recycle(); return@capture }
+                NativeGuard.call(i.identity, "captureBehind") { captured.captured(picture, behind, pieces) }
             }
         }
 

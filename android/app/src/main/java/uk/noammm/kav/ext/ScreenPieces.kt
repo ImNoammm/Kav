@@ -60,6 +60,38 @@ object ScreenPieces {
         return out
     }
 
+    // For each piece, what goes in its place in the picture of the screen without its pieces (ui/ScreenOverlay.kt): null
+    // for what Kav draws behind it (drawn), when that is what the screen (shot) shows just around the piece, else the
+    // color the screen shows most there. Around: points ring px out of its box, on the screen and in no piece; what Kav
+    // draws is what shows when it is opaque and within 12 of it in each of red, green and blue at three in four of them.
+    // A piece with no such point takes what Kav draws.
+    fun behind(pieces: JSONArray, width: Int, height: Int, ring: Int, shot: (Int, Int) -> Int, drawn: (Int, Int) -> Int): List<Int?> {
+        val boxes = boxes(pieces)
+        return boxes.map { b ->
+            val l = b[0] - ring; val t = b[1] - ring; val r = b[2] - 1 + ring; val bt = b[3] - 1 + ring
+            val step = maxOf(2, 2 * (r - l + bt - t) / 96)
+            val points = ArrayList<IntArray>()
+            for (x in l..r step step) { points += intArrayOf(x, t); points += intArrayOf(x, bt) }
+            for (y in t..bt step step) { points += intArrayOf(l, y); points += intArrayOf(r, y) }
+            val around = points.filter { (x, y) -> x in 0 until width && y in 0 until height && boxes.none { x >= it[0] && x < it[2] && y >= it[1] && y < it[3] } }
+            if (around.isEmpty()) return@map null
+            val seen = around.map { (x, y) -> shot(x, y) }
+            val alike = around.indices.count { k -> drawn(around[k][0], around[k][1]).let { d -> d ushr 24 == 255 && near(d, seen[k]) } }
+            if (alike * 4 >= around.size * 3) null else seen.groupingBy { it }.eachCount().maxBy { it.value }.key
+        }
+    }
+
+    // Whether a box (from the screen's top left corner) is inside a piece's: what is drawn there goes with the piece.
+    fun within(l: Float, t: Float, r: Float, b: Float, pieces: JSONArray): Boolean =
+        boxes(pieces).any { l >= it[0] - 1 && t >= it[1] - 1 && r <= it[2] + 1 && b <= it[3] + 1 }
+
+    private fun boxes(pieces: JSONArray) = (0 until pieces.length()).map {
+        val p = pieces.getJSONObject(it)
+        intArrayOf(p.getInt("x"), p.getInt("y"), p.getInt("x") + p.getInt("w"), p.getInt("y") + p.getInt("h"))
+    }
+
+    private fun near(a: Int, b: Int) = (0..2).all { Math.abs((a shr it * 8 and 255) - (b shr it * 8 and 255)) <= 12 }
+
     // Each node some of which is on the screen and not covered, from the one drawn last (on top) to the first, the way
     // accessibility finds what is seen: a node that covers hides what was drawn before it, once what it holds is
     // looked at. A page drawn over another (Settings over Home) hides that one's nodes, though they are still in the
