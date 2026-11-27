@@ -225,7 +225,10 @@ as they host extensions, in the same bundle or a bundle of their own, and the co
   "theme": {
     "looks": { "dark": { "bg": "#0B1A2A", "accent": "#7FD1C7" }, "light": { "accent": "#2E7D72" } },
     "lineBadges": "strip",
-    "corners": { "card": 16, "sheet": 24, "tile": 10, "badge": 6 }
+    "corners": { "card": 16, "sheet": 24, "tile": 10, "badge": 6, "control": 8 },
+    "font": "fonts/Sea.ttf",
+    "outline": "line",
+    "map": { "dark": { "ground": "#08131F", "ink": "#9FD8E8", "water": "#0E2B44" } }
   }
 }
 ```
@@ -242,14 +245,36 @@ without a setting simply happens while it is applied, and stops when another the
 | the roles | `bg`, `surface`, `surfaceRaised`, `fill`, `fillStrong`, `separator`, `text`, `textSecondary`, `textTertiary`, `surface2`, `surface3`, `surface4`, `borderStrong`, `sunken`, `routeIdle`, `problem`, `critical`, `realtime` | Kav's own color |
 | `accent` (in a look) | buttons, chosen chips, switches and links | the rider's own color |
 | `lineBadges` | bus line badges: `"kav"` (Kav's plate in the operator's color) or `"strip"` (a gray plate over a strip of it) | the rider's own choice |
-| `corners` | whole dp: `card` 0 to 32 (Kav's 22), `sheet` 0 to 40 (28), `tile` 0 to 24 (12), `badge` 0 to 16 (8) | Kav's own corner |
+| `corners` | whole dp: `card` 0 to 32 (Kav's 22), `sheet` 0 to 40 (28), `tile` 0 to 24 (12), `badge` 0 to 16 (8), `control` 0 to 24 (Kav's are round at the ends: buttons, chips, segmented controls, switches, icon buttons, fields, and the buttons that float over the map) | Kav's own corner |
+| `font` | the path of a `.ttf` or `.otf` file in the theme's own folder, at most three folders deep (`"fonts/Sea.ttf"`), for all of Kav's text | Kav's own type |
+| `map` | for any of `dark`, `oled` and `light`: Kav's own map drawn in two colors, `ground` (the land) and `ink` (the town names), with every road, building and name in a shade between them, and `water` in its own color if you give one | that look's map stays Kav's |
+| `outline` | how cards and controls are edged: `"kav"` (Kav's own hairline round cards), `"line"` (one solid line), `"double"` (two thin lines round cards, one round controls), `"sketch"` (drawn by hand) or `"bevel"` (a raised edge lit from above, and a gloss on controls) | Kav's own |
 
-A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, a badge style it
-doesn't know and a corner out of its range are left out. Only a `"theme"` that isn't an object is refused.
+A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, a badge style or
+an outline it doesn't know, a corner out of its range, a font that isn't a plain path to a `.ttf` or `.otf` and a look's
+`map` without both `ground` and `ink` are left out. Only a `"theme"` that isn't an object is refused.
 
-Not themeable: type, icons, spacing, Kav's own words, and the map type. The map stays the rider's choice, since
-every map but Kav's own loads from someone else while the rider looks; a theme with code can still draw Kav's stop
-marks its own way with `kav.map()` ([native.md](/docs/extensions/native)).
+**Fonts.** One file is all of Kav's text, every size and weight. A variable font (one with a weight axis) gives Kav's
+regular, medium, semibold and bold their own weights; any other font is drawn heavier by the phone where Kav's text is
+bold. A font Kav can't read, or one that isn't in the package, leaves Kav's own type, and `kavx check` refuses a font
+that isn't in the folder. Kav's words are English and Hebrew, so pick a font with Hebrew letters, or Hebrew falls back
+to the phone's own. Bring only a font whose license lets you share it (the SIL Open Font License does), with the
+license beside it. Parts a theme's code draws with Android views (`KavUi`) keep the phone's type.
+
+**Outlines.** Cards, sheets, list groups and floating panels are outlined in `separator`, and buttons, chips,
+segmented controls, icon buttons and switches in `borderStrong`, so set those two with the style you pick. The map,
+icons and line badges aren't outlined.
+
+**The map.** Kav's own map is drawn in grays, darker and lighter: `map` puts each gray between your `ground` and
+`ink`, so roads, buildings and the more important names keep standing out as they do on Kav's map. Its routes, stops
+and vehicles stay in Kav's and the lines' colors, and Israel's road number signs in their own. Pick a `ground` close to
+the look's `bg` and an `ink` the town names read in. Only Kav's own map is toned: satellite photos and the other map
+types stay as they are.
+
+Not themeable: icons, spacing, shadows, Kav's own words, the map type, and the color of text on the accent (it is
+`text` in the light look and `bg` in the dark ones). The map type stays the rider's choice, since every map but Kav's
+own loads from someone else while the rider looks; a theme with code can still draw Kav's stop marks its own way with
+`kav.map()` ([native.md](/docs/extensions/native)).
 
 **Readability is yours to check.** Kav refuses nothing for it. `kavx check` warns when `text` or `textSecondary` is
 below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
@@ -262,7 +287,7 @@ An extension (no `kind`) may still bring a look with a `theme` contribution and 
 The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the
 applied theme off.
 
-Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors only, and
+Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors, corners and outlines only, and
 [native/quiet-home](../samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
 hides Home's suggestions card.
 
