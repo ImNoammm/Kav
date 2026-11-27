@@ -119,18 +119,19 @@ object LastBus {
         class Due(val a: LineAlert, val at: Long)
         val dues = alerts.mapNotNull { a ->
             val rows = rows(net, a)
-            (0L..7L).firstNotNullOfOrNull { d ->
+            // Yesterday's service day too: after midnight its last bus can still be ahead.
+            val ats = (-1L..7L).mapNotNull { d ->
                 val day = today.plusDays(d)
-                if (a.days and (1 shl (day.dayOfWeek.value % 7)) == 0) null
-                else lastDeparture(rows, a, day)?.let { Due(a, it) }
+                if (a.days and (1 shl (day.dayOfWeek.value % 7)) == 0) null else lastDeparture(rows, a, day)
             }
+            LastRide.pick(ats, a.warnMin, Prefs.alertQuietUntil(ctx, a.id), now, GRACE)?.let { Due(a, it) }
         }
         // Which to fire and when to wake, from the tested time logic; the wake first, so a run the system cuts
         // short for taking too long has already set the next one.
         val plan = LastRide.plan(
             dues.map { LastRide.State(it.a.id, it.at, it.a.warnMin, Prefs.alertQuietUntil(ctx, it.a.id)) }, now, GRACE,
         )
-        schedule(ctx, plan.wakeAt)
+        schedule(ctx, plan.wakeAt?.let { LastRide.approach(it, now) })
         val due = dues.filter { it.a.id in plan.fire }
         // Deleted, finished or swiped away.
         runCatching { ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications }.getOrNull().orEmpty()
