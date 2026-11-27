@@ -324,8 +324,10 @@ object Native {
         override fun addRides(rides: String) {
             needs("addRides", null)
             val a = org.json.JSONArray(rides)
-            val list = (0 until a.length()).map { KavData.ride(i.identity, a.getJSONObject(it)) }
-            android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { uk.noammm.kav.TicketStore.putRides(app, list) } }
+            val all = (0 until a.length()).map { a.getJSONObject(it) }
+            val removed = all.mapNotNull { KavData.removed(i.identity, it) }.toSet()
+            val list = all.filter { !it.optBoolean("removed") }.map { KavData.ride(i.identity, it) }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { uk.noammm.kav.TicketStore.putRides(app, list, removed) } }
         }
 
         private fun offMain(what: String) {

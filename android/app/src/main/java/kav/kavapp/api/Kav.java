@@ -50,9 +50,10 @@ public interface Kav {
 
     /** API 5. Stops from Kav's timetable on the phone. query, as JSON text: {"near": [lat, lon], "name", "mode", "code",
      *  "limit"}, each optional; the stops that match all given, nearest first with near, else by name, at most limit (20
-     *  by default, 200 at most). mode is the GTFS route type of a stop's lines (a train station 2). Answers a JSON array
-     *  of {"stop", "code", "name", "city", "lat", "lon", "mode", "platform"}, with "metres" when near is given; null
-     *  until the timetable has loaded. From any thread. */
+     *  by default, 200 at most; with a mode other than bus, no cap). mode is the GTFS route type of a stop's lines (a
+     *  train station 2). Answers a JSON array of {"stop", "code", "name", "nameHe", "city", "lat", "lon", "mode",
+     *  "platform"}, name as Kav shows it and nameHe the timetable's own, with "metres" when near is given; null until the
+     *  timetable has loaded. From any thread. */
     default String stops(String query) { return null; }
 
     /** API 5. The live vehicles Kav has, as its Live tab and a line's page show them. query: {"line": "<number>"}, every
@@ -70,8 +71,11 @@ public interface Kav {
 
     /** API 5. Rides already over, into Kav's ride history (Settings › Paying › Ride history, Home's "This month"): a JSON
      *  array of {"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}, kind "BUS", "TRAIN" or
-     *  "LIGHT_RAIL", at in milliseconds, band the fare's reach in km, price in agorot. The same key again updates that ride. Kav keeps the key as
-     *  "ext:<id()>:<key>", as with addTicket. A ride that isn't right throws. From any thread. */
+     *  "LIGHT_RAIL", at in milliseconds, band the fare's reach in km, price in agorot. The same key again updates that ride;
+     *  {"key", "removed": true} takes that ride of this extension out (one its pay service cancelled). Kav keeps the key as
+     *  "ext:<id()>:<key>", as with addTicket. An extension installed from a bundle file gets a new id() with each file, so
+     *  for it a key also covers the rides an earlier bundle file of the same name left under that key. A ride that isn't
+     *  right throws. From any thread. */
     default void addRides(String rides) {}
 
     /**

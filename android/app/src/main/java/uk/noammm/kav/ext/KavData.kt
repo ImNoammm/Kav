@@ -14,20 +14,22 @@ import uk.noammm.kav.data.TicketScreens
 object KavData {
     const val STOP = "il.mot/gtfs/stop/"
     private const val STOPS_MOST = 200
+    private const val BUS = 3
     private const val DEPARTURES_MOST = 100
 
     // -- Stops: Kav's timetable on the phone ---------------------------------------------------------------------------
 
     // {"near": [lat, lon], "name", "mode", "code", "limit"}: the stops that match all that is given, nearest first when
     // near is given, else by name. mode is the GTFS route type of the stop's lines (a stop served by several kinds is
-    // the lowest, as Kav's own marks: a train station 2). Each {"stop", "code", "name", "city", "lat", "lon", "mode",
-    // "platform"}, with "metres" when near is given.
+    // the lowest, as Kav's own marks: a train station 2). Each {"stop", "code", "name", "nameHe", "city", "lat", "lon",
+    // "mode", "platform"}, with "metres" when near is given; name as Kav shows it, nameHe the timetable's own. At most
+    // limit, 200 at most; a mode other than bus has no cap, so a list of every station of one is whole.
     fun stops(net: Net, query: JSONObject): JSONArray {
         val near = query.optJSONArray("near")?.let { a -> a.optDouble(0) to a.optDouble(1) }?.takeIf { !it.first.isNaN() && !it.second.isNaN() }
         val words = query.optString("name").trim().takeIf { query.has("name") && it.isNotEmpty() }
         val mode = if (query.has("mode")) query.optInt("mode", -1) else null
         val code = if (query.has("code")) query.optInt("code", -1) else null
-        val limit = query.optInt("limit", 20).coerceIn(1, STOPS_MOST)
+        val limit = query.optInt("limit", 20).coerceIn(1, if (mode != null && mode != BUS) maxOf(1, net.nStops) else STOPS_MOST)
         val types = if (mode != null) net.stopType else null
         val metres = DoubleArray(net.nStops)
         val found = ArrayList<Int>()
@@ -40,7 +42,7 @@ object KavData {
         }
         val ordered = if (near != null) found.sortedBy { metres[it] } else found.sortedBy { net.stopName(it) }
         return JSONArray(ordered.take(limit).map { s ->
-            JSONObject().put("stop", STOP + net.code[s]).put("code", net.code[s]).put("name", net.stopName(s)).put("city", net.cityName(s))
+            JSONObject().put("stop", STOP + net.code[s]).put("code", net.code[s]).put("name", net.stopName(s)).put("nameHe", net.name[s]).put("city", net.cityName(s))
                 .put("lat", net.lat[s]).put("lon", net.lon[s]).put("mode", net.stopType[s]).put("platform", net.platform.getOrElse(s) { "" })
                 .apply { if (near != null) put("metres", Math.round(metres[s])) }
         })
@@ -109,7 +111,7 @@ object KavData {
 
     // An extension's rides already over, as Kav's ride history keeps them: each {"key", "kind", "line", "from", "to",
     // "at", "riders", "band", "price"}, kind "BUS", "TRAIN" or "LIGHT_RAIL", at in milliseconds, band the fare's reach
-    // in km and price in agorot. The key is
+    // in km and price in agorot (one to take out is {"key", "removed": true}, KavData.removed). The key is
     // the extension's own, kept as "ext:<its identity>:<key>" as its tickets are, so no extension reaches another's
     // rides or those Kav read. A ride that isn't right throws.
     internal fun ride(identity: String, o: JSONObject): Ride {
@@ -128,10 +130,43 @@ object KavData {
             price = if (o.has("price") && !o.isNull("price")) o.optInt("price").takeIf { it >= 0 } else null)
     }
 
-    // The history with an extension's rides added, each one already there (by key) brought up to date, keeping the fare's
-    // reach Kav had for it when the extension gives none.
-    internal fun withRides(history: List<Ride>, rides: List<Ride>): List<Ride> = rides.fold(history) { all, r ->
-        val old = all.firstOrNull { it.key == r.key } ?: return@fold all + r
-        all.map { if (it.key == r.key) r.copy(band = r.band ?: old.band) else it }
+    // {"key", "removed": true}: that ride of the extension's taken out of the history (a ride its pay service cancelled),
+    // as "ext:<its identity>:<key>"; null for a ride to add. A removal with no key throws.
+    internal fun removed(identity: String, o: JSONObject): String? {
+        if (!o.optBoolean("removed")) return null
+        val id = o.optString("key").trim().takeIf { o.has("key") && !o.isNull("key") && it.isNotEmpty() }?.take(200)
+            ?: throw IllegalArgumentException("a ride needs a key")
+        return uk.noammm.kav.ExtTickets.key(identity, id)
     }
+
+    // The history with the keys removed taken out, then the extension's rides added, each one already there (by key)
+    // brought up to date, keeping the fare's reach Kav had for it when the extension gives none.
+    internal fun withRides(history: List<Ride>, rides: List<Ride>, removed: Set<String> = emptySet()): List<Ride> {
+        val gone = removed.mapTo(HashSet(), ::family)
+        val out = ArrayList<Ride>(history.size + rides.size)
+        val families = ArrayList<String>(history.size + rides.size)
+        for (h in history) family(h.key).let { f -> if (f !in gone) { out.add(h); families.add(f) } }
+        for (r in rides) {
+            val f = family(r.key)
+            val at = families.indexOf(f)
+            if (at < 0) { out.add(r); families.add(f); continue }
+            val band = r.band ?: families.indices.lastOrNull { families[it] == f && out[it].band != null }?.let { out[it].band }
+            out[at] = r.copy(band = band)
+            for (i in families.indices.reversed()) if (i != at && families[i] == f) { out.removeAt(i); families.removeAt(i) }
+        }
+        return out
+    }
+
+    // A bundle file never updates (Hub.previewFile): a newer file of an extension installs it under an identity of its
+    // own, "file.<digest>/<name>". Its rides are the same rides, so a ride of an extension from a bundle file is the same
+    // ride as that key of an extension of that name from any bundle file ("ext:file.*/<name>:<key>"). Every other key is
+    // only itself.
+    internal fun family(key: String): String {
+        if (!key.startsWith(FILE_RIDE)) return key
+        val identity = key.removePrefix(uk.noammm.kav.ExtTickets.PREFIX).substringBefore(':', "")
+        val name = identity.substringAfter('/', "").takeIf { it.isNotEmpty() } ?: return key
+        return "$FILE_RIDE*/$name:" + key.removePrefix("${uk.noammm.kav.ExtTickets.PREFIX}$identity:")
+    }
+
+    private const val FILE_RIDE = "ext:file."
 }

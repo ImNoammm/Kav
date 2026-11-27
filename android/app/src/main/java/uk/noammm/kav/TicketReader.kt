@@ -571,10 +571,11 @@ internal object TicketStore {
         runCatching { saveHistory(ctx) }
     }
 
-    // Rides an extension put in the history (Kav.addRides), each already there by its key brought up to date.
-    fun putRides(ctx: Context, rides: List<Ride>) {
+    // Rides an extension put in the history (Kav.addRides), each already there by its key brought up to date, and those it
+    // took out (removed: their keys).
+    fun putRides(ctx: Context, rides: List<Ride>, removed: Set<String> = emptySet()) {
         load(ctx)
-        val next = uk.noammm.kav.ext.KavData.withRides(history, rides)
+        val next = uk.noammm.kav.ext.KavData.withRides(history, rides, removed)
         if (next == history) return
         history = next
         runCatching { saveHistory(ctx) }
