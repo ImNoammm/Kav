@@ -347,8 +347,10 @@ private fun done(
                 // Past the stop along the ride's road, not coming up to it: the bus that brings a rider to a change of
                 // lines at this stop is on that road and moving too, with the stop still ahead.
                 val past = alongPath(live.lat, live.lon, ride.shape) > 20 + 3 * slack
-                onRoute && past && away > 40 + 3 * slack && live.speed > 5f && offWalks(live, walks) ||
-                    riding(live, ride.shape, 60.0, 150.0, walks)
+                // Not while its bus is still well off: a rider that far ahead of it is on another bus on that road (#126).
+                boardedInTime(departureOf(step, r, chosen).timeUtc, now) && (
+                    onRoute && past && away > 40 + 3 * slack && live.speed > 5f && offWalks(live, walks) ||
+                        riding(live, ride.shape, 60.0, 150.0, walks))
             } else {
                 val dep = departureOf(step, r, chosen)
                 dep.status != 3 && now >= dep.timeUtc && when {
@@ -360,14 +362,27 @@ private fun done(
         }
         is Step.Ride -> {
             val ride = rideOf(step, chosen)
-            (live != null && ride.shape.isNotEmpty() && live.distanceTo(ride.shape.last()) < 60 + slack) ||
-                if (live != null && target != null) live.distanceTo(target) < 45 + slack else now >= ride.arr + 60
+            val length = pathLength(ride.shape)
+            val along = if (live != null && ride.shape.size >= 2) alongPath(live.lat, live.lon, ride.shape) else 0.0
+            (live != null && ride.shape.isNotEmpty() && endReached(live.distanceTo(ride.shape.last()), along, length, 60.0, slack)) ||
+                if (live != null && target != null) endReached(live.distanceTo(target), along, length, 45.0, slack) else now >= ride.arr + 60
         }
         is Step.Taxi -> if (live != null && target != null) live.distanceTo(target) < 45 + slack else now >= step.leg.arr
         is Step.Cycle -> if (live != null && target != null) live.distanceTo(target) < 45 + slack else now >= step.leg.arr
         is Step.Arrive -> false
     }
 }
+
+// How long before its bus leaves a rider can be on it: a rider on the road of a line well before its bus is due is on
+// another bus (a change from one line to another along one street).
+internal const val BOARD_EARLY_S = 240L
+
+internal fun boardedInTime(departsAt: Long, now: Long) = departsAt - now <= BOARD_EARLY_S
+
+// A ride's end is reached near it and, on a road that passes near it earlier (a loop, a bus going by), on the road's
+// last stretch: within `near` metres of it and no more than 150 m (and a rough fix's slack) short of the road's end.
+internal fun endReached(away: Double, along: Double, length: Double, near: Double, slack: Double) =
+    away < near + slack && (length <= 0.0 || along >= length - 150.0 - slack)
 
 // Back to the walk to a ride's stop when the trip has moved on to waiting for or riding it, but the phone is on that
 // walk again and well off the ride's route, as after a location that only passed the route.
