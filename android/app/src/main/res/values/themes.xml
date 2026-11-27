@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Platform theme, not AppCompat: the whole UI is Compose, so the only job
-         here is to make the window black before the first frame. -->
+         here is to give the window Kav's launch color before the first frame. -->
     <style name="Theme.Kav" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">@color/kav_launch_bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">@bool/kav_launch_light</item>
     </style>
 </resources>

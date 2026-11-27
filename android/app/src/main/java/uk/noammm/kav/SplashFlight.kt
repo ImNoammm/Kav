@@ -18,31 +18,31 @@ import kotlin.math.min
 import kotlin.math.pow
 
 // The launch screen's exit (Android 12 and newer): the arrow tilts and swoops off along a curve, with a short trail in
-// the rider's accent color behind it, as the black fades and Kav shows through. Drawn here, in a view added to the
+// the rider's accent color behind it, as the launch screen's color (LaunchLook) fades and Kav shows through. Drawn here, in a view added to the
 // SplashScreenView, because Android's own icon is a separate surface clipped to the icon's mask: it can't leave it.
 // It takes over from that icon in the pose splash_icon.xml has reached, `played` ms into it, so nothing jumps. It
 // never takes a touch: the screen under it is usable all along.
 @SuppressLint("ViewConstructor")
-class SplashFlight(context: Context, private val icon: View, played: Long, private val accent: Int) : View(context) {
+class SplashFlight(context: Context, private val icon: View, played: Long, private val accent: Int, ink: Int) : View(context) {
     private val fastOutSlowIn = PathInterpolator(0.4f, 0f, 0.2f, 1f)
 
     // Time into the exit, ms (0 to TOTAL), set by MainActivity's animator.
     var t = 0f
 
-    // How dark the launch screen's black still is, 1 to 0.
+    // How much of the launch screen's color is still there, 1 to 0.
     val backdrop get() = 1 - fastOutSlowIn.getInterpolation(((t - 60) / 240).coerceIn(0f, 1f))
 
     private val arrow = PathParser.createPathFromPathData(ARROW)
     private val lines = LINES.map { PathParser.createPathFromPathData(it) }
     private val grown = LINE_GROWTH.map { (from, length) -> fastOutSlowIn.getInterpolation(((played - from) / length).coerceIn(0f, 1f)) }
     private val lift = 7 * fastOutSlowIn.getInterpolation(((played - 100) / 300f).coerceIn(0f, 1f))
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink }
     private val glow = ColorUtils.setAlphaComponent(accent, 0xCC)
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeWidth = 1.6f; color = android.graphics.Color.BLACK
+        style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeWidth = 1.6f; color = if (ink == android.graphics.Color.WHITE) android.graphics.Color.BLACK else android.graphics.Color.WHITE
     }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeWidth = 2.2f; color = 0xD9FFFFFF.toInt()
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeWidth = 2.2f; color = ColorUtils.setAlphaComponent(ink, 0xD9)
     }
     private val trail = Paint(Paint.ANTI_ALIAS_FLAG)
     private val core = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -100,7 +100,7 @@ class SplashFlight(context: Context, private val icon: View, played: Long, priva
             canvas.rotate(angle(t, sx, sy, d))
             canvas.scale(unit * k, unit * k)
             canvas.translate(-54f, -54f)
-            // A dark edge keeps the white arrow seen over a light Kav as the black goes.
+            // An edge in the other color keeps the arrow seen over a Kav of its own color as the launch screen's goes.
             if (outline > 0f) {
                 edge.alpha = (0xD9 * outline).toInt()
                 canvas.drawPath(arrow, edge)

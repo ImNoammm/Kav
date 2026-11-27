@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen in Kav's look while it follows the phone (System): Light's background with a dark arrow, and
+     OLED's black (values-night) with the white one. A look the rider picked is set by LaunchLook, from Android 13. -->
+<resources>
+    <color name="kav_launch_bg">#F2F2EF</color>
+    <bool name="kav_launch_light">true</bool>
+    <item name="splash_icon_auto" type="drawable">@drawable/splash_icon_light</item>
+</resources>

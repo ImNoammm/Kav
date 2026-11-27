@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kav_launch_bg">#000000</color>
+    <bool name="kav_launch_light">false</bool>
+    <item name="splash_icon_auto" type="drawable">@drawable/splash_icon</item>
+</resources>

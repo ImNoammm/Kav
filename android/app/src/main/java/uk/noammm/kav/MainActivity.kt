@@ -182,6 +182,10 @@ class MainActivity : ComponentActivity() {
         // A new activity after one whose spare map was let go in the background (onTrimMemory) never gets onRestart.
         uk.noammm.kav.ui.SpareMap.back()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // The launch screen's colors, as Android drew it (LaunchLook).
+            val launch = LaunchLook.of(this)
+            val launchBg = LaunchLook.bg(launch)
+            val launchInk = LaunchLook.ink(launch)
             // The launch screen's arrow swoops off with its trail as Home shows through (SplashFlight); Kav is already
             // drawn by now, and usable all along.
             if (savedInstanceState == null) {
@@ -208,13 +212,13 @@ class MainActivity : ComponentActivity() {
                 }
                 // Android hands its launch screen over (the exit listener under this) only once Kav's first frame is
                 // drawn, so that frame showed Home between the two. Over Kav until then: the launch screen as it ends,
-                // black with the arrow where Android draws its icon (192 dp, centered), in SplashFlight's first pose.
+                // its color with the arrow where Android draws its icon (192 dp, centered), in SplashFlight's first pose.
                 if (android.animation.ValueAnimator.areAnimatorsEnabled()) {
-                    val still = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
+                    val still = android.widget.FrameLayout(this).apply { setBackgroundColor(launchBg) }
                     val spot = android.view.View(this)
                     val side = kotlin.math.round(192 * resources.displayMetrics.density).toInt()
                     still.addView(spot, android.widget.FrameLayout.LayoutParams(side, side, android.view.Gravity.CENTER))
-                    still.addView(SplashFlight(this, spot, Long.MAX_VALUE, Prefs.accent(this)),
+                    still.addView(SplashFlight(this, spot, Long.MAX_VALUE, Prefs.accent(this), launchInk),
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                     (window.decorView as android.view.ViewGroup).addView(still,
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
@@ -234,9 +238,9 @@ class MainActivity : ComponentActivity() {
                 }
                 // How far the launch screen's own animation got, so the arrow takes off from where it is.
                 val played = splash.iconAnimationStart?.let { java.time.Duration.between(it, java.time.Instant.now()).toMillis() } ?: Long.MAX_VALUE
-                val flight = SplashFlight(this, icon, played, K.accent.toArgb())
-                // Black from the first frame, before the animator's first tick sets it.
-                splash.setBackgroundColor(android.graphics.Color.BLACK)
+                val flight = SplashFlight(this, icon, played, K.accent.toArgb(), launchInk)
+                // The launch screen's color from the first frame, before the animator's first tick sets it.
+                splash.setBackgroundColor(launchBg)
                 splash.addView(flight, android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 android.animation.TimeAnimator().apply {
                     setTimeListener { animator, _, sinceLast ->
@@ -245,7 +249,7 @@ class MainActivity : ComponentActivity() {
                         flight.t = minOf(SplashFlight.TOTAL, flight.t + minOf(sinceLast, 33L))
                         // Android's icon (always over the views) goes once the flight's arrow has been drawn under it.
                         if (flight.t > 0f) icon.alpha = 0f
-                        splash.setBackgroundColor(android.graphics.Color.argb((255 * flight.backdrop).toInt(), 0, 0, 0))
+                        splash.setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(launchBg, (255 * flight.backdrop).toInt()))
                         flight.invalidate()
                         if (flight.t >= SplashFlight.TOTAL) {
                             animator.cancel()
@@ -363,6 +367,8 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         Openings.leftAt = android.os.SystemClock.elapsedRealtime()
         PayEntry.sync(this)
+        // The next launch screen in the look the rider may have changed.
+        LaunchLook.remember(this)
         // Extensions' home screen widgets drawn again, in the look the rider may have changed, and the next buses' too.
         ExtWidgets.left(this)
         DeparturesWidget.redraw(this)
