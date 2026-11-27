@@ -50,6 +50,16 @@ object LastRide {
         return Plan(fire, if (wakeAt == Long.MAX_VALUE) null else wakeAt)
     }
 
+    // An inexact alarm may be held back by up to three quarters of the time until it, so a wake far off is aimed at
+    // in steps (the same rule as nextWake for line alerts): each step comes in time however late it runs.
+    fun approach(at: Long, now: Long): Long = if (at - now <= 120) at else now + (at - now) * 4 / 7
+
+    // Which of an alert's candidate last departures (yesterday's first, then today's and the days after, in order)
+    // the planner should look at: the first whose grace has not run out and that is not already quieted. After
+    // midnight yesterday's last bus can still be ahead, and one already warned for gives way to the next day's.
+    fun pick(lastAts: List<Long>, warnMin: Int, quietUntil: Long, now: Long, graceSecs: Long): Long? =
+        lastAts.firstOrNull { now <= it + graceSecs && quietUntil < it - warnMin * 60L }
+
     // One live arrival the server expects: its line's number, where the trip ends (how trains are told apart),
     // and when.
     class Live(val line: String, val endName: String, val expected: Long)
