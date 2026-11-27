@@ -77,9 +77,9 @@ class GetOffService : Service() {
         val speed = if (loc.hasSpeed()) loc.speed else 0f
         val acc = if (loc.hasAccuracy()) loc.accuracy else 100f
         when (w.onFix(loc.latitude, loc.longitude, acc, speed)) {
-            GetOffEvent.NEXT -> announce(NEXT_ID, NEXT, T("Get off at the next stop", "רדו בתחנה הבאה"), stopName)
+            GetOffEvent.NEXT -> announce(NEXT_ID, if (dndAllowed(this)) NEXT_DND else NEXT, T("Get off at the next stop", "רדו בתחנה הבאה"), stopName)
             GetOffEvent.ARRIVED -> {
-                announce(ARRIVE_ID, ARRIVE, T("You've arrived", "הגעתם לתחנה"), stopName)
+                announce(ARRIVE_ID, if (dndAllowed(this)) ARRIVE_DND else ARRIVE, T("You've arrived", "הגעתם לתחנה"), stopName)
                 finish()
             }
             GetOffEvent.NONE -> {}
@@ -126,6 +126,8 @@ class GetOffService : Service() {
         private const val WATCH = "get-off-watch"
         private const val NEXT = "get-off-next"
         private const val ARRIVE = "get-off-arrive"
+        private const val NEXT_DND = "get-off-next-dnd"
+        private const val ARRIVE_DND = "get-off-arrive-dnd"
         private const val ONGOING_ID = 140
         private const val NEXT_ID = 141
         private const val ARRIVE_ID = 142
@@ -160,20 +162,25 @@ class GetOffService : Service() {
                     .setName(T("Get-off alert running", "התראת ירידה פעילה"))
                     .build(),
             )
-            nm.createNotificationChannel(
-                NotificationChannelCompat.Builder(NEXT, NotificationManagerCompat.IMPORTANCE_HIGH)
-                    .setName(T("Get off at the next stop", "רדו בתחנה הבאה"))
-                    .setVibrationEnabled(true)
-                    .setVibrationPattern(BUZZ)
-                    .build(),
-            )
-            nm.createNotificationChannel(
-                NotificationChannelCompat.Builder(ARRIVE, NotificationManagerCompat.IMPORTANCE_HIGH)
-                    .setName(T("Get off now", "הגעתם לתחנה"))
-                    .setVibrationEnabled(true)
-                    .setVibrationPattern(BUZZ_STRONG)
-                    .build(),
-            )
+            // Sounding through Do Not Disturb needs the rider's one-time "Do Not Disturb access"; with it, these are the
+            // channels that bypass it (a channel's setting can't be changed afterwards, so they have ids of their own).
+            val dnd = dndAllowed(ctx)
+            alertChannel(ctx, if (dnd) NEXT_DND else NEXT, T("Get off at the next stop", "רדו בתחנה הבאה"), BUZZ, dnd)
+            alertChannel(ctx, if (dnd) ARRIVE_DND else ARRIVE, T("Get off now", "הגעתם לתחנה"), BUZZ_STRONG, dnd)
+        }
+
+        fun dndAllowed(ctx: Context): Boolean =
+            android.os.Build.VERSION.SDK_INT >= 23 &&
+                ctx.getSystemService(android.app.NotificationManager::class.java)?.isNotificationPolicyAccessGranted == true
+
+        private fun alertChannel(ctx: Context, id: String, name: String, buzz: LongArray, bypass: Boolean) {
+            if (android.os.Build.VERSION.SDK_INT < 26) return
+            val nm = ctx.getSystemService(android.app.NotificationManager::class.java) ?: return
+            val c = android.app.NotificationChannel(id, name, android.app.NotificationManager.IMPORTANCE_HIGH)
+            c.enableVibration(true)
+            c.vibrationPattern = buzz
+            if (bypass) c.setBypassDnd(true)
+            nm.createNotificationChannel(c)
         }
     }
 }
