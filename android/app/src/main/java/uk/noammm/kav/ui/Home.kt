@@ -140,14 +140,13 @@ internal fun HomeScreen(
             ) {
                 // An extension's Home body, under Kav's search, with the trip under way and the way back above it.
                 val journey = model.activeJourney
-                // From under the top to the places' tiles, which sit over its foot. A tap where it shows, above them, opens
-                // the trip under way, else the Live tab.
+                // From under the top to the places' tiles, which sit over its foot. A tap where it shows, above them, only
+                // moves to the Live tab (Noam, 27 Nov 2026).
                 if (mapShown) item(key = "map") {
                     HomeLiveMap(model, PaddingValues(top = topSpace, bottom = MAP_HEIGHT - MAP_WINDOW), Modifier
                         .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null,
-                            role = Role.Button, onClickLabel = if (journey != null) T("Open your trip", "פתיחת הנסיעה שלכם")
-                                else T("Open Live", "מעבר ללשונית בזמן אמת")) {
-                            if (journey != null) onResume() else model.tab = uk.noammm.kav.Tab.Live
+                            role = Role.Button, onClickLabel = T("Open Live", "מעבר ללשונית בזמן אמת")) {
+                            model.tab = uk.noammm.kav.Tab.Live
                         }
                         .layout { m, c ->
                             val side = K.gap4.roundToPx()
