@@ -677,7 +677,9 @@ private data class Camera(val worldX: Double, val worldY: Double, val zoom: Floa
     val pxPerWorld get() = Geo.SIZE * 2.0.pow(zoom.toDouble())
 }
 
-data class Follow(val lat: Double, val lon: Double, val bearing: Float, val zoom: Float = 18.5f)
+// centered: the place at the middle of the map's window, as a picture of where the rider is, instead of low in it with
+// the way ahead above, as navigation has it.
+data class Follow(val lat: Double, val lon: Double, val bearing: Float, val zoom: Float = 18.5f, val centered: Boolean = false)
 
 // A change of the screen around the map under way (a card opening), by how much the map's height ends up growing:
 // meanwhile the map frames what it shows for where the change ends, in one move, rather than following each step.
@@ -745,7 +747,11 @@ class MapProjection(
 
 private data class WorldPoint(val x: Double, val y: Double)
 
-private data class Viewport(val left: Float, val top: Float, val right: Float, val bottom: Float, val w: Float, val h: Float) {
+private data class Viewport(
+    val left: Float, val top: Float, val right: Float, val bottom: Float, val w: Float, val h: Float,
+    // How far down the window the camera's pivot is: low for following, the middle for a centered follow.
+    val anchorY: Float = ANCHOR_Y,
+) {
     val width get() = (right - left).coerceAtLeast(1f)
     val height get() = (bottom - top).coerceAtLeast(1f)
     val centerX get() = (left + right) / 2
@@ -760,7 +766,7 @@ private data class Viewport(val left: Float, val top: Float, val right: Float, v
         val y = (point.y - camera.worldY) * camera.pxPerWorld + h / 2
         return x >= left && x <= right && y >= top && y <= bottom
     }
-    val anchor get() = Offset(left + width * ANCHOR_X, top + height * ANCHOR_Y)
+    val anchor get() = Offset(left + width * ANCHOR_X, top + height * anchorY)
 }
 
 private fun fitCamera(points: List<WorldPoint>, viewport: Viewport, padFraction: Float, maxZoom: Float = Geo.MAX_Z.toFloat()): Camera {
@@ -2737,7 +2743,7 @@ fun TileMap(
         val padB = with(density) { contentPadding.calculateBottomPadding().toPx() }
         val viewport = Viewport(padL, padT,
             (w - padR).coerceAtLeast(padL + 1),
-            (h - padB).coerceAtLeast(padT + 1), w, h)
+            (h - padB).coerceAtLeast(padT + 1), w, h, if (cameraFollow?.centered == true) 0.5f else ANCHOR_Y)
         val liveViewport by rememberUpdatedState(viewport)
         // While the screen around it changes (settle), what the map frames is for its size when the change ends.
         val base = remember(settle?.id) { h }

@@ -1358,7 +1358,9 @@ internal fun NavigateMap(
     val onRoad = (step as? Step.Ride)?.takeIf { riding }?.let { chosenRide }?.let { ride -> fix?.takeIf { it.isFresh(now) }?.let { RideRoad.place(ride, it) } }
     val shownHere = onRoad?.let { it.lat to it.lon } ?: here
     // A ride's card follows the rider whenever they are on it, even before the trip has moved on to it.
-    val follow = if (following || step is Step.Ride) followFor(step, chosenRide, onRoad ?: fix, heading, now, heldWalk.value) else null
+    val followed = if (following || step is Step.Ride) followFor(step, chosenRide, onRoad ?: fix, heading, now, heldWalk.value) else null
+    // Only shown (Home), it stays north up with the rider in the middle: a picture of where they are, not navigation.
+    val follow = if (still) followed?.copy(bearing = 0f, centered = true) else followed
     SideEffect { heldWalk.value = follow != null && step is Step.Walk }
     val fresh = fix?.takeIf { it.isFresh(now) }
 
@@ -1411,7 +1413,7 @@ internal fun NavigateMap(
     // Walking, the arrow is the way the phone faces; riding, the way the vehicle goes.
     val arrow = when (step) {
         is Step.Walk -> heading
-        is Step.Ride -> follow?.bearing
+        is Step.Ride -> followed?.bearing
         else -> null
     }
     val nowSec = System.currentTimeMillis() / 1000

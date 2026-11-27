@@ -66,8 +66,9 @@ import kotlin.math.roundToInt
 
 // Home's map, live, from under the search to under the places' tiles: the step of the trip on now as the trip's own map
 // shows it (NavigateMap), or with no trip the vehicles around the rider as the Live tab draws them, from the same asking
-// of Kav's server (KavLive.area). It turns with the way the phone faces, or with the trip's road, and leans as the trip's
-// map does. Drawn from Kav's own map on the phone alone: nothing is asked of a map server for it.
+// of Kav's server (KavLive.area). North up and leaning, centered on the rider, with only their arrow turning with the
+// way the phone faces: a picture of where they are, never following as navigation does. Drawn from Kav's own map on the
+// phone alone: nothing is asked of a map server for it.
 internal object HomeMap {
     // Where the rider was last, kept in the cache folder: the map shows there from the first frame, before the phone
     // says where they are now. There is none until the rider's place has been known once.
@@ -97,7 +98,8 @@ internal object HomeMap {
 // Kav's zoom of Home's map with no trip: a kilometer or so across, the vehicles near enough to take.
 private const val HOME_Z = 16.5f
 
-// Home's map turns by this many degrees at a time with the compass: each degree it drifts would have it drawn again.
+// The arrow on Home's trip map turns by this many degrees at a time with the compass: each turn sends the trip's marks
+// to the map again.
 private const val HOME_TURN = 15f
 
 // The map, fading into the page at its foot. padding: what of it the search and the tiles cover, so what it shows is in
@@ -108,14 +110,13 @@ internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modi
     // The compass is on while it shows (MainActivity's heading).
     DisposableEffect(Unit) { model.homeMapShown = true; onDispose { model.homeMapShown = false } }
     LaunchedEffect(model.here) { model.here?.let { HomeMap.keep(ctx, it) } }
-    val heading = model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }
     var drawn by remember { mutableStateOf(false) }
     var slow by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(600); slow = true }
     Box(modifier) {
         val journey = model.activeJourney
-        if (journey != null) HomeTripMap(model, journey, heading, padding) { drawn = true }
-        else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(it, heading, padding) { drawn = true } }
+        if (journey != null) HomeTripMap(model, journey, model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }, padding) { drawn = true }
+        else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(it, model.heading, padding) { drawn = true } }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)))
         AnimatedVisibility(slow && !drawn, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
             Box(contentAlignment = Alignment.Center) { LoadingPulse(T("Loading the map", "טוענים את המפה")) }
@@ -123,7 +124,7 @@ internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modi
     }
 }
 
-// The trip's step on now, as the trip's map shows it, followed as it is there.
+// The trip's step on now, as the trip's map shows it, north up and centered on the rider where that map follows them.
 @Composable
 private fun HomeTripMap(model: KavModel, journey: ActiveJourney, heading: Float?, padding: PaddingValues, onDrawn: () -> Unit) {
     val steps = remember(journey.trip, journey.fromLabel, journey.toLabel) { buildSteps(journey.trip, journey.fromLabel, journey.toLabel) }
@@ -203,7 +204,7 @@ private fun HomeBusesMap(here: Pair<Double, Double>, heading: Float?, padding: P
         markers = if (k < 1f) vehicles.markers.map { it.copy(alpha = it.alpha * k) } else vehicles.markers,
         images = vehicles.images + me.images, tracks = vehicles.tracks, together = true,
     )
-    TileMap(listOf(here), Modifier.fillMaxSize(), follow = Follow(here.first, here.second, heading ?: 0f, HOME_Z),
+    TileMap(listOf(here), Modifier.fillMaxSize(), follow = Follow(here.first, here.second, 0f, HOME_Z, centered = true),
         contentPadding = padding, live = live, rider = me.markers.firstOrNull(), riderHeading = heading,
         recenterControl = false, attribution = false, onDrawn = onDrawn, touch = false, name = "home")
 }
