@@ -115,12 +115,16 @@ object KavPlans {
     internal fun read(identity: String, text: String, nowS: Long): List<Kept>? = runCatching {
         val a = JSONArray(text)
         (0 until a.length()).mapNotNull { a.optJSONObject(it) }.mapNotNull { o ->
-            val k = kept(identity, o.optString("ref"), nowS) ?: return@mapNotNull null
-            val start = if (o.has("start") && !o.isNull("start")) o.getLong("start") else null
-            val walks = o.optJSONArray("walks")?.let { w -> (0 until w.length()).map { w.getLong(it) } }
-            laidOut(k, start, walks, nowS)?.let { Kept(it, k.resolved, k.at) }
+            given(kept(identity, o.optString("ref"), nowS) ?: return@mapNotNull null, o, nowS)
         }.take(MOST_ADDED)
     }.getOrNull()
+
+    // A kept route laid out by an answer's start and walks; null when it can't be laid out so.
+    internal fun given(k: Kept, o: JSONObject, nowS: Long): Kept? {
+        val start = if (o.has("start") && !o.isNull("start")) o.getLong("start") else null
+        val walks = o.optJSONArray("walks")?.let { w -> (0 until w.length()).map { w.getLong(it) } }
+        return laidOut(k, start, walks, nowS)?.let { Kept(it, k.resolved, k.at) }
+    }
 
     // Whether any extension switched on would add routes: only then is the question put together.
     fun wanted(): Boolean = holders().isNotEmpty()
@@ -156,13 +160,15 @@ object KavPlans {
         return Added(all.map { it.route }, all.fold(r) { a, k -> merged(a, k.resolved) })
     }
 
-    // Kav.switchTrip: {"ref", "after", "dep", "arr"}. The trip under way goes on with the route, from where its ride at leg
-    // index after ends: the legs up to that ride kept, the route after them, as Kav's own New route from here does.
+    // Kav.switchTrip: {"ref", "after", "dep", "arr", "start", "walks"}. The trip under way goes on with the route, from where
+    // its ride at leg index after ends: the legs up to that ride kept, the route after them, as Kav's own New route from here
+    // does. With start or walks, the route is laid out by them first, as for results.add.
     // dep and arr are the trip's own as trip events give them, so a trip changed since is left as it is. False when it
-    // wasn't switched: no such route of this extension's, no trip under way or another one, a ride the rider is past, or
-    // Kav's screen isn't running.
+    // wasn't switched: no such route of this extension's, no trip under way or another one, a ride the rider is past,
+    // stops on the way still ahead, or Kav's screen isn't running.
     fun switchTrip(identity: String, o: JSONObject, nowS: Long): Boolean {
-        val k = kept(identity, o.optString("ref"), nowS) ?: return false
+        val k = kept(identity, o.optString("ref"), nowS)?.let { if (o.has("start") || o.has("walks")) given(it, o, nowS) else it }
+            ?: return false
         val (journey, step) = uk.noammm.kav.TripBridge.journey?.invoke() ?: return false
         val (next, at) = switched(journey, step, k, o.optInt("after", -1), o.optLong("dep"), o.optLong("arr")) ?: return false
         return onMain { uk.noammm.kav.TripBridge.switchTo?.invoke(journey, next, at) == true }
@@ -185,8 +191,9 @@ object KavPlans {
         if (steps.take(step + 1).any { leg(it) > after }) return null
         val at = ride.shape.lastOrNull() ?: journey.resolved.stop(ride.toStop)?.point ?: return null
         val from = uk.noammm.kav.ui.ReplanFrom(at, k.route.dep.coerceAtLeast(1), after + 1, after + 1)
-        val stopovers = journey.stopovers.drop(trip.legs.take(after + 1).count { it.visit != null })
-        val next = uk.noammm.kav.ui.switched(journey, from, k.route, k.resolved, stopovers)
+        // A route of plan's goes through no stop on the way: never one in place of a trip with some still ahead.
+        if (journey.stopovers.drop(trip.legs.take(after + 1).count { it.visit != null }).isNotEmpty()) return null
+        val next = uk.noammm.kav.ui.switched(journey, from, k.route, k.resolved, emptyList())
         return next to uk.noammm.kav.ui.stepAfterSwitch(next, from, step)
     }
 
