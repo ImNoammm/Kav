@@ -109,10 +109,14 @@ fun KavField(
                     else -> K.capsule
                 }).background(K.fill))
             .focusRequester(focus)
-            .semantics { contentDescription = placeholder }
-            .padding(horizontal = K.gap4, vertical = 14.dp),
+            .semantics { contentDescription = placeholder },
         decorationBox = { innerTextField ->
-            Row(verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically) {
+            // The padding inside, so the field's own node (which the text field puts after this modifier) has the
+            // whole of what it draws: Kav.capture gives it as one piece, its background with it.
+            Row(
+                Modifier.padding(horizontal = K.gap4, vertical = 14.dp),
+                verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically,
+            ) {
                 if (search) {
                     Icon(Icons.Rounded.Search, null, tint = K.textTertiary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(K.gap3))

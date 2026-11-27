@@ -15,11 +15,13 @@ object ScreenPieces {
 
     // One node of Kav's screen as its semantics have it, with its box in the window's pixels. tap: it takes a click, a
     // long click or a toggle; field: text can be typed in it; text and image: it shows text, or an image; card: it draws
-    // a background of its own (a card, the tab bar, a sheet: Modifier.panel and the glass surfaces, ui/Glass.kt).
+    // a background of its own (a card, the tab bar, a sheet: Modifier.panel and the glass surfaces, ui/Glass.kt);
+    // covers: it hides what was drawn before it under its box (seen()), not a box that only holds others, as
+    // accessibility has it.
     class Node(
         val left: Float, val top: Float, val right: Float, val bottom: Float,
         val tap: Boolean = false, val field: Boolean = false, val text: Boolean = false, val image: Boolean = false,
-        val card: Boolean = false,
+        val card: Boolean = false, val covers: Boolean = tap || field || text || image || card,
         val children: () -> List<Node> = { emptyList() },
     )
 
@@ -59,9 +61,10 @@ object ScreenPieces {
     }
 
     // Each node some of which is on the screen and not covered, from the one drawn last (on top) to the first, the way
-    // accessibility finds what is seen: a node covers what was drawn before it, once what it holds is looked at. A
-    // page drawn over another (Settings over Home) hides that one's nodes, though they are still in the tree. Each root
-    // on its own, as accessibility has each view's. look(node, what it holds) says whether to look into what it holds.
+    // accessibility finds what is seen: a node that covers hides what was drawn before it, once what it holds is
+    // looked at. A page drawn over another (Settings over Home) hides that one's nodes, though they are still in the
+    // tree. Each root on its own, as accessibility has each view's. look(node, what it holds) says whether to look into
+    // what it holds.
     private fun seen(roots: List<Node>, width: Int, height: Int, dx: Int, dy: Int, look: (Node, List<Node>) -> Boolean) {
         for (r in roots.asReversed()) {
             val open = Uncovered(dx.toFloat(), dy.toFloat(), dx + width.toFloat(), dy + height.toFloat())
@@ -69,7 +72,7 @@ object ScreenPieces {
                 if (depth > 64 || !open.meets(n.left, n.top, n.right, n.bottom)) return
                 val kids = n.children()
                 if (look(n, kids)) for (k in kids.asReversed()) walk(k, depth + 1)
-                open.cover(n.left, n.top, n.right, n.bottom)
+                if (n.covers) open.cover(n.left, n.top, n.right, n.bottom)
             }
             walk(r, 0)
         }

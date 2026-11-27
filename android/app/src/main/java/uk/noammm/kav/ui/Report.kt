@@ -1236,7 +1236,9 @@ private fun Words(label: String, value: String, room: Int, onValue: (String) -> 
             cursorBrush = SolidColor(K.text),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier.fillMaxWidth().heightIn(min = 112.dp).clip(RoundedCornerShape(K.rTile)).background(K.fill)
-                .semantics { contentDescription = label }.padding(horizontal = K.gap4, vertical = 12.dp),
+                .semantics { contentDescription = label },
+            // The padding inside, so the field's node has its whole background (ui/Pickers.kt, KavField).
+            decorationBox = { inner -> Box(Modifier.padding(horizontal = K.gap4, vertical = 12.dp)) { inner() } },
         )
         Under(null, T("${room - value.length} characters left", "נותרו ${room - value.length} תווים"))
     }

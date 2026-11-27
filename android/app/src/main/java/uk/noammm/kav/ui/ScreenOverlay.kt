@@ -167,13 +167,15 @@ object ScreenOverlay {
     private fun node(n: SemanticsNode): ScreenPieces.Node {
         val c = n.config
         val b = n.boundsInWindow
+        val tap = SemanticsActions.OnClick in c || SemanticsActions.OnLongClick in c || SemanticsProperties.ToggleableState in c
+        val field = SemanticsActions.SetText in c || SemanticsProperties.EditableText in c
+        val text = SemanticsProperties.Text in c
+        val image = c.getOrNull(SemanticsProperties.Role) == Role.Image || SemanticsProperties.ContentDescription in c
+        val card = Card in c
         return ScreenPieces.Node(
-            b.left, b.top, b.right, b.bottom,
-            tap = SemanticsActions.OnClick in c || SemanticsActions.OnLongClick in c || SemanticsProperties.ToggleableState in c,
-            field = SemanticsActions.SetText in c || SemanticsProperties.EditableText in c,
-            text = SemanticsProperties.Text in c,
-            image = c.getOrNull(SemanticsProperties.Role) == Role.Image || SemanticsProperties.ContentDescription in c,
-            card = Card in c,
+            b.left, b.top, b.right, b.bottom, tap, field, text, image, card,
+            // A page's list covers what is under it, as one piece does; a box only holding others doesn't.
+            covers = tap || field || text || image || card || c.isMergingSemanticsOfDescendants || SemanticsActions.ScrollBy in c,
             children = { n.children.filter { placed(it, n) }.map(::node) },
         )
     }
