@@ -7,6 +7,7 @@
 //   java -cp /tmp/last-ride-check LastRideCheckKt
 //
 // Prints "PASS: N checks" or throws at the first failure.
+import uk.noammm.kav.data.LastRide
 import uk.noammm.kav.data.LastRide.Live
 import uk.noammm.kav.data.LastRide.Row
 import uk.noammm.kav.data.LastRide.State
@@ -91,6 +92,18 @@ fun main() {
     check("trains ignore other ends", LastRide.liveLast(live, emptySet(), setOf("נהריה"), lastAt, 30 * 60) == null)
     val two = listOf(Live("20", "דרום", lastAt + 25 * 60), Live("20", "דרום", lastAt + 2 * 60))
     check("closest live time wins", LastRide.liveLast(two, setOf("20"), emptySet(), lastAt, 30 * 60) == lastAt + 2 * 60)
+
+    // approach: a wake far off is aimed at in steps (4/7 of the way), a near one exactly.
+    check("near wake is exact", LastRide.approach(base + 100, base) == base + 100)
+    check("far wake is a step", LastRide.approach(base + 7000, base) == base + 4000)
+
+    // pick: yesterday's last bus counts after midnight while its grace runs, then today's.
+    val yest = base - 3600L // 1h ago (a 00:xx departure seen at 01:xx)
+    val tod = base + 23 * 3600L
+    check("yesterday's still ahead is picked", LastRide.pick(listOf(yest + 7200, tod), 20, 0, base, grace) == yest + 7200)
+    check("yesterday's past grace gives way to today's", LastRide.pick(listOf(yest, tod), 20, 0, base, grace) == tod)
+    check("yesterday's quieted gives way to today's", LastRide.pick(listOf(yest + 600, tod), 20, yest + 600, base, grace) == tod)
+    check("nothing left", LastRide.pick(listOf(yest), 20, 0, base, grace) == null)
 
     println("PASS: $checks checks")
 }
