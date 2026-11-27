@@ -937,6 +937,8 @@ private fun Root() {
         uk.noammm.kav.ui.TicketOpenHost(model)
         // Kav's place and stop search for an extension's settings or code (ExtPickers.kt).
         uk.noammm.kav.ui.ExtPickHost(model)
+        // Extensions' views over the whole screen (the part screen.overlay).
+        uk.noammm.kav.ui.ScreenOverlay.Host()
     }
 }
 

@@ -10,7 +10,7 @@ package uk.noammm.kav.ext
 //
 // Each later kind or use is added here with a key, and gets explanations with no other change.
 object ExtUses {
-    enum class What { KIND, SEES_SEARCHES, CHANGES_RESULTS, KEEPS_DATA, PERMISSIONS, SCREENS, TAB, HOME, LOOK, SLOT_HOME, SLOT_RESULTS, SLOT_TRIP, SLOT_STOP, WIDGETS, NATIVE, ADDS, ACTIONS, PARTS, HOOKS }
+    enum class What { KIND, SEES_SEARCHES, CHANGES_RESULTS, KEEPS_DATA, PERMISSIONS, SCREENS, TAB, HOME, LOOK, SLOT_HOME, SLOT_RESULTS, SLOT_TRIP, SLOT_STOP, WIDGETS, NATIVE, ADDS, ACTIONS, PARTS, HOOKS, SEES_SCREEN }
 
     // key: what an explanation names it by. detail: the kind's capability, what it changes (as capabilities) or the
     // permissions. note: the publisher's explanation (English, Hebrew), when it gave one.
@@ -24,7 +24,7 @@ object ExtUses {
     // The route rules, by what they change in a search's results.
     val CHANGES = listOf(Pipeline.WALK, Pipeline.TRANSFER, Pipeline.FILTER, Pipeline.RANK, Pipeline.ANNOTATE)
     // Every key an explanation can name, for the developer kit: a kind's capability, or one of these.
-    val KEYS = KINDS + listOf("searches", "results", "data", "native", "permissions", "actions", "parts", MethodHooks.CAPABILITY) + SCREEN_KEYS + Manifest.ADDS
+    val KEYS = KINDS + listOf("searches", "results", "data", "native", "permissions", "actions", "parts", MethodHooks.CAPABILITY, ScreenPieces.CAPABILITY) + SCREEN_KEYS + Manifest.ADDS
     // Its own screens, a page the rider can pin as a tab, a Home body, a theme and home screen widgets (ext/Pages.kt,
     // ext/Looks.kt, ext/Widgets.kt).
     private val SCREEN_KEYS get() = listOf(PageSpecs.PAGE, "tab", PageSpecs.HOME, Looks.CAPABILITY, Widgets.CAPABILITY) + Slots.CAPABILITIES
@@ -52,6 +52,8 @@ object ExtUses {
             val parts = Parts.NAMES.filter { Parts.CAPABILITY + it in caps }
             if (parts.isNotEmpty()) line("parts", What.PARTS, parts)
             if (MethodHooks.CAPABILITY in caps) line(MethodHooks.CAPABILITY, What.HOOKS)
+            // A picture of Kav's screen with its pieces' boxes, never their text (ScreenPieces).
+            if (ScreenPieces.CAPABILITY in caps) line(ScreenPieces.CAPABILITY, What.SEES_SCREEN)
             if (caps.any { it in SEARCHING }) line("searches", What.SEES_SEARCHES)
             val changes = CHANGES.filter { it in caps }
             if (changes.isNotEmpty()) line("results", What.CHANGES_RESULTS, changes)

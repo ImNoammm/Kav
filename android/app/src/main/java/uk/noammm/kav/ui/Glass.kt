@@ -49,7 +49,7 @@ fun Modifier.glassBackdrop(liquid: LiquidBackdrop?): Modifier =
 fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null, outline: Boolean = true): Modifier {
     val liquid = LocalLiquidBackdrop.current
     if (!liquidGlassReady || !K.liquid || liquid == null) return panel(radius, outline = outline)
-    val pane = liquidPane(liquid, radius, glass)
+    val pane = liquidPane(liquid, radius, glass).cardPiece()
     return if (outline) pane.border(0.5.dp, K.separator, RoundedCornerShape(radius)) else pane
 }
 
@@ -58,14 +58,14 @@ fun Modifier.glassSurface(radius: Dp = 22.dp, glass: (() -> Float)? = null, outl
 fun Modifier.seeThrough(radius: Dp, outline: Boolean = true): Modifier {
     if (!liquidGlassReady || !K.liquid) return panel(radius, outline = outline)
     val shape = RoundedCornerShape(radius)
-    val pane = clip(shape).background(K.surface.copy(alpha = LIVE_SHADE))
+    val pane = clip(shape).background(K.surface.copy(alpha = LIVE_SHADE)).cardPiece()
     return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
 }
 
 // A card on the page: its own shade and a hairline. solid: one that floats over others, a sheet or a menu.
 fun Modifier.panel(radius: Dp = K.rCard, solid: Boolean = false, outline: Boolean = true): Modifier {
     val shape = RoundedCornerShape(radius)
-    val pane = clip(shape).background(if (solid) K.surfaceRaised else K.surface)
+    val pane = clip(shape).background(if (solid) K.surfaceRaised else K.surface).cardPiece()
     return if (outline) pane.border(0.5.dp, K.separator, shape) else pane
 }
 

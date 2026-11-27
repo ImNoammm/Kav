@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Screenshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -476,6 +477,7 @@ private fun lineIcon(l: ExtUses.Line): ImageVector = when (l.what) {
     ExtUses.What.ACTIONS -> Icons.Rounded.TouchApp
     ExtUses.What.PARTS -> Icons.Rounded.Dashboard
     ExtUses.What.HOOKS -> Icons.Rounded.Build
+    ExtUses.What.SEES_SCREEN -> Icons.Rounded.Screenshot
 }
 
 // An action an extension takes over (ext/Actions.kt), as a few words.
@@ -609,6 +611,7 @@ private fun partWords(name: String) = when (name) {
     "alert.sheet" -> T("service alert details", "פרטי הודעות שירות")
     "report.step" -> T("the report form", "טופס הדיווח")
     "search.result" -> T("place search results", "תוצאות חיפוש מקומות")
+    uk.noammm.kav.ext.ScreenPieces.PART -> T("over the whole screen", "מעל כל המסך")
     else -> T.ltr(name)
 }
 
@@ -655,6 +658,7 @@ internal fun lineWords(l: ExtUses.Line): String {
         ExtUses.What.ACTIONS -> T("Takes over: ", "לוקח על עצמו: ") + l.detail.joinToString(list, transform = ::actionWords)
         ExtUses.What.PARTS -> T("Changes parts of Kav's screens: ", "משנה חלקים במסכים של Kav: ") + l.detail.joinToString(list, transform = ::partWords)
         ExtUses.What.HOOKS -> T("Changes how Kav itself works", "משנה את האופן שבו Kav עצמה פועלת")
+        ExtUses.What.SEES_SCREEN -> T("Sees a picture of Kav's screen, without what you type", "רואה תמונה של המסך של Kav, בלי מה שאתם מקלידים")
     }
 }
 
@@ -692,6 +696,7 @@ internal fun listingWords(capabilities: List<String>, adds: List<String> = empty
             uk.noammm.kav.ext.Widgets.CAPABILITY -> T("Widgets", "ווידג׳טים")
             "action.pay" -> T("Paying", "תשלום")
             uk.noammm.kav.ext.MethodHooks.CAPABILITY -> T("Changes Kav", "משנה את Kav")
+            uk.noammm.kav.ext.ScreenPieces.CAPABILITY -> T("Sees the screen", "רואה את המסך")
             Capabilities.BOARD -> T("Timetables", "לוחות זמנים")
             else -> when {
                 it.startsWith("action.") -> actionWords(it.removePrefix("action.")).replaceFirstChar { c -> c.uppercase() }
@@ -734,6 +739,7 @@ internal fun lineLabel(l: ExtUses.Line): String {
         ExtUses.What.ADDS -> addWord(l.detail.first())
         ExtUses.What.ACTIONS -> T("Takes over actions", "לוקח על עצמו פעולות")
         ExtUses.What.PARTS -> T("Changes screen parts", "משנה חלקי מסכים")
+        ExtUses.What.SEES_SCREEN -> T("Sees a picture of the screen", "רואה תמונה של המסך")
         else -> lineWords(l)
     }
 }
