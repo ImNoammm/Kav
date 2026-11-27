@@ -125,6 +125,8 @@ declares it too:
 | `kav.trips()` | `"api": 5` and a contribution `trips.history` ([hooks.md](/docs/extensions/hooks#the-riders-trips-tripshistory-and-tripsfollow-api-5)) |
 | `kav.onTrip(...)` | `"api": 5` and a contribution `trips.follow` (the same) |
 | `kav.widget("next", ...)`, `kav.refreshWidget("next")` | `"api": 5`, a contribution `widget.provide` and the widget `{"id": "next", ...}` under `widgets` ([screens.md](/docs/extensions/screens#home-screen-widgets)) |
+| `kav.part("screen.overlay", "after", ...)` | `"api": 5` and a contribution `part.screen.overlay` ([below](#over-the-whole-screen)) |
+| `kav.capture(...)` | `"api": 5` and a contribution `screen.capture` (the same) |
 | `kav.settings()`, `kav.onSettings(...)` | `settings` ([screens.md](/docs/extensions/screens)) |
 | `kav.map()`, `kav.settingsScreen(...)`, notifications, location | nothing, but say so in `adds` so riders are told |
 
@@ -172,6 +174,7 @@ class Hello : KavExtension {
 | `vehicles(query)` | API 5: the live vehicles of a line, or around a place, as Kav's Live tab has them (the same) |
 | `departures(query)` | API 5: a stop's next departures, as its board in Kav shows them (the same) |
 | `addRides(rides)` | API 5: rides already over, into Kav's ride history (the same) |
+| `capture(captured)` | API 5: a picture of Kav's screen as it shows now and the boxes of its pieces, on the main thread ([below](#over-the-whole-screen)) |
 | `card(on, card)` | a card on Kav's `"home"`, a line under each search result (`"results"`), a card on a trip's page (`"trip"`) or on a stop's board (`"stop"`) |
 | `screen(page, screen)` | a screen for one of your pages |
 | `home(screen)` | your Home body |
@@ -558,6 +561,7 @@ when the part next shows.
 | `alert.sheet` | `{"label", "ids"}` | A service alert's notices, under its heading. Needs `"api": 5`. | `ui/Common.kt:611` |
 | `report.step` | `report`'s args, with `"step"` | Each page of the report form: `about`, `what`, `ride`, `more`, `you` or `check`. Needs `"api": 5`. | `ui/Report.kt:713` |
 | `search.result` | `{"place", "section", "index"}` | Each result of Kav's place search. `place` is as `place.pick` gives it; `section` is `frequent` (places the rider often goes to), `recent`, `around` (busy stations around the rider's town, while nothing is typed), `places` or `stops`. Needs `"api": 5`. | `ui/Pickers.kt:443` |
+| `screen.overlay` | `{}` | Over the whole of Kav's screen, under its dialogs and sheets: `"after"` only ([below](#over-the-whole-screen)). Needs `"api": 5`. | `MainActivity.kt:939` |
 
 `{"trip"}` is the route as route rules get it ([hooks.md](/docs/extensions/hooks)); `leg` one of its `legs`, and `index` its place
 in them. API 3's cards still sit where they always did, beside these parts: `home` after `home.suggestions`, `trip`
@@ -565,6 +569,45 @@ after `trip.timeline`, `stop` at the top of `stop.board`, `results` inside each 
 
 The Settings page IDs are `trips`, `paying`, `live`, `look`, `language`, `map`, `privacy`, `extensions`, and `kav`.
 Ticket parts supply display metadata. The passenger names and ticket codes stay in Kav's ticket view.
+
+### Over the whole screen
+
+The part `screen.overlay` puts your view over the whole of Kav's screen, as big as the screen, under Kav's dialogs
+and sheets (they are windows of their own). Only `"after"` is taken: `"before"` and `"replace"` throw. Your view is
+see-through where it draws nothing, and a touch it doesn't take (`false` from its first `onTouchEvent`, the default
+of a plain `View`) goes on to Kav as if your view weren't there; one it takes is yours to the end. It isn't shown in
+picture in picture, nor in safe mode. A view that wants Back while it shows takes focus (`setFocusable(true)`,
+`requestFocus()`) and handles `KEYCODE_BACK` in `onKeyDown`; let go of focus when you're done, or Back stays yours.
+
+`kav.capture(captured)`, with a contribution `screen.capture`, tells you what Kav's screen shows now, on the main
+thread: a `Bitmap` the size of your overlay view, with Kav's maps in it and what your own view draws (draw nothing
+while you ask, for Kav's screen alone), and its pieces as JSON text:
+
+```json
+[{"x": 48, "y": 312, "w": 984, "h": 168, "kind": "button"}, {"x": 64, "y": 560, "w": 420, "h": 52, "kind": "text"}]
+```
+
+Each box is in the picture's pixels, which are your overlay view's. `kind` is `button` (it takes a tap, a long press
+or a toggle; what it holds is part of it), `field` (text can be typed in it), `text` or `image`, in the order the
+screen has them, at most 300. A piece smaller than 4 px or taking more than half of the screen isn't given (a button
+that big is looked into for its own pieces). The picture is `null` and the pieces `[]` when Kav isn't in front or the
+picture couldn't be taken. The picture is yours: `recycle()` it when you're done.
+
+What you are never given: a piece's text, description or value, and what is typed. Each field's inside is painted
+over in its own color in the picture, so a search, a name or a password typed in Kav isn't in it. Everything else
+Kav shows is in the picture as the rider sees it. Riders are told on your extension's page that it "Sees a picture of
+Kav's screen, without what you type"; say why in a reason (`"reasons": {"screen.capture": ...}`).
+
+To move Kav's pieces about, draw the picture over the whole of your view (that hides Kav's own screen, which stays as
+it was under it), paint each piece's place in the color around it, and draw each piece from the picture where it
+moves to. Take every touch while you do, so none reaches Kav's screen you hide; draw nothing and take no touch when
+you're done.
+
+```java
+kav.part("screen.overlay", "after", (context, about) -> overlay = new MyOverlay(context));
+// Later, on a shake:
+kav.capture((picture, pieces) -> { if (picture != null) overlay.start(picture, new JSONArray(pieces)); });
+```
 
 ### The trip notification's buttons
 

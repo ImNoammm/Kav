@@ -9,7 +9,7 @@ import android.content.Context;
  */
 public interface Kav {
     /** This API's version. A newer Kav keeps every method of an older one. 2: map, provide, home, onSettings, pickPlace, settingsScreen.
-     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides. */
+     *  3: KavUi's multi-line textField, iconButton and pages. 4: action, kavAction, part, addTicket, hook, hooked, deoptimize, kavClassLoader. 5: prefs, trips, onTrip, widget, refreshWidget, stops, vehicles, departures, addRides, capture. */
     int API = 5;
 
     int apiVersion();
@@ -77,6 +77,15 @@ public interface Kav {
      *  for it a key also covers the rides an earlier bundle file of the same name left under that key. A ride that isn't
      *  right throws. From any thread. */
     default void addRides(String rides) {}
+
+    /** API 5. A picture of Kav's screen as it shows now, and where its pieces are on it, for an extension that draws over
+     *  the screen (the part "screen.overlay"). Needs a contribution with capability "screen.capture"; without it, it
+     *  throws. Told on the main thread: the picture, the size of the screen.overlay part's views, with Kav's maps and
+     *  what those views draw in it; and pieces, a JSON array of {"x", "y", "w", "h", "kind"}, the box of each piece in
+     *  the picture's pixels, kind "button", "field", "text" or "image". Never a piece's text, and never what is typed:
+     *  each field's inside is painted over in the picture. null and "[]" when Kav isn't in front or the picture couldn't be taken. The picture is yours: recycle it
+     *  when you're done. From any thread. */
+    default void capture(Captured captured) {}
 
     /**
      * A card on one of Kav's screens: "home", "results" (a line under each route of a search's results), "trip" or
@@ -195,6 +204,11 @@ public interface Kav {
         String content(String args) throws Exception;
 
         default void tapped(String tap) throws Exception {}
+    }
+
+    /** API 5. Kav's screen as capture took it: its picture, or null, and its pieces as JSON text. */
+    interface Captured {
+        void captured(android.graphics.Bitmap picture, String pieces);
     }
 
     /** Its settings, all of them, as JSON text, after the rider changed one. */
