@@ -101,12 +101,12 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     // The header's Back is the phone's: a page that has gone a step in (Extensions, to a source or an extension) steps out first.
     val backs = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val parts = ArrayList<SettingsPart>()
-    fun part(id: String, title: String, summary: String, summaryColor: Color? = null, content: @Composable ColumnScope.() -> Unit) {
-        parts += SettingsPart(id, title, summary, summaryColor, content)
+    fun part(id: String, title: String, summary: String, summaryColor: Color? = null, sheet: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+        parts += SettingsPart(id, title, summary, summaryColor, sheet, content)
     }
     val waiting = model.update != null && Shown.updatePrompts
 
-    // What a plan may show. A trip's voice and what it does by itself are on the navigation screen (Navigate.kt), its
+    // What a plan may show, and what a trip does by itself. A trip's voice is on the navigation screen (Navigate.kt), its
     // link's choices in the Share sheet (ShareSheet.kt).
     val offered = filtersOf(KavPlan.source)
     val ways = offered.count { it in model.filters }
@@ -157,8 +157,9 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
     }
 
-    part("language", T("Language and time", "שפה ושעה"), languageSummary()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { LanguageAndTime(ctx) }
+    // A few choices, so a sheet as tall as they are rather than a page left mostly empty.
+    part("language", T("Language and time", "שפה ושעה"), languageSummary(), sheet = true) {
+        LanguageAndTime(ctx)
     }
 
     part("map", T("Map", "מפה"), mapSummary()) {
@@ -225,9 +226,11 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         }
     }
 
+    // A part shown as a sheet opens over the list, which stays.
+    val sheet = parts.firstOrNull { it.id == page && it.sheet }
     Box(Modifier.fillMaxSize()) {
     androidx.compose.animation.AnimatedContent(
-        page, Modifier.fillMaxSize().background(K.bg),
+        page.takeIf { sheet == null }, Modifier.fillMaxSize().background(K.bg),
         transitionSpec = {
             if (SettingsNav.backward) { SettingsNav.backward = false; backward() } else if (targetState != null) forward() else backward()
         }, label = "settingsPage",
@@ -275,6 +278,13 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             }
         }
     }
+    sheet?.let { open ->
+        BottomSheet({ page = null }, scrolls = true) { close ->
+            val about = { org.json.JSONObject().put("page", open.id).put("title", open.title) }
+            KavPart("settings.page.header", open.id to open.title, about) { SheetHeader(open.title, { close { page = null } }) }
+            KavPart("settings.page.${open.id}", open.id to open.title, about) { Column(content = open.content) }
+        }
+    }
     SeenPlacePicker(model, choosing) { choosing = false }
     }
 }
@@ -301,7 +311,8 @@ internal fun SeenPlacePicker(model: KavModel, open: Boolean, onClose: () -> Unit
     }
 }
 
-private class SettingsPart(val id: String, val title: String, val summary: String, val summaryColor: Color?, val content: @Composable ColumnScope.() -> Unit)
+// sheet: the part's few choices open in a sheet over Settings instead of on a page of their own.
+private class SettingsPart(val id: String, val title: String, val summary: String, val summaryColor: Color?, val sheet: Boolean, val content: @Composable ColumnScope.() -> Unit)
 
 // Riding first (what is changed most), then how Kav looks, then Kav itself.
 private val SETTINGS_GROUPS = listOf(
@@ -413,21 +424,18 @@ private fun noVoice(ctx: android.content.Context) = android.widget.Toast.makeTex
     android.widget.Toast.LENGTH_LONG,
 ).show()
 
-// A trip's voice, then what it does by itself: the navigation screen's Trip settings (Navigate.kt). onChange: a switch
-// was moved.
+// A trip's voice: the sheet behind the navigation screen's speaker (Navigate.kt). onChange: a switch was moved.
 @Composable
 internal fun OnTheWayChoices(onChange: () -> Unit) {
     val ctx = LocalContext.current
     var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
-    var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
-    InfoHeader(T("Voice", "הקראה"), T(
-        "Spoken over what's playing, in Kav's language. On silent, only into headphones.",
-        "מושמעות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
-    ))
     var turns by remember { mutableStateOf(Prefs.spokenTurns(ctx)) }
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap4)) {
         row {
-            ToggleRow(T("Say alerts out loud", "הקראת התראות בקול"), spoken, { SpeakerGlyph(toggleInk(spoken), 18.dp) }) { on ->
+            ToggleRow(T("Say alerts out loud", "הקראת התראות בקול"), spoken, { SpeakerGlyph(toggleInk(spoken), 18.dp) }, info = T(
+                "Spoken over what's playing, in Kav's language. On silent, only into headphones.",
+                "מושמעות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
+            )) { on ->
                 spoken = on; Prefs.setSpokenAlerts(ctx, on); onChange()
                 if (on) uk.noammm.kav.Speaker.say(ctx, T("Alerts will sound like this", "כך יישמעו ההתראות")) { noVoice(ctx) }
             }
@@ -454,23 +462,31 @@ internal fun OnTheWayChoices(onChange: () -> Unit) {
             }
         }
     }
-    ListGroup(Modifier.padding(top = K.gap6)) {
+}
+
+// What a trip does by itself and what its cards show while it's under way: in Settings › Trips.
+@Composable
+private fun DuringTripChoices(startNow: Boolean, onStartNow: (Boolean) -> Unit, suggestBus: Boolean, onSuggestBus: (Boolean) -> Unit,
+    walkTurns: Boolean, onWalkTurns: (Boolean) -> Unit) {
+    SectionHeader(T("During a trip", "במהלך נסיעה"))
+    ListGroup {
         row {
             ToggleRow(T("Start right away", "להתחיל מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }, info = T(
                 "A trip goes straight to its first walk instead of waiting for its time.",
                 "הנסיעה עוברת מיד להליכה הראשונה, בלי לחכות לשעה שלה.",
-            )) { on ->
-                startNow = on; Prefs.setBeginTripsImmediately(ctx, on); onChange()
-            }
+            ), onChange = onStartNow)
         }
         row {
-            var suggestBus by remember { mutableStateOf(OnBus.suggest(ctx)) }
             ToggleRow(
                 T("Recognize the bus", "זיהוי האוטובוס"), suggestBus, { ModeGlyph(Mode.BUS, toggleInk(suggestBus), 18.dp) }, info = T(
                     "While Kav is open and you move with a bus, Home offers to follow it. Kav's server is asked for the buses around you.",
                     "כש-Kav פתוחה ואתם נוסעים עם אוטובוס, מסך הבית מציע לעקוב אחריו. השרת של Kav נשאל על האוטובוסים סביבכם.",
-                ),
-            ) { on -> suggestBus = on; OnBus.setSuggest(ctx, on); onChange() }
+                ), onChange = onSuggestBus,
+            )
+        }
+        row {
+            ToggleRow(T("Walking directions on cards", "הוראות הליכה בכרטיסים"), walkTurns, { WalkGlyph(toggleInk(walkTurns), 16.dp) },
+                onChange = onWalkTurns)
         }
     }
 }
@@ -664,8 +680,13 @@ private fun MapTypeChoice(title: String, detail: String, selected: Boolean, onSe
 internal fun PlanChoices(model: KavModel) {
     val ctx = LocalContext.current
     val offered = filtersOf(KavPlan.source)
-    // Kav's: every way of getting there, the usual routes, and a card with wheelchair access and without emissions.
-    val kavs = offered.all { it in model.filters } && KavPlan.settings == PlanSettings() && Shown.accessibility && !Shown.co2
+    var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
+    var suggestBus by remember { mutableStateOf(OnBus.suggest(ctx)) }
+    var walkTurns by remember { mutableStateOf(Prefs.walkTurnsOnCards(ctx)) }
+    // Kav's: every way of getting there, the usual routes, a card with wheelchair access and without emissions, and a
+    // trip that waits for its time, follows no bus by itself and keeps its cards short.
+    val kavs = offered.all { it in model.filters } && KavPlan.settings == PlanSettings() && Shown.accessibility && !Shown.co2 &&
+        !startNow && !suggestBus && !walkTurns
     // The page opens on its choices themselves, set to Kav's; a page holding only a Default or Custom choice was a page
     // for one setting (Noam, 27 Nov 2026). Reset to default shows once something differs.
     Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
@@ -700,6 +721,11 @@ internal fun PlanChoices(model: KavModel) {
                 }
             }
         }
+        DuringTripChoices(
+            startNow, { startNow = it; Prefs.setBeginTripsImmediately(ctx, it) },
+            suggestBus, { suggestBus = it; OnBus.setSuggest(ctx, it) },
+            walkTurns, { walkTurns = it; Prefs.setWalkTurnsOnCards(ctx, it) },
+        )
         // Back to Kav's own, once anything differs.
         AnimatedVisibility(
             !kavs,
@@ -711,6 +737,9 @@ internal fun PlanChoices(model: KavModel) {
                 KavPlan.settings = PlanSettings(); Prefs.setPlanSettings(ctx, PlanSettings())
                 Shown.accessibility = true; Prefs.setShowAccessibility(ctx, true)
                 Shown.co2 = false; Prefs.setShowCo2(ctx, false)
+                startNow = false; Prefs.setBeginTripsImmediately(ctx, false)
+                suggestBus = false; OnBus.setSuggest(ctx, false)
+                walkTurns = false; Prefs.setWalkTurnsOnCards(ctx, false)
             }, Modifier.padding(top = K.gap4), style = ButtonStyle.Plain)
         }
     }

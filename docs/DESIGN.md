@@ -406,11 +406,11 @@ inside. Touch targets are at least 48 dp (`KavIconButton`, `minimumInteractiveCo
 
 | Shape | Token |
 |---|---|
-| Cards, grouped lists, panels | `K.rCard` (22 dp) |
+| Cards, grouped lists, panels, search bars | `K.rCard` (22 dp) |
 | Sheets | `K.rSheet` (28 dp) |
 | Tiles, photos, pictures, notes, small blocks inside a card | `K.rTile` (12 dp) |
 | Line plates | `K.rBadge` (8 dp) |
-| Every control: buttons, chips, segmented controls, fields, icon buttons | `K.capsule` |
+| Every other control: buttons, chips, segmented controls, fields, icon buttons | `K.capsule` |
 
 A picture of anything (an extension, a source, an app, a place, a stop) is a rounded square, clipped so no edge or
 background shows at its corners. Circles are only for icon buttons, dots, the switch's thumb and the rider's mark.

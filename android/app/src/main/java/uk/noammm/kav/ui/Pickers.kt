@@ -45,6 +45,7 @@ import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.Net
 import uk.noammm.kav.data.nearestStops
 import uk.noammm.kav.data.stopsMatching
+import uk.noammm.kav.data.placesAround
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -100,9 +101,13 @@ fun KavField(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            // A capsule with a quiet fill; glass where it floats over a list.
-            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(26.dp)
-                else Modifier.clip(if (multiline) androidx.compose.foundation.shape.RoundedCornerShape(K.rTile) else K.capsule).background(K.fill))
+            // A capsule with a quiet fill, a search bar a card's rounded rectangle; glass where it floats over a list.
+            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(if (search) K.rCard else 26.dp)
+                else Modifier.clip(when {
+                    multiline -> androidx.compose.foundation.shape.RoundedCornerShape(K.rTile)
+                    search -> androidx.compose.foundation.shape.RoundedCornerShape(K.rCard)
+                    else -> K.capsule
+                }).background(K.fill))
             .focusRequester(focus)
             .semantics { contentDescription = placeholder }
             .padding(horizontal = K.gap4, vertical = 14.dp),
@@ -154,8 +159,8 @@ internal fun placeOf(o: org.json.JSONObject): Transit.Place? {
     return Transit.Place(o.optString("name"), o.optString("detail"), lat, lon, o.optInt("type", 5), o.optInt("mode", -1))
 }
 
-// A row of the place search's results (search.result): the place, its section ("recent", "places" or "stops") and its
-// place in it.
+// A row of the place search's results (search.result): the place, its section ("frequent", "recent", "around",
+// "places" or "stops") and its place in it.
 private fun resultArgs(p: Transit.Place, section: String, index: Int) = org.json.JSONObject().put("place", placeJson(p))
     .put("section", section).put("index", index)
 
@@ -183,6 +188,10 @@ fun PlacePicker(
     // The words the last search finished for: until then a new word shows it's searching, not that nothing was found.
     var doneFor by remember { mutableStateOf("") }
     var recents by remember { mutableStateOf(uk.noammm.kav.Prefs.recents(ctx)) }
+    // Before anything is typed: the places the rider's trips often go to, then the town's own places (around).
+    val trips = remember { uk.noammm.kav.Prefs.trips(ctx) }
+    val frequent = remember(trips) { frequentPlaces(trips) }
+    var around by remember { mutableStateOf<Pair<String, List<Transit.Place>>?>(null) }
     var setting by remember { mutableStateOf(initialSetting) }
     var editing by remember { mutableStateOf<Favourite?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -235,6 +244,23 @@ fun PlacePicker(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (_: Exception) {
+        }
+    }
+
+    LaunchedEffect(here != null) {
+        val at = here ?: (trips.firstOrNull()?.let { it.from ?: it.to } ?: recents.firstOrNull())?.let { it.lat to it.lon }
+        around = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            try {
+                val n = net ?: uk.noammm.kav.loadNet(ctx)
+                val (town, stops) = n.placesAround(at)
+                val name = stops.firstNotNullOfOrNull { n.cityName(it).ifBlank { null } }.orEmpty()
+                val title = if (town >= 0 && name.isNotBlank()) T("Around $name", "באזור $name") else T("Main stations", "תחנות מרכזיות")
+                title to stops.map { placeOf(n, it) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -337,7 +363,11 @@ fun PlacePicker(
     LaunchedEffect(here == null) {
         if (allowMyLocation && here == null && hasLocationPermission(ctx)) requestLocationOnce(ctx, onResult = onLocate)
     }
-    val showRecents = q.isBlank() && recents.isNotEmpty()
+    // One row a place: a recent place that is a frequent one shows once, under Frequent, and the town's places skip both.
+    fun near(a: Transit.Place, b: Transit.Place) = metres(a.lat, a.lon, b.lat, b.lon) < 150
+    val recentShown = recents.filter { r -> frequent.none { near(it, r) } }
+    val aroundShown = around?.let { (title, list) -> title to list.filter { p -> (frequent + recents).none { near(it, p) } } }
+    val showRecents = q.isBlank() && recentShown.isNotEmpty()
     val found = q.isNotBlank() && (places.isNotEmpty() || stations.isNotEmpty())
 
     Box(Modifier.fillMaxSize().graphicsLayer { alpha = under }.background(K.bg)) {
@@ -361,14 +391,6 @@ fun PlacePicker(
                 onAdd = { creating = true },
                 onEdit = { editing = it },
             )
-        }
-        setting?.let { f ->
-            item(key = "setting") {
-                NoteCard(
-                    T("The place you pick is kept as ${f.label}.", "המקום שתבחרו יישמר בתור ${f.label}."),
-                    Modifier.padding(horizontal = K.gap4, vertical = K.gap2),
-                )
-            }
         }
         // Select on map and My location: two ways to place a point, on one card.
         item(key = "map") {
@@ -408,9 +430,6 @@ fun PlacePicker(
         }
         // Every row of the search comes, goes and moves with a fade and a glide as the words are typed.
         when {
-            q.isBlank() && recents.isEmpty() -> item(key = "hint") {
-                NoteCard(T("Search a station, street or place.", "חפשו תחנה, רחוב או מקום."), listMotion(quick = true).padding(horizontal = K.gap4, vertical = K.gap4))
-            }
             q.isBlank() -> Unit
             (busy || doneFor != q) && places.isEmpty() && stations.isEmpty() -> item(key = "searching") {
                 Box(listMotion(quick = true).fillMaxWidth().padding(vertical = K.gap8), contentAlignment = Alignment.Center) {
@@ -421,14 +440,25 @@ fun PlacePicker(
                 NoteCard(T("Nothing found.", "לא נמצאו תוצאות."), listMotion(quick = true).padding(horizontal = K.gap4, vertical = K.gap4))
             }
         }
+        if (q.isBlank() && frequent.isNotEmpty()) {
+            item(key = "frequentHead") { Box(listMotion(quick = true)) { SectionTitle(T("Frequent", "קבועים")) } }
+            val frequentKeys = uniqueKeys(frequent.map { "frequent:${it.name}|${it.lat}|${it.lon}" })
+            itemsIndexed(frequent, key = { i, _ -> frequentKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "frequent", i) }) { PlaceRow(p, here, i == 0, i == frequent.lastIndex) { pick(p) } } } }
+        }
         if (showRecents) {
             item(key = "recentHead") {
                 SectionHeader(T("Recent", "אחרונים"), listMotion(quick = true).padding(horizontal = K.gap4), action = T("Clear", "ניקוי"),
                     onAction = { uk.noammm.kav.Prefs.clearRecents(ctx); recents = emptyList() })
             }
-            val recentKeys = uniqueKeys(recents.map { "recent:${it.name}|${it.lat}|${it.lon}" })
-            itemsIndexed(recents, key = { i, _ -> recentKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "recent", i) }) { PlaceRow(p, here, i == 0, i == recents.lastIndex) { pick(p) } } } }
-        } else if (found) {
+            val recentKeys = uniqueKeys(recentShown.map { "recent:${it.name}|${it.lat}|${it.lon}" })
+            itemsIndexed(recentShown, key = { i, _ -> recentKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "recent", i) }) { PlaceRow(p, here, i == 0, i == recentShown.lastIndex) { pick(p) } } } }
+        }
+        if (q.isBlank()) aroundShown?.takeIf { it.second.isNotEmpty() }?.let { (title, list) ->
+            item(key = "aroundHead") { Box(listMotion(quick = true)) { SectionTitle(title) } }
+            val aroundKeys = uniqueKeys(list.map { "around:${it.name}|${it.lat}|${it.lon}" })
+            itemsIndexed(list, key = { i, _ -> aroundKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "around", i) }) { PlaceRow(p, here, i == 0, i == list.lastIndex) { pick(p) } } } }
+        }
+        if (found) {
             if (places.isNotEmpty()) item(key = "placesTitle") { Box(listMotion(quick = true)) { SectionTitle(T("Places", "מקומות")) } }
             val placeKeys = uniqueKeys(places.map { "place:${it.name}|${it.lat}|${it.lon}" })
             itemsIndexed(places, key = { i, _ -> placeKeys[i] }) { i, p -> Box(listMotion(quick = true)) { KavPart("search.result", p, { resultArgs(p, "places", i) }) { PlaceRow(p, here, i == 0, i == places.lastIndex) { pickPlace(p) } } } }
@@ -738,6 +768,15 @@ private fun StopMapBody(
         }
     }
 }
+
+// The places the rider's trips went to more than once, the most often first and, as often, the latest first. Trips that
+// end within about 100 m of each other went to one place, the latest trip's.
+internal fun frequentPlaces(trips: List<uk.noammm.kav.RecentTrip>, most: Int = 3): List<Transit.Place> =
+    trips.groupBy { "%.3f,%.3f".format(java.util.Locale.US, it.to.lat, it.to.lon) }.values
+        .map { same -> same.sumOf { it.times } to same.maxBy { it.at } }
+        .filter { it.first >= 2 }
+        .sortedWith(compareByDescending<Pair<Int, uk.noammm.kav.RecentTrip>> { it.first }.thenByDescending { it.second.at })
+        .take(most).map { it.second.to }
 
 @Composable
 private fun SectionTitle(text: String) = SectionHeader(text, Modifier.padding(horizontal = K.gap4))

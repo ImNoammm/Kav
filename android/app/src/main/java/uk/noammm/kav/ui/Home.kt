@@ -104,7 +104,7 @@ internal fun HomeScreen(
                 ) {
                     Row(
                         Modifier.weight(1f).heightIn(min = 52.dp)
-                            .glassSurface(26.dp)
+                            .glassSurface(K.rCard)
                             .clickable(role = Role.Button, onClickLabel = T("Search destination", "חיפוש יעד"), onClick = onSearch)
                             .padding(horizontal = K.gap4),
                         verticalAlignment = Alignment.CenterVertically,
@@ -335,7 +335,11 @@ private fun JourneyCard(model: KavModel, journey: ActiveJourney, onResume: () ->
                         model.activeJourney?.takeIf { it.trip === journey.trip }
                             ?.let { model.activeJourney = it.copy(chosen = it.chosen + (leg to option)) }
                     },
-                    report = { model.openReport(it) })
+                    report = { model.openReport(it) },
+                    // Paying for the ride as the trip's own page has it, an extension's ride.pay part too.
+                    pay = Shown.payments,
+                    tripArgs = { JSONObject().put("trip", uk.noammm.kav.ext.Slots.trip(journey.trip, journey.resolved)) },
+                    navParts = false)
             }
         }
         // The dots in the middle; back to the step on now, from another, at the end of the same row.

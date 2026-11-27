@@ -51,6 +51,7 @@ import uk.noammm.kav.data.trainLine
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.OutlinedFlag
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -985,49 +986,66 @@ private fun LineLiveNote(
                 label = "lineLive",
             ) { (t, on) -> Text(t, style = K.type.subhead, color = if (on) K.realtime else K.textSecondary) }
         }
-        if (!status) AnimatedVisibility(
-            live.checked && count == 0 && next != null,
-            enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
-            exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
-        ) {
-            // The next three as a route card shows them: minutes within the hour, else the time, its day only when it
-            // isn't today.
-            shownNext?.let { n ->
-                val now = rememberNow() / 1000
-                FlowRow(itemVerticalAlignment = Alignment.CenterVertically) {
-                    Text(T("Next departures from ${n.from}: ", "היציאות הבאות מ-${n.from}: "), style = K.type.subhead)
-                    DepartureTimes(n.times.map { Transit.Departure(0, it) }, now)
-                }
-            }
-        }
-        // How late it usually runs at this time of the week (lateLine()), once the server has said.
+        // Above the map, one quiet panel: the next departures as a label, their times and the stop they leave from,
+        // then how late the line usually runs and how busy it is. It opens once there's something to show in it.
         var shownLate by remember { mutableStateOf(late) }
         if (late != null) shownLate = late
-        if (!status) AnimatedVisibility(
-            late != null,
-            enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
-            exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
-        ) {
-            shownLate?.let { Text(it, style = K.type.subhead, color = K.textSecondary) }
-        }
-        // At the rider's stop: when the line's next bus leaves it, and how busy it usually is then (Google's level). Not
-        // "From", which the line's next departures already start with. Kav's own level is the line's at this hour: no stop.
         var shownBusy by remember { mutableStateOf(busy) }
         if (busy != null) shownBusy = busy
+        val nextShows = live.checked && count == 0 && next != null
         if (!status) AnimatedVisibility(
-            busy != null,
+            nextShows || late != null || busy != null,
             enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
             exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
         ) {
-            shownBusy?.let { (stop, crowd) ->
-                Column(Modifier.padding(top = 2.dp)) {
-                    val at = crowd.second?.let { clockFormat().format(java.util.Date(it * 1000)) }
-                    // Kav's own level says which hour it's for itself: no line above it.
-                    if (stop.isNotEmpty()) Text(
-                        if (at != null) T("How busy at $stop at $at", "עומס ב-$stop ב-$at") else T("How busy at $stop", "עומס ב-$stop"),
-                        style = K.type.subhead,
-                    )
-                    CrowdLevel(crowd.first)
+            Column(Modifier.fillMaxWidth().panel(K.rCard).padding(K.gap4)) {
+                // The next three as a route card shows them: minutes within the hour, else the time, its day only when
+                // it isn't today.
+                AnimatedVisibility(
+                    nextShows,
+                    enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+                    exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+                ) {
+                    shownNext?.let { n ->
+                        val now = rememberNow() / 1000
+                        Column(verticalArrangement = Arrangement.spacedBy(K.gap1)) {
+                            Text(T("Next departures", "היציאות הבאות"), style = K.type.caption)
+                            DepartureTimes(n.times.map { Transit.Departure(0, it) }, now)
+                            Text(T("From \u2068${n.from}\u2069", "מ־\u2068${n.from}\u2069"), style = K.type.subhead,
+                                color = K.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                // How late it usually runs at this time of the week (lateLine()), once the server has said.
+                AnimatedVisibility(
+                    late != null,
+                    enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+                    exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+                ) {
+                    shownLate?.let {
+                        Text(it, style = K.type.subhead, color = K.textSecondary,
+                            modifier = Modifier.padding(top = if (nextShows) K.gap3 else 0.dp))
+                    }
+                }
+                // At the rider's stop: when the line's next bus leaves it, and how busy it usually is then (Google's
+                // level). Not "From", which the line's next departures already start with. Kav's own level is the line's
+                // at this hour: no stop.
+                AnimatedVisibility(
+                    busy != null,
+                    enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeIn(tween(200, delayMillis = 60)),
+                    exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(tween(120)),
+                ) {
+                    shownBusy?.let { (stop, crowd) ->
+                        Column(Modifier.padding(top = if (nextShows || late != null) K.gap3 else 0.dp)) {
+                            val at = crowd.second?.let { clockFormat().format(java.util.Date(it * 1000)) }
+                            // Kav's own level says which hour it's for itself: no line above it.
+                            if (stop.isNotEmpty()) Text(
+                                if (at != null) T("How busy at $stop at $at", "עומס ב-$stop ב-$at") else T("How busy at $stop", "עומס ב-$stop"),
+                                style = K.type.subhead,
+                            )
+                            CrowdLevel(crowd.first)
+                        }
+                    }
                 }
             }
         }
@@ -1048,14 +1066,12 @@ internal fun lateBand(at: java.util.Calendar): String {
     }
 }
 
-// How late the line usually runs in the band, as one plain line: its median lateness at its stops, how many of ten
-// passings were on time, and the days it's from. Its route with the most runs in the band, else over the whole week;
+// How late the line usually runs in the band, as one plain line: its median lateness at its stops and how many of ten
+// passings were on time. Its route with the most runs in the band, else over the whole week;
 // null when the server has no figures for it (too few runs), or they were made more than LATE_STALE_DAYS days
 // before today (the server gives none older either: live.py LATENESS_STALE).
 internal fun lateLine(late: KavLive.Lateness, routes: Set<Int>, band: String, today: java.time.LocalDate): String? {
     val made = runCatching { java.time.LocalDate.parse(late.made) }.getOrNull() ?: return null
-    val first = runCatching { java.time.LocalDate.parse(late.from) }.getOrNull() ?: return null
-    val last = runCatching { java.time.LocalDate.parse(late.to) }.getOrNull() ?: return null
     if (made.isBefore(today.minusDays(LATE_STALE_DAYS))) return null
     fun most(b: String) = routes.mapNotNull { late.routes[it]?.get(b) }.maxByOrNull { it.runs }
     val inBand = most(band)
@@ -1076,20 +1092,7 @@ internal fun lateLine(late: KavLive.Lateness, routes: Set<Int>, band: String, to
         else -> T("Usually on time", "בדרך כלל בזמן")
     }
     val on = Math.round(f.onTime / 100.0).toInt()
-    // The days it's from: all of them from the first to the last, or how many of them when some are missing.
-    val span = java.time.temporal.ChronoUnit.DAYS.between(first, last).toInt() + 1
-    val weeks = Math.round(span / 7.0).toInt()
-    val all = late.days >= span
-    val n = late.days
-    val period = when {
-        span < 7 && all -> T("from the last $span days", "מ-$span הימים האחרונים")
-        span < 7 -> T("from $n days of the last $span days", "מ-$n ימים ב-$span הימים האחרונים")
-        weeks == 1 && all -> T("from the last week", "מהשבוע האחרון")
-        weeks == 1 -> T("from $n days of the last week", "מ-$n ימים בשבוע האחרון")
-        all -> T("from the last $weeks weeks", "מ-$weeks השבועות האחרונים")
-        else -> T("from $n days of the last $weeks weeks", "מ-$n ימים ב-$weeks השבועות האחרונים")
-    }
-    return listOf(lead + phrase, T("on time $on of 10", "בזמן $on מתוך 10"), period).joinToString(" · ")
+    return lead + phrase + T(" · on time $on of 10", " · בזמן $on מתוך 10")
 }
 
 // Figures made more than this many days before today aren't shown (live.py LATENESS_STALE).
@@ -1707,7 +1710,53 @@ private fun LinePage(
             route >= 0 -> weekStops?.takeIf { it.size >= 2 }?.let { twoEnds(shownEnd(net, it.first()), shownEnd(net, it.last())) }
             else -> line?.takeIf { it.from.isNotBlank() && it.to.isNotBlank() }?.let { twoEnds(providerEnd(it.from), providerEnd(it.to)) }
         }
-        ScreenHeader(ends ?: (T("Line ", "קו ") + number), back = onBack)
+        // A bus, train or light rail of the line reported, on the form's questions for its kind (ReportFor.train): its
+        // stops in order, the rider picking where they got on, and a train's number on the form where the rider knows it.
+        val mode = modeOf(rt)
+        val rail = mode == Mode.TRAM || mode == Mode.SUBWAY
+        val shown = rows.orEmpty()
+        val report: (() -> Unit)? = if ((mode == Mode.TRAIN || rail || mode == Mode.BUS) && shown.isNotEmpty()) {
+            {
+                val first = shown.first(); val last = shown.last()
+                model.openReport(ReportFor(
+                    line = if (mode == Mode.TRAIN) "" else number,
+                    agency = if (mode == Mode.BUS) (if (route >= 0) net.agencyOf(route) else line?.operator.orEmpty()) else "",
+                    origin = first.name, destination = last.name,
+                    stops = shown.map { ReportStop(it.week, it.name, it.code.takeIf { c -> c > 0 }?.toString()) },
+                    at = System.currentTimeMillis() / 1000,
+                    near = here,
+                    towns = if (mode == Mode.BUS && first.city.isNotBlank() && last.city.isNotBlank()) first.city to last.city else null,
+                    direction = if (mode == Mode.BUS && route >= 0) ministryDirection(net.rLong[route]) else null,
+                    train = mode != Mode.BUS,
+                    trainType = if (rail) lightRailType(first.lat.takeIf { it.isFinite() }?.let { it to first.lon }) else "1",
+                ))
+            }
+        } else null
+        ScreenHeader(ends ?: (T("Line ", "קו ") + number), back = onBack) {
+            // Before the star, once the line's stops are in.
+            AnimatedVisibility(report != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(120))) {
+                KavIconButton(
+                    Icons.Rounded.OutlinedFlag,
+                    when {
+                        mode == Mode.TRAIN -> T("Report a train on this line", "דיווח על רכבת בקו הזה")
+                        rail -> T("Report a light rail on this line", "דיווח על רכבת קלה בקו הזה")
+                        else -> T("Report a bus on this line", "דיווח על אוטובוס בקו הזה")
+                    },
+                    { report?.invoke() }, floating = true, tint = K.text,
+                )
+            }
+            // Kept at the top of the Lines tab, by the week's line it is.
+            if (keyRoute >= 0) {
+                val key = lineKey(net, keyRoute)
+                val saved = key in model.savedLines
+                KavIconButton(
+                    if (saved) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                    if (saved) T("Saved, tap to remove", "שמור, הקישו להסרה") else T("Save this line", "שמירת הקו"),
+                    { model.saveLines(ctx, if (saved) model.savedLines - key else listOf(key) + model.savedLines) },
+                    floating = true, tint = if (saved) K.accentInk else K.text,
+                )
+            }
+        }
         // Under its title the whole page scrolls: the line's header, its ways, the live card and the map scroll away first,
         // then the stops, which have the whole screen once they are all that's left.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -1760,17 +1809,6 @@ private fun LinePage(
                     }
                 }
             }
-            // Kept at the top of the Lines tab, by the week's line it is.
-            if (keyRoute >= 0) {
-                val key = lineKey(net, keyRoute)
-                val saved = key in model.savedLines
-                KavIconButton(
-                    if (saved) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                    if (saved) T("Saved, tap to remove", "שמור, הקישו להסרה") else T("Save this line", "שמירת הקו"),
-                    { model.saveLines(ctx, if (saved) model.savedLines - key else listOf(key) + model.savedLines) },
-                    floating = true, tint = if (saved) K.accentInk else K.text,
-                )
-            }
         }
         }
         AnimatedVisibility(
@@ -1821,38 +1859,10 @@ private fun LinePage(
                     )
                 }
                 else -> Column(Modifier.fillMaxWidth()) {
-                    val shown = rows.orEmpty()
                     if (shown.isNotEmpty()) {
                         // The line's next departures and how busy it is lead, under its name; whether it's live goes under
                         // the map that shows it.
                         KavPart("line.live", route to line, lineAbout, inset = K.gap4) { LineLiveNote(live, next, busy, late = late) }
-                        // A bus, train or light rail of the line reported, on the form's questions for its kind
-                        // (ReportFor.train): its stops in order, the rider picking where they got on, and a train's number
-                        // on the form where the rider knows it.
-                        val mode = modeOf(rt)
-                        val rail = mode == Mode.TRAM || mode == Mode.SUBWAY
-                        if (mode == Mode.TRAIN || rail || mode == Mode.BUS) Text(
-                            when {
-                                mode == Mode.TRAIN -> T("Report a train on this line", "דיווח על רכבת בקו הזה")
-                                rail -> T("Report a light rail on this line", "דיווח על רכבת קלה בקו הזה")
-                                else -> T("Report a bus on this line", "דיווח על אוטובוס בקו הזה")
-                            },
-                            fontSize = 14.sp, color = K.accentInk,
-                            modifier = Modifier.padding(horizontal = K.gap4).clickable(role = Role.Button) {
-                                val first = shown.first(); val last = shown.last()
-                                model.openReport(ReportFor(
-                                    line = if (mode == Mode.TRAIN) "" else number,
-                                    agency = if (mode == Mode.BUS) (if (route >= 0) net.agencyOf(route) else line?.operator.orEmpty()) else "",
-                                    origin = first.name, destination = last.name,
-                                    stops = shown.map { ReportStop(it.week, it.name, it.code.takeIf { c -> c > 0 }?.toString()) },
-                                    at = System.currentTimeMillis() / 1000,
-                                    near = here,
-                                    towns = if (mode == Mode.BUS && first.city.isNotBlank() && last.city.isNotBlank()) first.city to last.city else null,
-                                    direction = if (mode == Mode.BUS && route >= 0) ministryDirection(net.rLong[route]) else null,
-                                    train = mode != Mode.BUS,
-                                    trainType = if (rail) lightRailType(first.lat.takeIf { it.isFinite() }?.let { it to first.lon }) else "1",
-                                ))
-                            }.padding(vertical = K.gap2))
                         val chosen = keys.indexOf(open)
                         if (calls.size >= 2) KavPart("line.map", route to line, lineAbout, inset = K.gap4) { LineRouteMap(
                             calls, shape, rt, live.vehicles,

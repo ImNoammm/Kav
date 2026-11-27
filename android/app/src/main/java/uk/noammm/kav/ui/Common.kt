@@ -637,8 +637,8 @@ fun ServiceAlertSheet(alert: RideAlerts.Alert, onDismiss: () -> Unit) {
                     val hebrew = HEBREW.findAll(a.title + a.body).count() > LATIN.findAll(a.title + a.body).count()
                     val notice = if (hebrew) LayoutDirection.Rtl else LocalLayoutDirection.current
                     CompositionLocalProvider(LocalLayoutDirection provides notice) {
-                        // A notice titled as the sheet is isn't titled twice.
-                        a.title.takeIf { it.isNotBlank() && !it.trim().equals(heading.trim(), ignoreCase = true) }?.let {
+                        // A notice titled as the sheet is isn't titled twice, nor by the dates its window already says.
+                        noticeTitle(a.title, heading)?.let {
                             Text(it, style = K.type.headline, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(K.gap2))
                         }
@@ -777,7 +777,7 @@ private fun LinkedText(text: String, openLine: (String) -> Unit) {
 
 // A line number with its Hebrew letter, a geresh after it or not: "17ב'", "6ב".
 private val HEBREW_LINE = Regex("""(?<![\d\u2066])\d{1,3}[א-ת]['׳]?(?![א-ת])""")
-private val LINE_WORD = Regex("""(?i)\blines?\b|(?<![א-ת])[לבהומש]{0,2}(?:קו|קוו?ים|קווי|קוי)(?![א-ת])""")
+private val LINE_WORD = Regex("""(?i)\b(?:lines?|routes)\b|(?<![א-ת])[לבהומש]{0,2}(?:קו|קוו?ים|קווי|קוי)(?![א-ת])""")
 // A line number, not a time or a date ("8:00", "8.11"), its letter with a geresh or not ("17ב'").
 private val LINE_IN_TEXT = Regex("""\d{1,3}(?:[א-תA-Za-z]['׳]?)?(?![א-תA-Za-z\d]|[:.]\d)""")
 // The en dash operators type in notices, as a code so the source holds none.
@@ -811,6 +811,23 @@ internal fun lineMentions(text: String): List<Pair<IntRange, String>> {
         }
     }
     return out.sortedBy { it.first.first }
+}
+
+// A date in a notice's title, a day and month with its year or not: "29.11.2026", "3/12", "29.11.26".
+private val TITLE_DATE = Regex("""(?<![\d.])\d{1,2}[./]\d{1,2}(?:[./](?:\d{4}|\d{2}))?(?![\d])""")
+// Two dates a span joins ("29.11 - 3.12", "29.11.2026 עד 3.12.2026"), each already a mark (\u0000).
+private val TITLE_SPAN = Regex("""\u0000\s*(?:[-${DASH}]|ועד|עד|to|until)\s*\u0000""", RegexOption.IGNORE_CASE)
+// A date's mark with the word that leads it: "from", "מ-", "בתאריך".
+private val TITLE_DATE_WORD = Regex("""(?:(?i:\b(?:from|on|until)\s+)|(?<![א-ת])(?:מיום|ביום|בתאריך|החל\s+מ-?|עד|מ-?|ב-?)\s*)?\u0000""")
+private const val TITLE_EDGES = " \t-,:|()\u2013"
+
+// A notice's title without its dates, which its window under it already says; null when nothing else is left, or
+// what is left is the sheet's own heading.
+internal fun noticeTitle(title: String, heading: String): String? {
+    var t = TITLE_DATE.replace(title, "\u0000")
+    while (TITLE_SPAN.containsMatchIn(t)) t = TITLE_SPAN.replace(t, "\u0000")
+    t = TITLE_DATE_WORD.replace(t, "").replace(Regex("""\s{2,}"""), " ").trim { it in TITLE_EDGES }
+    return t.takeIf { it.isNotBlank() && !it.equals(heading.trim(), ignoreCase = true) }
 }
 
 // A run of an alert's text, a list of line numbers in it, or a list of stops by their codes ("20779 - יוחנן הסנדלר").

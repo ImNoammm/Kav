@@ -349,9 +349,8 @@ object KavLive {
     fun line(number: String, codes: List<Int> = emptyList()): Area = fromSource { it.liveProvider.line(number, codes) }
 
     // How late routes' buses usually run against the ministry's timetable (the server's late/, figured each morning from
-    // the passings it recorded): by route, each band of the week's figures; made: the day they were figured, from and to
-    // the first and last day they come from, days how many of those days.
-    class Lateness(val made: String, val from: String, val to: String, val days: Int, val routes: Map<Int, Map<String, LateFigure>>)
+    // the passings it recorded): by route, each band of the week's figures; made: the day they were figured.
+    class Lateness(val made: String, val routes: Map<Int, Map<String, LateFigure>>)
 
     // late: the median lateness at its stops in seconds, early below 0; onTime: per thousand passings from a minute early
     // to five late.
@@ -396,7 +395,7 @@ object KavLive {
                 bands.optJSONObject(b)?.let { f -> b to LateFigure(f.optInt("late"), f.optInt("on"), f.optInt("runs"), f.optInt("days")) }
             }.toMap()
         }
-        return Lateness(o.optString("made"), o.optString("from"), o.optString("to"), o.optInt("days"), out)
+        return Lateness(o.optString("made"), out)
     }
 
     // Every bus due at these stops in the next hour and a half, straight from the ministry.

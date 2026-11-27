@@ -627,6 +627,7 @@ private class StripItem(
     val minutes: Int,
     val alert: Int = 0,
     val ride: Transit.Leg? = null,
+    val meters: Int = 0,
 )
 
 private fun stripItems(it: Transit.Itinerary): List<StripItem> {
@@ -637,13 +638,13 @@ private fun stripItems(it: Transit.Itinerary): List<StripItem> {
             Transit.LegKind.WALK -> {
                 val last = out.lastOrNull()
                 if (last != null && last.kind == Transit.LegKind.WALK) {
-                    out[out.size - 1] = StripItem(Transit.LegKind.WALK, last.minutes + l.minutes)
-                } else out.add(StripItem(Transit.LegKind.WALK, l.minutes))
+                    out[out.size - 1] = StripItem(Transit.LegKind.WALK, last.minutes + l.minutes, meters = last.meters + l.meters)
+                } else out.add(StripItem(Transit.LegKind.WALK, l.minutes, meters = l.meters))
             }
             Transit.LegKind.RIDE, Transit.LegKind.TAXI, Transit.LegKind.BIKE -> {
                 val alert = it.legs.getOrNull(it.legs.indexOf(l) - 1)
                     ?.takeIf { w -> w.kind == Transit.LegKind.WAIT }?.alertCategory ?: 0
-                out.add(StripItem(l.kind, l.minutes, alert, l))
+                out.add(StripItem(l.kind, l.minutes, alert, l, l.meters))
             }
             else -> {}
         }
@@ -656,29 +657,41 @@ private fun showMinutes(leg: StripItem): Boolean = stripShowsMinutes(leg.minutes
 // A step's minutes show in a route's strip from five on; a shorter walk is its walker alone.
 internal fun stripShowsMinutes(minutes: Int): Boolean = minutes >= 5
 
-// A walk in a route's strip: the walker, with its minutes where they show. Home's latest route draws its walks with it
-// too, so the two can't come to differ.
+// A walk in a route's strip: the walker, with its minutes where they show, or its distance when the walk is the whole
+// route, whose minutes the card's time already says. Home's latest route draws its walks with it too, so the two can't
+// come to differ.
 @Composable
-internal fun StripWalk(minutes: Int) {
+internal fun StripWalk(minutes: Int, distance: String? = null) {
     Row(
         Modifier.height(28.dp).clearAndSetSemantics {
-            contentDescription = if (stripShowsMinutes(minutes)) T("Walk $minutes min", "הליכה $minutes דק׳") else T("Walk", "הליכה")
+            contentDescription = when {
+                distance != null -> T("Walk $distance", "הליכה $distance")
+                stripShowsMinutes(minutes) -> T("Walk $minutes min", "הליכה $minutes דק׳")
+                else -> T("Walk", "הליכה")
+            }
         },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WalkGlyph(Ink.muted, 18.dp)
-        if (stripShowsMinutes(minutes)) {
+        val said = distance ?: "$minutes".takeIf { stripShowsMinutes(minutes) }
+        if (said != null) {
             Spacer(Modifier.width(4.dp))
-            Text("$minutes", fontSize = 14.sp, color = Ink.text)
+            Text(said, fontSize = 14.sp, color = Ink.text)
         }
     }
 }
+
+// A route that is one walk or one ride on a bike: the strip says how far, as the card's time says how long.
+private fun aloneDistance(shown: List<StripItem>): String? =
+    shown.singleOrNull()?.takeIf { it.kind != Transit.LegKind.RIDE && it.kind != Transit.LegKind.TAXI && it.meters > 0 }
+        ?.let { distanceLabel(it.meters.toDouble()) }
 
 private val PIP_OVERHANG = 5.dp
 
 @Composable
 internal fun RouteStrip(it: Transit.Itinerary, r: Transit.Resolved) {
     val shown = stripItems(it)
+    val distance = aloneDistance(shown)
     FlowRow(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -713,17 +726,22 @@ internal fun RouteStrip(it: Transit.Itinerary, r: Transit.Resolved) {
                 Transit.LegKind.TAXI -> leg.ride?.let { GettPill(it) }
                 Transit.LegKind.BIKE -> Row(
                     Modifier.height(28.dp).clearAndSetSemantics {
-                        contentDescription = if (showMinutes(leg)) T("Cycle ${leg.minutes} min", "רכיבה ${leg.minutes} דק׳") else T("Cycle", "רכיבה")
+                        contentDescription = when {
+                            distance != null -> T("Cycle $distance", "רכיבה $distance")
+                            showMinutes(leg) -> T("Cycle ${leg.minutes} min", "רכיבה ${leg.minutes} דק׳")
+                            else -> T("Cycle", "רכיבה")
+                        }
                     },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CycleGlyph(leg.ride)
-                    if (showMinutes(leg)) {
+                    val said = distance ?: "${leg.minutes}".takeIf { showMinutes(leg) }
+                    if (said != null) {
                         Spacer(Modifier.width(4.dp))
-                        Text("${leg.minutes}", fontSize = 14.sp, color = Ink.text)
+                        Text(said, fontSize = 14.sp, color = Ink.text)
                     }
                 }
-                else -> StripWalk(leg.minutes)
+                else -> StripWalk(leg.minutes, distance)
             }
             }
         }
@@ -779,8 +797,8 @@ internal fun CycleGlyph(leg: Transit.Leg?, tint: Color = Ink.muted, size: androi
     else Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size).graphicsLayer { if (turned) scaleX = -1f })
 }
 
-// The same leg in words, with who runs a shared vehicle and how long it takes.
-internal fun cycleLabel(leg: Transit.Leg): String {
+// The same leg in words, with who runs a shared vehicle and how long it takes, unless that is said beside it.
+internal fun cycleLabel(leg: Transit.Leg, minutes: Boolean = true): String {
     val what = when (leg.shared) {
         0 -> T("Cycle", "אופניים")
         3, 4 -> T("Shared scooter", "קורקינט שיתופי")
@@ -788,7 +806,7 @@ internal fun cycleLabel(leg: Transit.Leg): String {
         -1 -> T("Shared car", "רכב שיתופי")
         else -> T("Shared bike", "אופניים שיתופיים")
     }
-    return listOf(what, leg.sharedBy, durMinutes(leg.minutes)).filter { it.isNotBlank() }.joinToString(" · ")
+    return listOf(what, leg.sharedBy, if (minutes) durMinutes(leg.minutes) else "").filter { it.isNotBlank() }.joinToString(" · ")
 }
 
 @Composable
@@ -817,10 +835,11 @@ private fun DepartureLine(it: Transit.Itinerary, r: Transit.Resolved, now: Long,
         )
         return
     }
-    // A shared bike or scooter route has no departures: say what it rides and who runs it.
+    // A shared bike or scooter route has no departures: say what it rides and who runs it, and its
+    // minutes unless they are the whole route's, which the card's time says.
     val shared = it.legs.firstOrNull { l -> l.shared != 0 }
     if (shared != null && it.legs.none { l -> l.kind == Transit.LegKind.RIDE }) {
-        Text(cycleLabel(shared), style = K.type.subhead)
+        Text(cycleLabel(shared, minutes = shared.minutes != it.durationMin), style = K.type.subhead)
         return
     }
     val rideIndex = it.legs.indexOfFirst { leg -> leg.kind == Transit.LegKind.RIDE }

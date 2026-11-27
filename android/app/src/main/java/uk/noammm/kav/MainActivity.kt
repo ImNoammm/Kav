@@ -456,6 +456,8 @@ data class RecentTrip(
     val stopovers: List<Transit.Place> = emptyList(),
     // The extension that planned it (its namespace), which alone plans it again; empty for Kav's planners.
     val planner: String = "",
+    // How many times this trip was searched, which tells the places the rider often goes to.
+    val times: Int = 1,
 )
 
 // What search is told about where the user is while private search is on.
@@ -1882,6 +1884,7 @@ object Prefs {
                 o.optJSONObject("from")?.let { place(it) }, place(to), o.optLong("at"),
                 stopovers = (0 until (stopovers?.length() ?: 0)).mapNotNull { j -> stopovers?.optJSONObject(j)?.let { place(it) } },
                 planner = o.optString("planner"),
+                times = o.optInt("n", 1).coerceAtLeast(1),
             )
         }
     } catch (e: Exception) { emptyList() }
@@ -1898,7 +1901,8 @@ object Prefs {
                 org.json.JSONObject()
                     .put("from", t.from?.let { json(it) }).put("to", json(t.to)).put("at", t.at)
                     .put("stopovers", org.json.JSONArray().apply { t.stopovers.forEach { put(json(it)) } })
-                    .apply { if (t.planner.isNotEmpty()) put("planner", t.planner) },
+                    .apply { if (t.planner.isNotEmpty()) put("planner", t.planner) }
+                    .apply { if (t.times > 1) put("n", t.times) },
             )
         }
         store(ctx).edit().putString(TRIPS, arr.toString()).apply()
@@ -1906,7 +1910,9 @@ object Prefs {
 
     // Every search that found routes, newest first. Opening one plans again from its places.
     fun rememberTrip(ctx: Context, trip: RecentTrip) {
-        val kept = (listOf(trip) + trips(ctx)).distinctBy(::tripKey).take(MAX_TRIPS)
+        val earlier = trips(ctx)
+        val times = (earlier.firstOrNull { tripKey(it) == tripKey(trip) }?.times ?: 0) + 1
+        val kept = (listOf(trip.copy(times = times)) + earlier).distinctBy(::tripKey).take(MAX_TRIPS)
         saveTrips(ctx, kept)
     }
 
@@ -2115,6 +2121,10 @@ object Prefs {
     // A started trip goes straight to its first walk instead of waiting for its time or for the rider to move off.
     fun beginTripsImmediately(ctx: Context): Boolean = store(ctx).getBoolean("beginTripsImmediately", false)
     fun setBeginTripsImmediately(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("beginTripsImmediately", on).apply()
+
+    // A walk's next turn on its trip card, on Home and in navigation.
+    fun walkTurnsOnCards(ctx: Context): Boolean = store(ctx).getBoolean("walkTurnsOnCards", false)
+    fun setWalkTurnsOnCards(ctx: Context, on: Boolean) = store(ctx).edit().putBoolean("walkTurnsOnCards", on).apply()
 
     private fun planWithKav(ctx: Context): Boolean = store(ctx).getBoolean("planWithKav", false)
 
@@ -2364,6 +2374,7 @@ object Prefs {
             .put("liveFromKav", true)
             .put("planWithKav", true)
             .put("beginTripsImmediately", beginTripsImmediately(ctx))
+            .put("walkTurnsOnCards", walkTurnsOnCards(ctx))
             .put("timetableUpdates", timetableUpdates(ctx))
             .put("timetableOnMobile", timetableOnMobile(ctx))
             // Kav's server by the address every Kav knows as Kav's, an older one too (KavLive.serverAddress).
@@ -2413,6 +2424,7 @@ object Prefs {
         if (o.has("privateSearch")) e.putBoolean("privateSearch", o.optBoolean("privateSearch"))
         uk.noammm.kav.data.Search.ALL.firstOrNull { it.key == o.optString("placeSearch") }?.let { e.putString("placeSearch", it.key) }
         if (o.has("beginTripsImmediately")) e.putBoolean("beginTripsImmediately", o.optBoolean("beginTripsImmediately"))
+        if (o.has("walkTurnsOnCards")) e.putBoolean("walkTurnsOnCards", o.optBoolean("walkTurnsOnCards"))
         // A backup from before the timetable was downloaded (no timetableSource) wrote this off by default, when off
         // meant the week Kav came with; now off means a week that's never refreshed, so it's left at its default.
         if (o.has("timetableUpdates") && o.has("timetableSource")) e.putBoolean("timetableUpdates", o.optBoolean("timetableUpdates"))

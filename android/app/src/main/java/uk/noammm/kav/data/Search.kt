@@ -121,3 +121,28 @@ fun Net.nearestStops(la: Double, lo: Double, k: Int = 24, radius: Double = 2500.
     }
     return out.sortedBy { it.second }.take(k)
 }
+
+// The stops a town is known by, for a search nothing is typed in yet: up to three of its train stations, then its
+// busiest stops, one a name, the busiest of each name standing for it. The town is the one of the stop nearest the
+// point; with no point, or no stop within 5 km of it, the whole country's. The timetable gives train stations no town,
+// so such a stop is in the town of the nearest stop that has one. The town's index (-1 for the country) and the stops.
+fun Net.placesAround(at: Pair<Double, Double>?, most: Int = 6): Pair<Int, List<Int>> {
+    fun named(s: Int) = city.getOrElse(cityOf[s]) { "" }.isNotBlank()
+    fun townNear(la: Double, lo: Double, radius: Double) =
+        nearestStops(la, lo, 8, radius).firstOrNull { named(it.first) }?.let { cityOf[it.first] } ?: -1
+    val town = at?.let { (la, lo) -> townNear(la, lo, 5000.0) } ?: -1
+    val types = stopType
+    val total = HashMap<String, Int>()
+    val busiest = HashMap<String, Int>()
+    for (s in 0 until nStops) {
+        if (types[s] < 0 || (town >= 0 && (if (named(s)) cityOf[s] else townNear(lat[s], lon[s], 1500.0)) != town)) continue
+        val key = name[s]
+        val runs = dStart[s + 1] - dStart[s]
+        total[key] = (total[key] ?: 0) + runs
+        val best = busiest[key]
+        if (best == null || runs > dStart[best + 1] - dStart[best]) busiest[key] = s
+    }
+    val byRuns = busiest.entries.sortedByDescending { total.getValue(it.key) }.map { it.value }
+    val trains = byRuns.filter { types[it] == 2 }.take(3)
+    return town to (trains + byRuns.filter { it !in trains }).take(most)
+}

@@ -168,7 +168,7 @@ fun AccentPreview(modifier: Modifier = Modifier) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
                 Row(
-                    Modifier.weight(1f).height(32.dp).seeThrough(16.dp).padding(horizontal = K.gap3),
+                    Modifier.weight(1f).height(32.dp).seeThrough(K.rTile).padding(horizontal = K.gap3),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(K.gap3),
                 ) {
                     Icon(Icons.Rounded.Search, contentDescription = null, tint = K.textTertiary, modifier = Modifier.size(14.dp))

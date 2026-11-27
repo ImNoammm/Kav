@@ -39,6 +39,7 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.ui.draw.drawBehind
@@ -424,7 +425,7 @@ fun NavigateScreen(
     fun replanTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(f) }) replan(f) }
     fun keepTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(f) }) keep(f) }
 
-    // The trip's voice and what it does by itself (OnTheWayChoices), in a sheet from the header.
+    // The trip's voice (OnTheWayChoices), in a sheet from the header.
     var tripSettings by remember { mutableStateOf(false) }
     var voiceChanged by remember { mutableIntStateOf(0) }
     val speaks = remember(voiceChanged) { Prefs.spokenAlerts(ctx) || Prefs.spokenTurns(ctx) }
@@ -467,12 +468,13 @@ fun NavigateScreen(
                         LiveText("${durMinutes(minsLeft(arrive - now).toInt())} · ${hm.format(Date(arrive * 1000))}",
                             style = K.type.subhead.tabular, maxLines = 1)
                     }
-                    // Whether Kav speaks on this trip, at a glance; it opens the trip's settings. The speaker faces the
-                    // same way in Hebrew as the one in those settings.
+                    // Whether Kav speaks on this trip, at a glance; it opens the trip's voice. The speaker faces the
+                    // same way in Hebrew as the one in that sheet.
                     CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         KavIconButton(if (speaks) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
-                            T("Trip settings", "הגדרות נסיעה"), { tripSettings = true }, tint = K.text)
+                            T("Voice", "הקראה"), { tripSettings = true }, tint = K.text)
                     }
+                    Spacer(Modifier.width(K.gap3))
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
                         tint = K.text)
                 } }
@@ -560,7 +562,7 @@ fun NavigateScreen(
                 }
             }
             if (tripSettings) BottomSheet({ tripSettings = false }, scrolls = true) { close ->
-                SheetHeader(T("Trip settings", "הגדרות נסיעה"), { close { tripSettings = false } })
+                SheetHeader(T("Voice", "הקראה"), { close { tripSettings = false } })
                 OnTheWayChoices { voiceChanged++ }
             }
         }
@@ -744,9 +746,10 @@ internal fun StepCard(
     pay: Boolean = false,
     // Reporting the bus ridden to the ministry.
     report: ((ReportFor) -> Unit)? = null,
-    // The trip under way as its parts are told it (tripArgs), on the navigation screen only: with it, extensions' views
-    // go in the wait and ride cards (nav.wait.details, nav.ride.details).
+    // The trip under way as its parts are told it (tripArgs): with it, the pay row is the ride.pay part and, on the
+    // navigation screen (navParts), extensions' views go in the wait and ride cards (nav.wait.details, nav.ride.details).
     tripArgs: (() -> org.json.JSONObject)? = null,
+    navParts: Boolean = true,
 ) {
     when (step) {
         // The place is the card's first line: a Hebrew header can't end in "from" with its place on the line under it.
@@ -785,11 +788,14 @@ internal fun StepCard(
 
         is Step.Walk -> {
             val stop = r.stop(step.toStop)
-            // As the start's: no Hebrew header ends in "to" with its place on the line under it.
+            // "Walk" over the place it goes to, its time and distance at the end of the header in one quiet run.
             Card(
-                T("Walk ${step.leg.minutes} min to", "הליכה ${step.leg.minutes} דק׳").takeIf { step.leg.minutes >= 1 } ?: T("Walk to", "הליכה"),
+                T("Walk", "הליכה"),
                 active,
-                trailing = if (step.leg.meters > 0) distanceLabel(step.leg.meters.toDouble()) else null,
+                trailing = listOfNotNull(
+                    durMinutes(step.leg.minutes).takeIf { step.leg.minutes >= 1 },
+                    distanceLabel(step.leg.meters.toDouble()).takeIf { step.leg.meters > 0 },
+                ).joinToString(" · ").ifEmpty { null },
             ) {
                 StopLine(
                     walkTo(step, r), stop?.code,
@@ -800,8 +806,11 @@ internal fun StepCard(
                     stopId = step.toStop,
                     streetView = step.toRide?.let { ride -> stop?.point?.let { lookAt(it, ride, r, stop) } },
                 )
-                // The walk's next turn, from where the rider is on it, rolling on as they pass each one.
-                nextTurn(step.leg, fix?.takeIf { active })?.let { (turn, metres) ->
+                // The walk's next turn, from where the rider is on it, rolling on as they pass each one; only where the
+                // rider asked for it (Settings › Trips).
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val turns = remember { Prefs.walkTurnsOnCards(ctx) }
+                if (turns) nextTurn(step.leg, fix?.takeIf { active })?.let { (turn, metres) ->
                     Spacer(Modifier.height(K.gap2))
                     LiveText(
                         turnText(turn, step.leg) + if (metres >= 10) " · " + distanceLabel(metres) else "",
@@ -889,10 +898,7 @@ internal fun StepCard(
                     ) {
                         // The ride's stops and minutes right after the line's number, and where it goes under them.
                         RideDetails(ride, r) { LineBadge(ride, r) }
-                        lineDestination(ride, r).takeIf { it.isNotEmpty() }?.let {
-                            Text(it, style = K.type.subhead, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = K.gap1))
-                        }
+                        Headsign(ride, r, Modifier.padding(top = K.gap1))
                         Spacer(Modifier.height(K.gap2))
                         val platform = r.platform(ride, wait)
                         if (platform.isNotBlank()) {
@@ -902,7 +908,7 @@ internal fun StepCard(
                         val lineDeps = depsOf[index]
                         DepartureTimes(lineDeps, now)
                         CrowdMeter(ride, r, lineDeps.firstOrNull())
-                        if (tripArgs != null) KavPart("nav.wait.details", Triple(step.legIndex, index, ride.tripId), {
+                        if (tripArgs != null && navParts) KavPart("nav.wait.details", Triple(step.legIndex, index, ride.tripId), {
                             tripArgs().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.legIndex).put("option", index)
                         }, ownGap = true) {}
                         // A train late by the railway's forecast says by how much, as its own list does.
@@ -949,7 +955,7 @@ internal fun StepCard(
                     Box(Modifier.weight(1f)) { LineRow(ride, r) }
                     if (report != null) rideReport(ride, r, busOn(ride, r, trip), now)?.let { ReportButton { report(it) } }
                 }
-                if (tripArgs != null) KavPart("nav.ride.details", step.legIndex to ride.tripId, {
+                if (tripArgs != null && navParts) KavPart("nav.ride.details", step.legIndex to ride.tripId, {
                     tripArgs().put("leg", uk.noammm.kav.ext.Pipeline.legJson(ride, r)).put("index", step.legIndex)
                 }, ownGap = true) {}
                 // On board, with a change after the ride: how much later the next bus there leaves, if this one is missed.
@@ -1153,15 +1159,20 @@ private fun LineRow(ride: Transit.Leg, r: Transit.Resolved) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         LineBadge(ride, r)
         Spacer(Modifier.width(K.gap3))
-        Text(
-            lineDestination(ride, r), style = K.type.subhead, maxLines = 2,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-        )
+        Headsign(ride, r, Modifier.weight(1f))
     }
 }
 
-private fun lineDestination(ride: Transit.Leg, r: Transit.Resolved): String =
-    r.line(ride.lineId)?.destination?.ifBlank { null }?.let { T("to ${shownName(it)}", "לכיוון ${shownName(it)}") } ?: ""
+// Where the line goes, as its sign says: an arrow and the name alone, quieter than the line's number.
+@Composable
+private fun Headsign(ride: Transit.Leg, r: Transit.Resolved, modifier: Modifier = Modifier) {
+    val to = r.line(ride.lineId)?.destination?.ifBlank { null }?.let(::shownName) ?: return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.AutoMirrored.Rounded.ArrowForward, T("Towards", "לכיוון"), tint = K.textTertiary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(K.gap1))
+        Text("\u2068$to\u2069", style = K.type.subhead, color = K.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
 
 @Composable
 private fun LineBadge(ride: Transit.Leg, r: Transit.Resolved) {
