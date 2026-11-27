@@ -299,10 +299,13 @@ internal fun PayButton() {
         ) else if (offer) Box(
             Modifier.align(androidx.compose.ui.AbsoluteAlignment.TopRight).absolutePadding(top = 6.dp, right = 6.dp).size(12.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape).background(K.bg).padding(2.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape).background(K.problem),
+                .clip(androidx.compose.foundation.shape.CircleShape).background(OFFER_YELLOW),
         )
     }
 }
+
+// The offer dot's yellow, in both looks: K.problem is a dark amber in Light, made for text, which on a dot reads brown.
+private val OFFER_YELLOW = androidx.compose.ui.graphics.Color(0xFFF5C518)
 
 // Home's pay card: the tickets and rides. Paying itself is the button under Settings, which also offers setting it up.
 @Composable
