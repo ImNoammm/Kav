@@ -46,6 +46,7 @@ internal const val CHANGE_LATE_S = 120L
 
 // Far off the route: this far from everything still ahead in the trip.
 internal const val OFF_ROUTE_M = 500.0
+internal const val WALK_OFF_ROUTE_M = 100.0
 
 private fun choice(step: Step.Wait, chosen: Map<Int, Int>) = boardingChoice(step.ride, step.wait, chosen[step.legIndex] ?: 0)
 
@@ -166,7 +167,8 @@ internal fun planFailure(
 
     // Far from everything still ahead in the trip, and from the step before it.
     if (live != null && at > 0) {
-        val ahead = steps.drop(at - 1).flatMap { s ->
+        // On a walk, only the walk itself and what follows count, so a bus stop far along the trip doesn't hide a wrong turn.
+        val ahead = steps.drop(at - 1).let { if (step is Step.Walk) it.take(2) else it }.flatMap { s ->
             when (s) {
                 is Step.Walk -> listOf(s.leg.shape)
                 is Step.Wait -> listOfNotNull(stepTarget(s, r, chosen)?.let(::listOf))
@@ -177,7 +179,9 @@ internal fun planFailure(
                 is Step.Start -> emptyList()
             }
         }.filter { it.isNotEmpty() }
-        if (ahead.isNotEmpty() && ahead.all { distanceToPath(live.lat, live.lon, it) > OFF_ROUTE_M + 3 * live.slack }) {
+        // A walk is judged closer (100 m) than the rest of the trip.
+        val reach = if (step is Step.Walk) WALK_OFF_ROUTE_M + live.slack else OFF_ROUTE_M + 3 * live.slack
+        if (ahead.isNotEmpty() && ahead.all { distanceToPath(live.lat, live.lon, it) > reach }) {
             return Failure(Broken.OFF_ROUTE, "off-$at", ReplanFrom(live.lat to live.lon, 0, keep, done))
         }
     }
@@ -300,3 +304,10 @@ internal fun firedAfterSwitch(fired: Set<String>, was: List<Transit.Leg>, now: L
 
 // A ride's alerts by its leg (tripAlert): arriving, delayed, get off.
 private val LEG_ALERT = Regex("(?:wait|traffic|ride)-(\\d+)")
+
+// Whether Kav plans a new route by itself when the rider leaves the walking route (a short countdown, with a way to stay).
+internal object AutoReroute {
+    private const val FILE = "kav_auto_reroute"
+    fun enabled(c: android.content.Context) = c.getSharedPreferences(FILE, 0).getBoolean("on", true)
+    fun set(c: android.content.Context, on: Boolean) { c.getSharedPreferences(FILE, 0).edit().putBoolean("on", on).apply() }
+}
