@@ -90,6 +90,10 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     var days by remember { mutableIntStateOf(LineAlert.WEEKDAYS) }
     var from by remember { mutableIntStateOf(8 * 60) }
     var to by remember { mutableIntStateOf(9 * 60) }
+    // A warning before the day's last ride of the chosen lines instead of the hours' rolling times.
+    var lastRide by remember { mutableStateOf(false) }
+    // How far before the last ride its warning goes up; the rider's choice.
+    var warnMin by remember { mutableIntStateOf(20) }
     // The time on the wheels: 0 from, 1 until, null neither. last keeps it while the wheels fold away.
     var editing by remember { mutableStateOf<Int?>(null) }
     var last by remember { mutableIntStateOf(0) }
@@ -98,7 +102,7 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     }
     // Let post notifications, the alarm that was left off for them is set.
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) uk.noammm.kav.LineAlerts.reschedule(ctx)
+        if (granted) { uk.noammm.kav.LineAlerts.reschedule(ctx); uk.noammm.kav.LastBus.reschedule(ctx) }
     }
     BottomSheet(onDismiss, scrolls = true) { close ->
         SheetHeader(T("Line alerts", "התראות קווים"), { close(onDismiss) }, subtitle = net.stopName(stop))
@@ -143,15 +147,27 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                 for (d in 0..6) DayToggle(dayName(d), days and (1 shl d) != 0, Modifier.weight(1f)) { days = days xor (1 shl d) }
             }
             Heading(T("Hours", "שעות"))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
-                TimeButton(T("From", "משעה"), from, editing == 0, Modifier.weight(1f)) { edit(0) }
-                TimeButton(T("Until", "עד שעה"), to, editing == 1, Modifier.weight(1f)) { edit(1) }
-            }
-            AnimatedVisibility(editing != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                key(last) {
-                    // Moving the start carries the end along, so the window keeps its length, as a calendar does.
-                    TimeWheels(if (last == 0) from else to) { m ->
-                        if (last == 0) { to = Math.floorMod(to + m - from, 1440); from = m } else to = m
+            KavChip(
+                T("Warn before the day's last ride", "אזהרה לפני הנסיעה האחרונה של היום"), lastRide,
+                { lastRide = !lastRide; if (lastRide) editing = null }, check = true,
+            )
+            if (lastRide) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(T("Warn", "התראה"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                    for (m in listOf(10, 15, 20, 30, 45)) KavChip("$m", warnMin == m, { warnMin = m }, Modifier.weight(1f))
+                    Text(T("min before", "דקות לפני"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+                    TimeButton(T("From", "משעה"), from, editing == 0, Modifier.weight(1f)) { edit(0) }
+                    TimeButton(T("Until", "עד שעה"), to, editing == 1, Modifier.weight(1f)) { edit(1) }
+                }
+                AnimatedVisibility(editing != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    key(last) {
+                        // Moving the start carries the end along, so the window keeps its length, as a calendar does.
+                        TimeWheels(if (last == 0) from else to) { m ->
+                            if (last == 0) { to = Math.floorMod(to + m - from, 1440); from = m } else to = m
+                        }
                     }
                 }
             }
@@ -169,6 +185,8 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                         val alert = LineAlert(
                             System.currentTimeMillis(), key, net.stopName(stop), numbers.filter { it in lines }, days, from, to,
                             toward = ends.filter { it in toward }.map { LineAlert.End(net.name[it], net.code[it], net.lat[it], net.lon[it]) },
+                            lastRide = lastRide,
+                            warnMin = warnMin,
                         )
                         model.saveAlerts(ctx, model.lineAlerts + alert)
                         lines = emptySet()
@@ -320,6 +338,7 @@ internal fun alertWhen(a: LineAlert): String {
         runs -> "${dayName(on.first())}-${dayName(on.last())}"
         else -> on.joinToString(", ") { dayName(it) }
     }
+    if (a.lastRide) return days + " · " + T("${a.warnMin} min before the last ride", "${a.warnMin} דקות לפני הנסיעה האחרונה")
     return "$days · ${hhmm(a.from * 60)}-${hhmm(a.to * 60)}"
 }
 

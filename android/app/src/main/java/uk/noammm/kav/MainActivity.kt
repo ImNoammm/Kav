@@ -243,8 +243,9 @@ class MainActivity : ComponentActivity() {
         if (fresh) intent?.getStringExtra(LineAlerts.EXTRA_STOP)?.let { PendingStop.key = it }
         if (fresh) intent?.getStringExtra(TicketReader.EXTRA_TICKET)?.let { TicketStore.opened = it }
         if (fresh) PayEntry.take(this, intent)
-        // A force stop drops the line alerts' alarm.
+        // A force stop drops the alerts' alarms.
         LineAlerts.reschedule(this)
+        LastBus.reschedule(this)
         // Updates in the background, which must know when Kav is in front so as not to run then.
         Checks.watch(this)
         setContent {
@@ -449,6 +450,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         lineAlerts = alerts
         Prefs.setLineAlerts(ctx, alerts)
         LineAlerts.reschedule(ctx)
+        LastBus.reschedule(ctx)
     }
 
     var stationStop by mutableIntStateOf(-1)
@@ -538,6 +540,7 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
         savedLines = Prefs.savedLines(ctx)
         lineAlerts = Prefs.lineAlerts(ctx)
         LineAlerts.reschedule(ctx)
+        LastBus.reschedule(ctx)
         filters = Prefs.filters(ctx)
         K.accent = Color(Prefs.accent(ctx))
         K.applyTheme(Prefs.look(ctx))
