@@ -95,8 +95,8 @@ internal object HomeMap {
         uk.noammm.kav.hasLocationPermission(ctx) && (here != null || place(ctx) != null)
 }
 
-// Kav's zoom of Home's map with no trip: a kilometer or so across, the vehicles near enough to take.
-private const val HOME_Z = 16.5f
+// Kav's zoom of Home's map with no trip, as it was before 516dbd4 (MapLibre 15.5 at 420 dpi: Kav's zoom less 1 and the density steps).
+private const val HOME_Z = 17.9f
 
 // The arrow on Home's trip map turns by this many degrees at a time with the compass: each turn sends the trip's marks
 // to the map again.
