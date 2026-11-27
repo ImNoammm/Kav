@@ -10,6 +10,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import uk.noammm.kav.ext.ExtApp
 import uk.noammm.kav.ext.Looks
 import uk.noammm.kav.ext.PageHost
@@ -41,6 +44,7 @@ object ExtShown {
     // what's installed and on.
     fun start(ctx: Context) {
         if (SafeMode.active) return
+        ExtLook.root = ExtApp.dir(ctx)
         publish()
         if (Screens.tab == null && Screens.theme == null) return
         val app = ctx.applicationContext
@@ -85,6 +89,9 @@ object ExtShown {
 object ExtLook {
     @Volatile private var theme: Looks.Theme? = null
     @Volatile private var palettes: Map<String, Palette> = emptyMap()
+    @Volatile private var font: FontFamily? = null
+    // The extensions folder, where a theme's font is read from (ExtShown.start).
+    @Volatile internal var root: java.io.File? = null
     private var holds by mutableIntStateOf(0)
     // A protected surface is on the screen: extension pages under it pause.
     val protectedNow get() = holds > 0
@@ -94,6 +101,11 @@ object ExtLook {
     fun accentFor(look: Look): Color? = theme?.colours(look.name.lowercase(), protectedShown = holds > 0)?.get("accent")?.let(::Color)
     fun badges(): LineBadgeAppearance? = theme?.takeIf { holds == 0 }?.badges?.let { if (it == "strip") LineBadgeAppearance.STRIP else LineBadgeAppearance.KAV }
     fun corners(): Looks.Corners? = theme?.takeIf { holds == 0 }?.corners
+    // Its font and its outlines (Looks.OUTLINES, "kav" being Kav's own), or null for Kav's own, likewise.
+    fun font(): FontFamily? = font?.takeIf { theme != null && holds == 0 }
+    fun outline(): String? = theme?.takeIf { holds == 0 }?.outline?.takeIf { it != "kav" }
+    // The colors of Kav's own map in a look (MapFile.toned), or null for Kav's own map, likewise.
+    fun mapTone(look: Look): Looks.MapTone? = theme?.takeIf { holds == 0 }?.map?.get(look.name.lowercase())
 
     // The theme's colours for a look (Looks.Theme.colours decides), or Kav's own.
     fun paletteFor(look: Look): Palette {
@@ -105,9 +117,29 @@ object ExtLook {
         if (t == null && theme == null) return
         val r = t?.resolved()
         palettes = r?.looks?.mapValues { (k, c) -> paletteOf(c, palette(Look.entries.first { it.name.lowercase() == k })) }.orEmpty()
+        val d = root
+        font = if (t == null || d == null) null else r?.font?.let { fontOf(uk.noammm.kav.ext.Registry.packageDir(d, t.sha256), it) }
         theme = r
         K.applyTheme(K.look)
     }
+
+    // The font file at path in a package's folder as a family Kav's type can use, or null (Kav's own type) when it isn't
+    // there or Android can't read it: it is tried once here, so a broken file never reaches a screen. A variable font
+    // is drawn at each weight Kav uses; one of a single weight is made bolder by Android where Kav asks for more.
+    private fun fontOf(dir: java.io.File, path: String): FontFamily? = runCatching {
+        val file = java.io.File(dir, path)
+        if (!file.canonicalPath.startsWith(dir.canonicalPath + java.io.File.separator) || !file.isFile) return null
+        android.graphics.Typeface.Builder(file).build() ?: return null
+        val head = ByteArray(12 + 16 * 64).let { b ->
+            file.inputStream().use { input ->
+                var n = 0
+                while (n < b.size) { val k = input.read(b, n, b.size - n); if (k < 0) break; n += k }
+                b.copyOf(n)
+            }
+        }
+        if (Looks.variable(head)) FontFamily(listOf(400, 500, 600, 700).map { Font(file, FontWeight(it)) })
+        else FontFamily(Font(file))
+    }.getOrNull()
 
     // A role the theme leaves out stays Kav's own (base).
     private fun paletteOf(c: Looks.Colours, base: Palette): Palette {

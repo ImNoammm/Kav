@@ -550,7 +550,7 @@ fun NavigateScreen(
                     }
                 }
                 Row(
-                    Modifier.padding(horizontal = K.gap4, vertical = K.gap3).fillMaxWidth().heightIn(min = 52.dp).glassSurface(26.dp)
+                    Modifier.padding(horizontal = K.gap4, vertical = K.gap3).fillMaxWidth().heightIn(min = 52.dp).glassSurface(K.pill(26.dp))
                         .clickable(role = Role.Button, onClick = onStop),
                     horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -614,7 +614,7 @@ internal fun CurrentStepButton(page: Int, current: Int, shown: Boolean = true, m
         .then(if (shown) Modifier else Modifier.clearAndSetSemantics { }),
         horizontalArrangement = if (back) Arrangement.Start else Arrangement.End) {
         Row(
-            modifier.heightIn(min = 48.dp).glassSurface(24.dp)
+            modifier.heightIn(min = 48.dp).glassSurface(K.pill(24.dp))
                 .clickable(enabled = shown, role = Role.Button, onClick = onClick)
                 .padding(horizontal = K.gap3, vertical = K.gap2),
             verticalAlignment = Alignment.CenterVertically,
@@ -683,7 +683,7 @@ private fun Modifier.touched(cards: TouchedCards, key: Any): Modifier = composed
 private fun StepStrip(pager: PagerState, count: Int, live: Int, goTo: (Int) -> Unit) {
     val current = pager.currentPage
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = K.gap4).height(48.dp).glassSurface(24.dp)
+        Modifier.fillMaxWidth().padding(horizontal = K.gap4).height(48.dp).glassSurface(K.pill(24.dp))
             .padding(horizontal = K.gap1),
         verticalAlignment = Alignment.CenterVertically,
     ) {

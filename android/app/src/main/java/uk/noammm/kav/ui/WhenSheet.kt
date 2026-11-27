@@ -249,7 +249,7 @@ private fun TimeField(
                     RoundedCornerShape(K.rTile),
                 )
                 .onFocusChanged { focused = it.isFocused; typed = null },
-            textStyle = TextStyle(fontSize = 44.sp, color = androidx.compose.animation.animateColorAsState(if (valid) K.text else K.critical, androidx.compose.animation.core.tween(150), label = "digits").value, textAlign = TextAlign.Center),
+            textStyle = TextStyle(fontFamily = K.font, fontSize = 44.sp, color = androidx.compose.animation.animateColorAsState(if (valid) K.text else K.critical, androidx.compose.animation.core.tween(150), label = "digits").value, textAlign = TextAlign.Center),
             singleLine = true,
             cursorBrush = SolidColor(K.accent),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ime),

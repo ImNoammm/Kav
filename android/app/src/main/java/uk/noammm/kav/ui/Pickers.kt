@@ -102,7 +102,7 @@ fun KavField(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             // A capsule with a quiet fill, a search bar a card's rounded rectangle; glass where it floats over a list.
-            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(if (search) K.rCard else 26.dp)
+            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(if (search) K.rCard else K.pill(26.dp))
                 else Modifier.clip(when {
                     multiline -> androidx.compose.foundation.shape.RoundedCornerShape(K.rTile)
                     search -> androidx.compose.foundation.shape.RoundedCornerShape(K.rCard)
@@ -593,7 +593,7 @@ private fun StopMapHeader(pin: Boolean, onDismiss: () -> Unit, onLocate: (() -> 
     ) {
         BackButton(onDismiss)
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { Box(
-            Modifier.heightIn(min = 48.dp).glassSurface(24.dp).padding(horizontal = K.gap4),
+            Modifier.heightIn(min = 48.dp).glassSurface(K.pill(24.dp)).padding(horizontal = K.gap4),
             contentAlignment = Alignment.Center,
         ) {
             Text(

@@ -18,9 +18,10 @@ object Screens {
     class Home(val identity: String, val name: String)
     class Tab(val identity: String, val page: String, val title: Pair<String, String>, val name: String)
     class Theme(val identity: String, val sha256: String, val name: String, val looks: Map<String, Looks.Colours>,
-        val badges: String? = null, val corners: Looks.Corners? = null) {
+        val badges: String? = null, val corners: Looks.Corners? = null, val font: String? = null, val outline: String? = null,
+        val map: Map<String, Looks.MapTone> = emptyMap()) {
         // The one immutable value Kav draws with.
-        fun resolved() = Looks.Theme(identity, name, looks, badges, corners)
+        fun resolved() = Looks.Theme(identity, name, looks, badges, corners, font, outline, map)
     }
 
     @Volatile var home: Home? = null
@@ -46,7 +47,8 @@ object Screens {
             theme = o.optJSONObject("theme")?.let {
                 val t = it.getJSONObject("theme")
                 val r = Looks.resolve(t, it.getString("identity"), it.getString("name"))
-                Theme(it.getString("identity"), it.getString("sha256"), it.getString("name"), Looks.read(t), r?.badges, r?.corners)
+                Theme(it.getString("identity"), it.getString("sha256"), it.getString("name"), Looks.read(t), r?.badges, r?.corners, r?.font, r?.outline,
+                    Looks.readMap(t))
             }
         }
     }
@@ -87,5 +89,5 @@ object Screens {
         ?.let { Tab(i.identity, it.id, it.title, i.displayName) }
 
     fun themeOf(i: Registry.Installed): Theme? = runCatching { Looks.of(i.manifest, i.identity) }.getOrNull()
-        ?.let { Theme(i.identity, i.sha256, i.displayName, it.looks, it.badges, it.corners) }
+        ?.let { Theme(i.identity, i.sha256, i.displayName, it.looks, it.badges, it.corners, it.font, it.outline, it.map) }
 }

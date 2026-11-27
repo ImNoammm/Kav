@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -56,12 +55,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.text
@@ -125,6 +127,7 @@ fun KavButton(
             .graphicsLayer { scaleX = press; scaleY = press }
             .clip(K.capsule)
             .background(fill)
+            .then(if (style == ButtonStyle.Plain) Modifier else Modifier.controlOutline())
             .clickable(source, LocalIndication.current, enabled = enabled && !busy, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (style == ButtonStyle.Plain) K.gap4 else K.gap5),
         verticalAlignment = Alignment.CenterVertically,
@@ -210,7 +213,7 @@ fun KavIconButton(
     Box(
         modifier
             .size(size)
-            .then(if (floating) Modifier.glassSurface(size / 2) else Modifier.clip(CircleShape).background(K.fill))
+            .then(if (floating) Modifier.glassSurface(K.pill(size / 2)) else Modifier.clip(K.capsule).background(K.fill).controlOutline())
             .semantics { contentDescription = label }
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -245,6 +248,7 @@ fun KavChip(
                 .heightIn(min = 36.dp)
                 .clip(K.capsule)
                 .background(fill)
+                .controlOutline()
                 .semantics { this.selected = selected }
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
@@ -263,6 +267,7 @@ fun KavChip(
             .heightIn(min = 36.dp)
             .clip(K.capsule)
             .background(fill)
+            .controlOutline()
             .semantics { this.selected = selected }
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = K.gap4),
@@ -287,7 +292,7 @@ fun KavSegmented(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val style = K.type.subhead
-    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule).background(K.fill).padding(3.dp)) {
+    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule).background(K.fill).controlOutline().padding(3.dp)) {
         val n = options.size.coerceAtLeast(1)
         val widths = remember(options, maxWidth, style, density) {
             if (n < 4) List(n) { maxWidth / n } else {
@@ -400,6 +405,26 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
         bottomStart = if (last) r else 0.dp, bottomEnd = if (last) r else 0.dp,
     )
     val line = K.separator
+    // The hairline between this row and the one above it, from the text's start.
+    fun DrawScope.divider(w: Float) {
+        if (first) return
+        val start = inset.toPx()
+        if (layoutDirection == LayoutDirection.Ltr) drawLine(line, Offset(start, w / 2), Offset(size.width, w / 2), w)
+        else drawLine(line, Offset(0f, w / 2), Offset(size.width - start, w / 2), w)
+    }
+    // A theme's outline round the card, worked out once for the row's size, its ends pushed out of sight as Kav's are.
+    val style = K.outline
+    if (style != null) return clip(shape).background(K.surface).drawWithCache {
+        val radius = r.toPx()
+        val top = if (first) 0f else -radius * 2 - 8.dp.toPx()
+        val bottom = if (last) size.height else size.height + radius * 2 + 8.dp.toPx()
+        val edge = outlineOf(style, RoundRect(0f, top, size.width, bottom, CornerRadius(radius)), line, card = true)
+        onDrawWithContent {
+            drawContent()
+            edge.over(this)
+            divider(.5.dp.toPx())
+        }
+    }
     return clip(shape).background(K.surface).drawWithContent {
         drawContent()
         val w = .5.dp.toPx()
@@ -410,11 +435,7 @@ fun Modifier.groupItem(first: Boolean, last: Boolean, inset: Dp = K.gap4): Modif
         drawRoundRect(
             line, Offset(w / 2, top), Size(size.width - w, bottom - top), CornerRadius(radius - w / 2), style = Stroke(w),
         )
-        if (!first) {
-            val start = inset.toPx()
-            if (layoutDirection == LayoutDirection.Ltr) drawLine(line, Offset(start, w / 2), Offset(size.width, w / 2), w)
-            else drawLine(line, Offset(0f, w / 2), Offset(size.width - start, w / 2), w)
-        }
+        divider(w)
     }
 }
 
@@ -562,8 +583,8 @@ fun SheetHeader(title: String, onClose: () -> Unit, subtitle: String? = null) {
 fun KavSwitch(on: Boolean, modifier: Modifier = Modifier) {
     val track by animateColorAsState(if (on) K.accent else K.fillStrong, label = "track")
     val at by animateDpAsState(if (on) 22.dp else 2.dp, spring(dampingRatio = 1f, stiffness = 500f), label = "thumb")
-    Box(modifier.size(52.dp, 32.dp).clip(K.capsule).background(track)) {
-        Box(Modifier.offset(x = at, y = 2.dp).size(28.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White))
+    Box(modifier.size(52.dp, 32.dp).clip(K.capsule).background(track).controlOutline()) {
+        Box(Modifier.offset(x = at, y = 2.dp).size(28.dp).shadow(2.dp, K.capsule).clip(K.capsule).background(Color.White))
     }
 }
 

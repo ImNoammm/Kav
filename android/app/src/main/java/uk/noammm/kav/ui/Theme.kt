@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uk.noammm.kav.data.MapFile
@@ -83,8 +84,21 @@ object K {
     val rTile get() = corners?.get("tile")?.dp ?: 12.dp
     // Line plates.
     val rBadge get() = corners?.get("badge")?.dp ?: 8.dp
-    // Every control: buttons, chips, segmented controls, fields, icon buttons.
-    val capsule = RoundedCornerShape(percent = 50)
+    // Every control: buttons, chips, segmented controls, fields, icon buttons. Round ends, or a theme's corner.
+    val capsule get() = corners?.get("control")?.let { RoundedCornerShape(it.dp) } ?: RoundEnds
+    private val RoundEnds = RoundedCornerShape(percent = 50)
+    // A floating control's corner, given half its height: round ends, or a theme's control corner.
+    fun pill(half: Dp) = corners?.get("control")?.dp ?: half
+
+    // A theme's font and how it outlines cards and controls (Looks.OUTLINES), while one sets them (applyTheme); null is
+    // Kav's own type and outlines.
+    var font by mutableStateOf<androidx.compose.ui.text.font.FontFamily?>(null)
+        private set
+    var outline by mutableStateOf<String?>(null)
+        private set
+    // The colors a theme draws Kav's own map in, in the chosen look (MapFile.toned); null is Kav's own map.
+    var mapTone by mutableStateOf<uk.noammm.kav.ext.Looks.MapTone?>(null)
+        private set
 
     // Interaction and selection only: filled primary buttons, chosen chips, switches, links. Setting it sets the rider's
     // own (Settings' color); a theme's, while one sets it, is what's drawn (applyTheme).
@@ -123,13 +137,16 @@ object K {
     fun restyle(change: () -> Unit) { restyling = Restyle(change) }
 
     // Every colour has to be set for every look, or a switch leaves strays from the last one (Palette has them all).
-    // A theme the rider chose gives the colours, the accent, the line badges and the corners it sets, except on Kav's
-    // protected surfaces (ExtLook).
+    // A theme the rider chose gives the colours, the accent, the line badges, the corners, the font and the outlines it
+    // sets, except on Kav's protected surfaces (ExtLook).
     fun applyTheme(chosen: Look) {
         look = chosen
         themeAccent = ExtLook.accentFor(chosen)
         themeBadges = ExtLook.badges()
         corners = ExtLook.corners()
+        font = ExtLook.font()
+        outline = ExtLook.outline()
+        mapTone = ExtLook.mapTone(chosen)
         val p = ExtLook.paletteFor(chosen)
         bg = p.bg; surface = p.surface; surfaceRaised = p.surfaceRaised
         fill = p.fill; fillStrong = p.fillStrong; separator = p.separator
@@ -288,24 +305,25 @@ fun readable(c: Color, on: Color): Color {
     return out
 }
 
-// The type roles, seven in all. Weight carries hierarchy before size; nothing in the interface is under 12 sp.
+// The type roles, seven in all. Weight carries hierarchy before size; nothing in the interface is under 12 sp. All in
+// Kav's own type, or a theme's font.
 object KType {
     // Top-level titles, and a trip's duration.
-    val largeTitle get() = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = K.text)
+    val largeTitle get() = TextStyle(fontFamily = K.font, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = K.text)
     // Pushed screens' and sheets' titles.
-    val title get() = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp, color = K.text)
+    val title get() = TextStyle(fontFamily = K.font, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp, color = K.text)
     // A card's title, the key line of a card.
-    val headline get() = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, color = K.text)
+    val headline get() = TextStyle(fontFamily = K.font, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, color = K.text)
     // Row titles, paragraphs, field text.
-    val body get() = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, color = K.text)
+    val body get() = TextStyle(fontFamily = K.font, fontSize = 16.sp, lineHeight = 22.sp, color = K.text)
     // Button labels and values that stand out.
-    val bodyStrong get() = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = K.text)
+    val bodyStrong get() = TextStyle(fontFamily = K.font, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = K.text)
     // A row's second line, chips, notes, footers.
-    val subhead get() = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, color = K.textSecondary)
+    val subhead get() = TextStyle(fontFamily = K.font, fontSize = 14.sp, lineHeight = 20.sp, color = K.textSecondary)
     // Section headers, tab labels, captions under icons.
-    val caption get() = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = .2.sp, color = K.textSecondary)
+    val caption get() = TextStyle(fontFamily = K.font, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = .2.sp, color = K.textSecondary)
     // A section's title over its card (SectionHeader, InfoHeader): read as a title, not a footnote.
-    val header get() = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = K.textSecondary)
+    val header get() = TextStyle(fontFamily = K.font, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = K.textSecondary)
 }
 
 // Figures of one width, for times and counts that change in place without the line jumping.
@@ -323,7 +341,7 @@ object Shown {
 }
 
 // Times in tabular figures of the system font.
-val Mono get() = TextStyle(fontSize = 12.sp, color = K.muted).tabular
+val Mono get() = TextStyle(fontFamily = K.font, fontSize = 12.sp, color = K.muted).tabular
 
 private fun scheme() = (if (K.light) lightColorScheme() else darkColorScheme()).copy(
     primary = K.text, onPrimary = K.bg,
@@ -411,9 +429,9 @@ fun KavTheme(content: @Composable () -> Unit) {
             labelLarge = K.type.bodyStrong,
             labelMedium = K.type.caption,
             // For text that sets no style of its own.
-            bodyLarge = TextStyle(fontSize = 14.sp, color = K.text),
-            bodyMedium = TextStyle(fontSize = 13.sp, color = K.text),
-            bodySmall = TextStyle(fontSize = 12.sp, color = K.dim),
+            bodyLarge = TextStyle(fontFamily = K.font, fontSize = 14.sp, color = K.text),
+            bodyMedium = TextStyle(fontFamily = K.font, fontSize = 13.sp, color = K.text),
+            bodySmall = TextStyle(fontFamily = K.font, fontSize = 12.sp, color = K.dim),
         ),
         content = { MapInkFollower(); ThemeFade(content) },
     )

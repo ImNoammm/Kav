@@ -101,10 +101,11 @@ internal object HomeMap {
     }
 
     // w x h: the picture in dp, scale its pixels to a dp.
+    // tone: a theme's colors for the map (K.mapTone).
     suspend fun take(ctx: Context, key: String, here: Pair<Double, Double>, station: Pair<Double, Double>?, look: Look,
-        rtl: Boolean, w: Int, h: Int, scale: Float): HomeMapShot? {
+        tone: uk.noammm.kav.ext.Looks.MapTone?, rtl: Boolean, w: Int, h: Int, scale: Float): HomeMapShot? {
         uk.noammm.kav.data.GovMapTiles.mapLibre(ctx)
-        val map = MapFile.styleJson(ctx, MapFile.Type.STANDARD, look, MapFile.labels, preview = false) ?: return null
+        val map = MapFile.styleJson(ctx, MapFile.Type.STANDARD, look, MapFile.labels, preview = false, tone = tone) ?: return null
         val camera = CameraPosition.Builder().target(LatLng(here.first, here.second)).zoom(15.5).tilt(40.0).bearing(0.0).build()
         val (image, at) = snapshot(ctx, { named -> flat(RouteShots.labelled(map, rtl, named)) }, camera, w, h, scale, listOfNotNull(here, station))
             ?: return null
@@ -135,17 +136,18 @@ internal fun HomeMapPicture(here: Pair<Double, Double>?, height: Dp, modifier: M
     val width = LocalConfiguration.current.screenWidthDp
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val look = K.look
+    val tone = K.mapTone
     val station = HomeMap.station
     LaunchedEffect(Unit) { HomeMap.load(ctx) }
     if (here != null) {
         fun r(v: Double) = (v * 10_000).roundToInt()
-        val key = "2|${r(here.first)},${r(here.second)}|${station?.let { "${r(it.first)},${r(it.second)}" }}|$look|${MapFile.labels}|$rtl|" +
+        val key = "2|${r(here.first)},${r(here.second)}|${station?.let { "${r(it.first)},${r(it.second)}" }}|$look|$tone|${MapFile.labels}|$rtl|" +
             "${width}x${height.value.roundToInt()}|$density"
         LaunchedEffect(key) {
             if (HomeMap.shot?.key == key) return@LaunchedEffect
             // The station is worked out a moment after the place: one picture for both.
             delay(300)
-            HomeMap.take(ctx, key, here, station, look, rtl, width, height.value.roundToInt(), density)?.let { HomeMap.shot = it }
+            HomeMap.take(ctx, key, here, station, look, tone, rtl, width, height.value.roundToInt(), density)?.let { HomeMap.shot = it }
         }
     }
     Crossfade(HomeMap.shot, modifier, animationSpec = tween(400), label = "homeMap") { shot ->

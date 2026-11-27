@@ -1543,7 +1543,7 @@ private fun TabBar(model: KavModel) {
         Modifier.navigationBarsPadding().padding(horizontal = K.gap4, vertical = K.gap2)
             .fillMaxWidth().height(64.dp).glassSurface(K.rCard, outline = false).padding(4.dp),
     ) {
-        val thumb = RoundedCornerShape(K.rCard - 4.dp)
+        val thumb = RoundedCornerShape(maxOf(K.rCard - 4.dp, 0.dp))
         val each = maxWidth / tabs.size
         val at by androidx.compose.animation.core.animateDpAsState(
             each * tabs.indexOf(model.tab).coerceAtLeast(0),
