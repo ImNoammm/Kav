@@ -324,19 +324,20 @@ internal fun PayCard(modifier: Modifier, showPay: Boolean) {
 // Under a ride's line, where paying for it was: one small action that opens Rav-Pass on that ride's section.
 // A ride's own paying, under its line, as it was before 4.3.2: its ticket when Kav has one, else the row for paying it the
 // way its mode is paid (the code on board a bus; at the station for train, light rail and the Carmelit), now opening
-// Rav-Pass at that section.
+// Rav-Pass at that section. first: at the top of its card, with its gap under it instead of over it.
 @Composable
 internal fun RidePay(section: RavPass.Section, carmelit: Boolean, board: String?, line: String?, depMs: Long, off: String? = null, ride: String? = null,
-    of: Any? = null, about: (() -> org.json.JSONObject)? = null) {
+    of: Any? = null, about: (() -> org.json.JSONObject)? = null, first: Boolean = false) {
     if (!Shown.payments) return
     val ctx = LocalContext.current
-    Spacer(Modifier.height(K.gap3))
+    if (!first) Spacer(Modifier.height(K.gap3))
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.fill)) {
         if (RideTicketRow(section, line, depMs)) return@Column
         // The pay row itself, which extensions may add to or replace (ride.pay), told the trip, the leg and its index.
         if (about != null) KavPart("ride.pay", of, about) { PayRow(ctx, section, carmelit, board, line, off, ride) }
         else PayRow(ctx, section, carmelit, board, line, off, ride)
     }
+    if (first) Spacer(Modifier.height(K.gap3))
 }
 
 @Composable
@@ -366,9 +367,9 @@ private fun PayRow(ctx: Context, section: RavPass.Section, carmelit: Boolean, bo
 // A ride of a trip, by its own section, boarding stop, line and departure, and the stop it gets off at (for the button back
 // to Kav). about: what its pay row's part (ride.pay) is told, the trip, the leg and its index; none, no part.
 @Composable
-internal fun RidePay(ride: Transit.Leg, r: Transit.Resolved, about: (() -> org.json.JSONObject)? = null) =
+internal fun RidePay(ride: Transit.Leg, r: Transit.Resolved, about: (() -> org.json.JSONObject)? = null, first: Boolean = false) =
     RidePay(RavPass.section(ride, r), RavPass.carmelit(ride, r), r.stop(ride.fromStop)?.shown(), r.line(ride.lineId)?.number, ride.dep * 1000,
-        r.stopName(ride.toStop), remember(ride) { RavPass.ride(ride, r).toString() }, ride, about)
+        r.stopName(ride.toStop), remember(ride) { RavPass.ride(ride, r).toString() }, ride, about, first)
 
 // "Pay with Rav-Pass": one switch for paying with Rav-Pass and everything it needs, all or nothing (Noam, 19 Nov 2026):
 // Rav-Pass itself on the phone, showing over other apps, for the button back to Kav while paying (PayOverlay), and the ticket reader

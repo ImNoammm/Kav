@@ -190,6 +190,10 @@ internal fun buildSteps(trip: Transit.Itinerary, fromLabel: String, toLabel: Str
     return out
 }
 
+// Waiting for a train: paid at the station's gates, unless the rider is already inside, off another train.
+internal fun paysAtGates(step: Step.Wait, ride: Transit.Leg, r: Transit.Resolved): Boolean =
+    RavPass.section(ride, r) == RavPass.Section.TRAIN && step.after?.let { RavPass.section(it, r) } != RavPass.Section.TRAIN
+
 // Where a walk step goes: its stop, or the place the trip ends at.
 internal fun walkTo(step: Step.Walk, r: Transit.Resolved): String =
     r.stop(step.toStop)?.shown() ?: step.toName ?: T("your stop", "התחנה שלכם")
@@ -834,6 +838,12 @@ internal fun StepCard(
             val order = boardingOrder(depsOf, pick)
             val choice = order.size > 1
             Card(if (choice) T("Select a line", "בחרו קו") else T("Wait for", "המתנה ל-"), active) {
+                // The rider can reach the station's gates once this card is up, and the train is paid there before it is
+                // picked: its paying first, in sight above the trains.
+                val payFor = options[pick].first
+                if (pay && paysAtGates(step, payFor, r)) {
+                    RidePay(payFor, r, tripArgs?.let { args -> { args().put("leg", uk.noammm.kav.ext.Pipeline.legJson(payFor, r)).put("index", step.legIndex) } }, first = true)
+                }
                 // Changing trains here: where the next one leaves from, on the card for waiting for it.
                 step.after?.let { trainChange(it, options[pick].first, options[pick].second, r) }?.let {
                     ChangeBlock(it)
