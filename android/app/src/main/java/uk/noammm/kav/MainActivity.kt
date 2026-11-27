@@ -1304,8 +1304,7 @@ private fun Shell(model: KavModel) {
 
     val liquid = rememberLiquidBackdrop()
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
-    Box(Modifier.fillMaxSize()) {
-    Box(Modifier.fillMaxSize().backdrop(maps = true) { drawRect(K.bg); K.skin?.background?.let { cover(it) } })
+    Box(Modifier.fillMaxSize().backdrop(maps = true) { drawRect(K.bg); K.skin?.background?.let { cover(it) } }) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {

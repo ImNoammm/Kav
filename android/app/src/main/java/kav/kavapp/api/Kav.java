@@ -96,9 +96,11 @@ public interface Kav {
      *  top bar or card, its maps; or, where that isn't what shows around the piece (a page of one color), the color seen
      *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. The
      *  picture then has only the pieces, each with only what is its own: what of its box is what is behind it (the map,
-     *  the background around a button) is clear, as is all that is in no piece; drawn over behind, it is the screen. Each
-     *  piece's box is tight to what is its own, and a piece with nothing of its own (a box only over the map) isn't
-     *  given. null, null and "[]" as with capture. From any thread. */
+     *  the background around a button) is clear, as is all that is in no piece. Kav's background, a theme's background
+     *  picture and its maps are never in it, also inside a piece's outline (a see-through tile); what is a piece's own is
+     *  as Kav draws it, as clear as it is. Drawn over behind, it is the screen. Each piece's box is tight to what is its
+     *  own, and a piece with nothing of its own (a box only over the map) isn't given. null, null and "[]" as with
+     *  capture. From any thread. */
     default void captureBehind(CapturedBehind captured) {}
 
     /** API 5. Kav's own trip planner, as Kav's search asks it. query, as JSON text: {"from": [lat, lon], "to": [lat, lon],

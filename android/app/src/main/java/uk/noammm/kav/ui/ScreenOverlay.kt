@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
@@ -17,10 +18,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
@@ -30,6 +35,7 @@ import androidx.compose.ui.node.LayoutAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.SemanticsModifierNode
 import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.requireGraphicsContext
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -41,7 +47,10 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.toIntSize
 import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.Pip
@@ -63,7 +72,8 @@ internal fun Modifier.cardPiece(): Modifier = semantics { this[Card] = Unit }
 
 // What a surface draws behind what it holds (Kav's background, a skin's piece), drawn again off the screen for the
 // picture of what is behind the screen's pieces (Kav.captureBehind). maps: Kav's maps show over it, through holes in
-// what is drawn after it. One to a box: a second on the same box takes the first's place in that picture.
+// what is drawn after it. One to a box: a second on the same box takes the first's place in that picture. What it draws
+// and what it holds are each in a layer of its own, for the screen without them (fore()).
 internal fun Modifier.backdrop(maps: Boolean = false, paint: DrawScope.() -> Unit): Modifier = this then BackdropElement(maps, paint)
 
 private val Backdrop = SemanticsPropertyKey<BackdropNode>("KavBackdrop")
@@ -78,11 +88,24 @@ private class BackdropNode(var maps: Boolean, var paint: DrawScope.() -> Unit) :
     var at: LayoutCoordinates? = null
     var units = Density(1f)
     var direction = LayoutDirection.Ltr
+    var under: GraphicsLayer? = null
+    var over: GraphicsLayer? = null
 
     override fun ContentDrawScope.draw() {
         units = Density(density, fontScale); direction = layoutDirection
-        paint()
-        drawContent()
+        val drawn = under ?: requireGraphicsContext().createGraphicsLayer().also { under = it }
+        drawn.record(units, direction, size.toIntSize()) { paint() }
+        drawLayer(drawn)
+        val layer = over ?: requireGraphicsContext().createGraphicsLayer().also { over = it }
+        layer.record { this@draw.drawContent() }
+        drawLayer(layer)
+    }
+
+    override fun onDetach() {
+        under?.let { requireGraphicsContext().releaseGraphicsLayer(it) }
+        over?.let { requireGraphicsContext().releaseGraphicsLayer(it) }
+        under = null
+        over = null
     }
 
     override fun onPlaced(coordinates: LayoutCoordinates) { at = coordinates }
@@ -127,9 +150,9 @@ object ScreenOverlay {
     }
 
     // Kav's screen in front, with what the part's views cover, from its top left corner, and with behind, the screen
-    // without its pieces, else null; then the picture has only the pieces, each only what is its own (faces()). Told on
-    // the main thread: null, null and "[]" when Kav isn't in front or the copy fails. The pictures are the extension's,
-    // to recycle when done.
+    // without its pieces, else null; then the picture has only the pieces, each only what is its own, as Kav draws it
+    // without its background and maps (faces(), fore()). Told on the main thread: null, null and "[]" when Kav isn't in
+    // front or the copy fails. The pictures are the extension's, to recycle when done.
     fun capture(activity: Activity?, behind: Boolean = false, answer: (Bitmap?, Bitmap?, String) -> Unit) {
         val main = Handler(Looper.getMainLooper())
         main.post {
@@ -154,9 +177,16 @@ object ScreenOverlay {
                         blank(picture, fields)
                         val back = if (behind) without(content, layer, box, picture, maps, pieces) else null
                         maps?.recycle()
-                        val own = if (back != null) runCatching { faces(picture, back, pieces) }.getOrNull() else null
-                        if (behind && own == null) { picture.recycle(); back?.recycle(); answer(null, null, "[]"); return@under }
-                        answer(picture, back, (own ?: pieces).toString())
+                        if (back == null) {
+                            if (behind) { picture.recycle(); answer(null, null, "[]") } else answer(picture, null, pieces.toString())
+                            return@under
+                        }
+                        fore(content, layer, box, picture.width, picture.height, pieces) { over ->
+                            over?.let { blank(it, fields) }
+                            val own = runCatching { faces(picture, back, pieces, over) }.getOrNull()
+                            over?.recycle()
+                            if (own == null) { picture.recycle(); back.recycle(); answer(null, null, "[]") } else answer(picture, back, own.toString())
+                        }
                     }
                 }, main)
             } catch (_: IllegalArgumentException) { shot.recycle(); answer(null, null, "[]") }
@@ -222,14 +252,50 @@ object ScreenOverlay {
     }.getOrNull()
 
     // Only each piece's own in the picture, the rest cleared, and the pieces with their boxes tight to it
-    // (ScreenPieces.faces): no piece carries the map or background around it.
-    private fun faces(picture: Bitmap, back: Bitmap, pieces: JSONArray): JSONArray {
+    // (ScreenPieces.faces): no piece carries the map or background around it, nor in it. over: the screen without
+    // Kav's background and maps (fore()), else null.
+    private fun faces(picture: Bitmap, back: Bitmap, pieces: JSONArray, over: Bitmap?): JSONArray {
         val w = picture.width; val h = picture.height
         val shot = IntArray(w * h).also { picture.getPixels(it, 0, w, 0, 0, w, h) }
         val behind = IntArray(w * h).also { back.getPixels(it, 0, w, 0, 0, w, h) }
-        val own = ScreenPieces.faces(pieces, w, h, shot, behind)
+        val fore = over?.let { o -> IntArray(w * h).also { o.getPixels(it, 0, w, 0, 0, w, h) } }
+        val own = ScreenPieces.faces(pieces, w, h, shot, behind, fore)
         picture.setPixels(shot, 0, w, 0, 0, w, h)
         return own
+    }
+
+    // Kav's screen without its background and maps, at the picture's place and size: what the first backdrop holds,
+    // drawn again off the screen from its layer, without what the backdrops in it that are behind the pieces draw (a
+    // fade over a map); one inside a piece's box goes with the piece, as in drawn(). Those still cover what is drawn under
+    // them, as on the screen, so a fade under a top bar stays out of the pieces over it. They are left out only while it
+    // is drawn, at once on Android 9 and up, so the screen never shows them so; before that they stay in it. Told on the
+    // main thread; null when it can't be drawn.
+    private fun fore(content: ViewGroup, layer: View?, box: Rect, width: Int, height: Int, pieces: JSONArray, done: (Bitmap?) -> Unit) {
+        val all = runCatching { backdrops(content, layer) }.getOrNull()
+        val b = all?.firstOrNull()
+        val inner = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) emptyList() else all.orEmpty().drop(1).filter { n ->
+            val clip = n.at?.takeIf { it.isAttached }?.boundsInWindow()?.translate(-box.left.toFloat(), -box.top.toFloat())
+            clip != null && !clip.isEmpty && !ScreenPieces.within(clip.left, clip.top, clip.right, clip.bottom, pieces)
+        }.mapNotNull { it.under }
+        val over = b?.over
+        val at = b?.at?.takeIf { it.isAttached }
+        if (over == null || at == null) { done(null); return }
+        val pos = at.positionInWindow()
+        MainScope().launch {
+            inner.forEach { it.blendMode = BlendMode.DstOut }
+            val drawn = try { runCatching { over.toImageBitmap().asAndroidBitmap() }.getOrNull() } finally { inner.forEach { it.blendMode = BlendMode.SrcOver } }
+            val out = drawn?.let { d ->
+                runCatching {
+                    val plain = if (d.config == Bitmap.Config.HARDWARE) d.copy(Bitmap.Config.ARGB_8888, false) else d
+                    val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    Canvas(out).drawBitmap(plain, pos.x - box.left, pos.y - box.top, null)
+                    if (plain !== d) plain.recycle()
+                    out
+                }.getOrNull()
+            }
+            drawn?.recycle()
+            done(out)
+        }
     }
 
     // Kav's backdrops off the screen, each in the order it is drawn, at its place: not one inside a piece's box, which
@@ -271,10 +337,10 @@ object ScreenOverlay {
     }
 
     // What is typed in a field kept out of the picture: the field's inside painted over in its own color (from near its top
-    // edge, where no text is), its rounded ends as they were.
+    // edge, where no text is), as clear as it is there, its rounded ends as they were.
     private fun blank(picture: Bitmap, fields: JSONArray) {
         val canvas = Canvas(picture)
-        val paint = android.graphics.Paint()
+        val paint = android.graphics.Paint().apply { xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC) }
         for (k in 0 until fields.length()) {
             val p = fields.getJSONObject(k)
             val x = p.getInt("x"); val y = p.getInt("y"); val w = p.getInt("w"); val h = p.getInt("h")

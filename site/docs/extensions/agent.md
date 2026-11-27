@@ -665,9 +665,11 @@ for it only when you need the places pieces leave.
 
 With `captureBehind`, the picture has only the pieces, each with only what is its own: what of a piece's box is what is
 behind it (the map under a button, the background around a place's tile) is clear, and so is everything in no piece.
-Drawn over `behind`, it is the screen again. Each piece's box is tight to what is its own, and a piece with nothing of
-its own (a box that only lies over the map) isn't in `pieces`. So a piece you cut from the picture by its box carries
-its own face and nothing of what was around it.
+Kav's background, a theme's background picture and its maps are never in it, also inside a piece's outline: a
+see-through tile carries nothing of what shows inside it. What is a piece's own is as Kav draws it, as clear as it is,
+so a glass pane stays see-through. Drawn over `behind`, it is the screen again. Each piece's box is tight to what is its
+own, and a piece with nothing of its own (a box that only lies over the map) isn't in `pieces`. So a piece you cut from
+the picture by its box carries its own face and nothing of what was around it.
 
 To move Kav's pieces about, draw `behind` over the whole of your view (that hides Kav's own screen, which stays as it
 was under it), and draw each piece from the picture where it moves to. Take every touch while you do, so none reaches
@@ -953,9 +955,11 @@ public interface Kav {
      *  top bar or card, its maps; or, where that isn't what shows around the piece (a page of one color), the color seen
      *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. The
      *  picture then has only the pieces, each with only what is its own: what of its box is what is behind it (the map,
-     *  the background around a button) is clear, as is all that is in no piece; drawn over behind, it is the screen. Each
-     *  piece's box is tight to what is its own, and a piece with nothing of its own (a box only over the map) isn't
-     *  given. null, null and "[]" as with capture. From any thread. */
+     *  the background around a button) is clear, as is all that is in no piece. Kav's background, a theme's background
+     *  picture and its maps are never in it, also inside a piece's outline (a see-through tile); what is a piece's own is
+     *  as Kav draws it, as clear as it is. Drawn over behind, it is the screen. Each piece's box is tight to what is its
+     *  own, and a piece with nothing of its own (a box only over the map) isn't given. null, null and "[]" as with
+     *  capture. From any thread. */
     default void captureBehind(CapturedBehind captured) {}
 
     /** API 5. Kav's own trip planner, as Kav's search asks it. query, as JSON text: {"from": [lat, lon], "to": [lat, lon],

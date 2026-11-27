@@ -86,11 +86,13 @@ object ScreenPieces {
     // box's edge through more of it, so a face of the page's color within its outline stays. A pixel is what is behind
     // it when it is within 8 in each of alpha, red, green and blue of behind there or at a pixel next to it: a picture
     // drawn again off the screen is a little off where it is scaled. Cleared in shot: that, and all that is in no
-    // piece's box. A piece with less than 4 px left across is no piece.
-    fun faces(pieces: JSONArray, width: Int, height: Int, shot: IntArray, behind: IntArray): JSONArray {
+    // piece's box. A piece with less than 4 px left across is no piece. With fore (the same size: the screen drawn
+    // without Kav's background and maps), what is clear in it is never a piece's own, also inside its outline (a
+    // see-through tile), and what is a piece's own is taken from it, as clear as it is drawn.
+    fun faces(pieces: JSONArray, width: Int, height: Int, shot: IntArray, behind: IntArray, fore: IntArray? = null): JSONArray {
         val back = BooleanArray(width * height) { true }
         val boxes = boxes(pieces).map { b -> intArrayOf(maxOf(b[0], 0), maxOf(b[1], 0), minOf(b[2], width), minOf(b[3], height)) }
-        for (b in boxes) for (y in b[1] until b[3]) for (x in b[0] until b[2]) back[y * width + x] = false
+        for (b in boxes) for (y in b[1] until b[3]) for (x in b[0] until b[2]) back[y * width + x] = fore != null && fore[y * width + x] ushr 24 == 0
         fun behind(x: Int, y: Int): Boolean {
             val p = shot[y * width + x]
             for (ny in maxOf(y - 1, 0)..minOf(y + 1, height - 1)) for (nx in maxOf(x - 1, 0)..minOf(x + 1, width - 1))
@@ -117,7 +119,7 @@ object ScreenPieces {
                 if (y > t) reach(x, y - 1); if (y < bt - 1) reach(x, y + 1)
             }
         }
-        for (k in back.indices) if (back[k]) shot[k] = 0
+        for (k in back.indices) if (back[k]) shot[k] = 0 else if (fore != null) shot[k] = fore[k]
         val out = JSONArray()
         for (i in boxes.indices) {
             val (l, t, r, bt) = boxes[i]
