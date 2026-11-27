@@ -463,9 +463,12 @@ fun NavigateScreen(
                         LiveText("${durMinutes(minsLeft(arrive - now).toInt())} · ${hm.format(Date(arrive * 1000))}",
                             style = K.type.subhead.tabular, maxLines = 1)
                     }
-                    // Whether Kav speaks on this trip, at a glance; it opens the trip's settings.
-                    KavIconButton(if (speaks) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
-                        T("Trip settings", "הגדרות נסיעה"), { tripSettings = true }, tint = K.text)
+                    // Whether Kav speaks on this trip, at a glance; it opens the trip's settings. The speaker faces the
+                    // same way in Hebrew as the one in those settings.
+                    CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                        KavIconButton(if (speaks) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+                            T("Trip settings", "הגדרות נסיעה"), { tripSettings = true }, tint = K.text)
+                    }
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
                         tint = K.text)
                 } }
