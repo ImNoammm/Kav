@@ -95,7 +95,7 @@ internal sealed class Step {
         // The first ride, when the trip starts at its stop with no walk to it, with its wait and leg: the card then names
         // that stop, its number and platform, as a walk's card does.
         val board: Transit.Leg? = null, val boardWait: Transit.Leg? = null, val boardLeg: Int = -1,
-        // #117: the walk to the first ride, when the route begins with one, for the time to leave.
+        // The walk to the first ride, when the route begins with one, for the time to leave.
         val leave: LeavePlan? = null,
     ) : Step()
     class Walk(
@@ -670,9 +670,9 @@ internal fun StepCard(
             } else Text(step.label, style = K.type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val leave = step.leave
             if (leave != null && leaveNowDue(leave, r, chosen, now)) {
-                // #117: the time has come, and it stands out.
+                // The time has come, and it stands out.
                 Text(
-                    T("Leave now", "צאו עכשיו"), style = K.type.headline, color = K.onAccent,
+                    T("Leave now", "יציאה עכשיו"), style = K.type.headline, color = K.onAccent,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(K.rTile)).background(K.accent).padding(horizontal = K.gap3, vertical = K.gap2),
                 )
             } else {
