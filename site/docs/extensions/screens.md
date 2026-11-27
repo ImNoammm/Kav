@@ -249,10 +249,12 @@ without a setting simply happens while it is applied, and stops when another the
 | `font` | the path of a `.ttf` or `.otf` file in the theme's own folder, at most three folders deep (`"fonts/Sea.ttf"`), for all of Kav's text | Kav's own type |
 | `map` | for any of `dark`, `oled` and `light`: Kav's own map drawn in two colors, `ground` (the land) and `ink` (the town names), with every road, building and name in a shade between them, and `water` in its own color if you give one | that look's map stays Kav's |
 | `outline` | how cards and controls are edged: `"kav"` (Kav's own hairline round cards), `"line"` (one solid line), `"double"` (two thin lines round cards, one round controls), `"sketch"` (drawn by hand) or `"bevel"` (a raised edge lit from above, and a gloss on controls) | Kav's own |
+| `skin` | pictures Kav draws some of its parts with, each a PNG stretched by nine slices: see **Skins** below | Kav's own parts |
 
 A color is `#RRGGBB` or `#AARRGGBB`. A value that isn't a color, a role or a look Kav doesn't know, a badge style or
 an outline it doesn't know, a corner out of its range, a font that isn't a plain path to a `.ttf` or `.otf` and a look's
-`map` without both `ground` and `ink` are left out. Only a `"theme"` that isn't an object is refused.
+`map` without both `ground` and `ink` are left out, and so is a `skin` piece as **Skins** says. Only a `"theme"` that
+isn't an object is refused.
 
 **Fonts.** One file is all of Kav's text, every size and weight. A variable font (one with a weight axis) gives Kav's
 regular, medium, semibold and bold their own weights; any other font is drawn heavier by the phone where Kav's text is
@@ -260,6 +262,39 @@ bold. A font Kav can't read, or one that isn't in the package, leaves Kav's own 
 that isn't in the folder. Kav's words are English and Hebrew, so pick a font with Hebrew letters, or Hebrew falls back
 to the phone's own. Bring only a font whose license lets you share it (the SIL Open Font License does), with the
 license beside it. Parts a theme's code draws with Android views (`KavUi`) keep the phone's type.
+
+**Skins.** `skin` names a picture for any of Kav's parts, which Kav then draws in place of that part's own fill in
+every look; a part left out is drawn as Kav's. Older Kav ignores it.
+
+```json
+"skin": {
+  "topBar": { "image": "skin/topBar.png", "insets": [28, 9, 35, 17], "scale": 3, "ink": "#FFFFFF" },
+  "button": { "image": "skin/button.png", "insets": [8, 9, 8, 9], "scale": 1.5, "ink": "#000000" },
+  "background": "skin/wall.jpg"
+}
+```
+
+| Piece | Where Kav draws it |
+|---|---|
+| `topBar` | the top of a screen with its title, and Home's search row, on up behind the status bar; `ink` is the title's color |
+| `tabBar` | the tab bar, edge to edge and down behind the gesture area, 56 dp tall; `ink` is the other tabs' color |
+| `tabSelected` | the chosen tab, which slides from tab to tab; `ink` is its icon's and name's color |
+| `button`, `buttonPressed`, `buttonPrimary` | buttons (and icon buttons, chips and the chosen one of a segmented control); a pressed button and a chosen chip on `buttonPressed`, the main action's button on `buttonPrimary` |
+| `card` | cards (anything at the `card` corner); Kav clips it to that corner |
+| `cardTitle` | a strip across the top of each card, as tall as its picture at its scale, with the card's content below it |
+| `field` | text fields, the search field, and the track of a segmented control |
+| `background` | not a piece: a PNG, JPEG or WebP behind every screen, cropped from its middle to fill it, seen where a screen leaves its background clear |
+
+A piece is `image`, the path of a PNG in the theme's folder; `insets`, the edges kept as they are, `[left, top, right,
+bottom]` in the picture's pixels (whole numbers from 0 to 512), with the middle stretched both ways and each edge along
+its length; `scale`, dp for each of the picture's pixels (0.25 to 8, 1 if left out); and `ink`, the color of text and
+icons on it (Kav's own if left out). Where a box is smaller than two edges, both shrink together. A picture drawn larger
+than its pixels keeps them sharp, with no blur from one slice into the next. In a right-to-left language every piece is
+mirrored, as right-to-left Windows mirrors its own, so draw each for left to right. A piece Kav doesn't know, or one
+whose image isn't a PNG path or whose insets aren't four whole numbers, is left out, and `kavx check` warns. A piece is
+at most 1024 pixels a side, its insets fit inside it, and the background is made smaller past 2048 pixels; `kavx check`
+refuses a picture that isn't in the folder, isn't a PNG, is larger, or that its insets don't fit, where Kav would
+quietly leave it out. Pick the looks' colors to go with the pictures, as the pictures don't change with the look.
 
 **Outlines.** Cards, sheets, list groups and floating panels are outlined in `separator`, and buttons, chips,
 segmented controls, icon buttons and switches in `borderStrong`, so set those two with the style you pick. The map,
@@ -271,10 +306,10 @@ and vehicles stay in Kav's and the lines' colors, and Israel's road number signs
 the look's `bg` and an `ink` the town names read in. Only Kav's own map is toned: satellite photos and the other map
 types stay as they are.
 
-Not themeable: icons, spacing, shadows, Kav's own words, the map type, and the color of text on the accent (it is
-`text` in the light look and `bg` in the dark ones). The map type stays the rider's choice, since every map but Kav's
-own loads from someone else while the rider looks; a theme with code can still draw Kav's stop marks its own way with
-`kav.map()` ([native.md](/docs/extensions/native)).
+Not themeable: icons, spacing, shadows, the parts **Skins** doesn't list, Kav's own words, the map type, and the color
+of text on the accent (it is `text` in the light look and `bg` in the dark ones). The map type stays the rider's choice,
+since every map but Kav's own loads from someone else while the rider looks; a theme with code can still draw Kav's stop
+marks its own way with `kav.map()` ([native.md](/docs/extensions/native)).
 
 **Readability is yours to check.** Kav refuses nothing for it. `kavx check` warns when `text` or `textSecondary` is
 below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
