@@ -78,7 +78,7 @@ The images are `ghcr.io/imnoammm/kav-live`, `kav-otp`, `kav-build`, `kav-eta`, `
 
 ### What your phone gets from your server
 
-In Kav, **Settings › Providers** has a choice for each thing the app gets from a server: live times, trip
+In Kav, **Settings › Privacy** has a choice for each thing the app gets from a server: live times, trip
 planning, the timetable and where share links are made. Each choice is its own: after you connect your own server, you
 can set any of them to **My own** and leave the rest on Kav's server. Set all of
 them to your own and the app needs nothing from Kav's server. Everything Kav's server does, your server can do:
@@ -481,7 +481,7 @@ docker compose exec -it live python3 accounts.py list
 
 Passwords follow the page's rules: at least 8 characters, not a common one.
 
-**5. Connect phones.** In Kav, **Settings › Providers › My own**: type the server's address and press
+**5. Connect phones.** In Kav, **Settings › Privacy › My own**: type the server's address and press
 **Connect**, then sign in with the username and password; or scan a QR code made from the `kav://` link that
 `invite` prints (any QR code maker will do), which signs the phone in with no password. More in
 [Connecting a phone](#connecting-a-phone).
@@ -704,7 +704,7 @@ The footer links to this guide, the repository and its issues, and shows the rel
 
 ## Connecting a phone
 
-In Kav: **Settings › Providers › My own › Scan the server's QR code**, and scan a code from the setup
+In Kav: **Settings › Privacy › My own › Scan the server's QR code**, and scan a code from the setup
 page: your own from **Show my phone's code** on the Overview (or the popup after the first setup), or an invite from
 People for someone else. Each popup also has the code as a `kav://` link with a **Copy** button, to send to a phone.
 
@@ -901,7 +901,7 @@ Route ids and stop codes have to be numbers, as the ministry's are, for the live
 ### Line alerts
 
 On the setup page: **Parts › Line alerts**. Detours, delays and moved stops for the app's **Alerts from › My own**
-(Settings › Providers, under Detours and alerts). The server gives every phone Israel's whole list with
+(Settings › Privacy, under Detours and alerts). The server gives every phone Israel's whole list with
 every notice in it (`/live/v1/alerts/<he or en>`, [server/API.md](../API.md#alerts)); the phone finds its own lines in it,
 so this server never learns anyone's trip.
 

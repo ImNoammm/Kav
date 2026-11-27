@@ -49,7 +49,7 @@ import uk.noammm.kav.hasPreciseLocation
 // (OnBoard), with navigation and the trip notification. Kav asks the phone for no position of its own for this: it reads
 // the positions the phone works out anyway (for Kav's own maps and trips, or for another app), and asks Kav's server for
 // the buses around the rider only while those show it moving, or while a bus is offered. Nothing runs once Kav is off the
-// screen, and nothing is kept. The switch is in Settings, off until the rider turns it on.
+// screen, and nothing is kept. The switch is in the navigation screen's Trip settings, off until the rider turns it on.
 internal object OnBus {
     private fun store(ctx: Context) = ctx.getSharedPreferences("kav_onbus", Context.MODE_PRIVATE)
     fun suggest(ctx: Context): Boolean = store(ctx).getBoolean("suggest", false)

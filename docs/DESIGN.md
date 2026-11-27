@@ -70,7 +70,7 @@ Fails:
 - A label that only says whose something is or what kind of thing it is, when the place it sits already says so (a
   "by" label on an extension's own card, the word "source" on the Sources page, a count nobody needs).
 
-Right: on Trips, "Link expires after" sits alone over its control, with the explanation behind its (i).
+Right: in the Share sheet's Options, "Link expires after" sits alone over its control, with the explanation behind its (i).
 
 **In code.** A switch that stands alone is its own title: put it in a `ListGroup` with no header, and give its
 explanation to the row (`ToggleRow(info = …)`, `ListRow(info = …)`). Use a header (`SectionHeader`, `InfoHeader`) only

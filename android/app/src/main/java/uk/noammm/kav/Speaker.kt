@@ -29,7 +29,7 @@ internal object Speaker {
     private val waits = Handler(Looper.getMainLooper())
 
     // onSilent: told when nothing can be said, the phone having no text-to-speech engine or no voice for Kav's language
-    // (Settings says so when the rider turns speech on, where the trip's alerts just keep to their sound).
+    // (Trip settings says so when the rider turns speech on, where the trip's alerts just keep to their sound).
     // key: the trip alert's (TripAlert.key), which decides whether it may be said during a call; none, never then.
     fun say(ctx: Context, text: String, key: String? = null, onSilent: (() -> Unit)? = null) {
         val engine = tts

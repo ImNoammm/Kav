@@ -556,7 +556,7 @@ private fun partWords(name: String) = when (name) {
     "settings.page.header" -> T("Settings headers", "כותרות בהגדרות")
     "settings.page.trips" -> T("trip settings", "הגדרות נסיעות")
     "settings.page.paying" -> T("payment settings", "הגדרות תשלום")
-    "settings.page.live" -> T("provider settings", "הגדרות ספקים")
+    "settings.page.live" -> T("live times and trips settings", "הגדרות זמן אמת ומסלולים")
     "settings.page.look" -> T("look settings", "הגדרות מראה")
     "settings.page.language" -> T("language and time settings", "הגדרות שפה ושעה")
     "settings.page.map" -> T("map settings", "הגדרות מפה")

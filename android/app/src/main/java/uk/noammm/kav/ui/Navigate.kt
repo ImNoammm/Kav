@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Close
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import uk.noammm.kav.KavModel
+import uk.noammm.kav.Prefs
 import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.shownName
@@ -417,6 +420,10 @@ fun NavigateScreen(
     fun replanTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan") { failureArgs(f) }) replan(f) }
     fun keepTapped(f: Failure) { if (!uk.noammm.kav.ext.Actions.take(ctx, "nav.replan.keep") { failureArgs(f) }) keep(f) }
 
+    // The trip's voice and what it does by itself (OnTheWayChoices), in a sheet from the header.
+    var tripSettings by remember { mutableStateOf(false) }
+    var voiceChanged by remember { mutableIntStateOf(0) }
+    val speaks = remember(voiceChanged) { Prefs.spokenAlerts(ctx) || Prefs.spokenTurns(ctx) }
     val liquid = rememberLiquidBackdrop()
     val bottomInset = LocalBottomBarInset.current
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
@@ -456,6 +463,9 @@ fun NavigateScreen(
                         LiveText("${durMinutes(minsLeft(arrive - now).toInt())} · ${hm.format(Date(arrive * 1000))}",
                             style = K.type.subhead.tabular, maxLines = 1)
                     }
+                    // Whether Kav speaks on this trip, at a glance; it opens the trip's settings.
+                    KavIconButton(if (speaks) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+                        T("Trip settings", "הגדרות נסיעה"), { tripSettings = true }, tint = K.text)
                     KavIconButton(Icons.AutoMirrored.Rounded.FormatListBulleted, T("Show trip plan", "הצגת המסלול"), onPlan,
                         tint = K.text)
                 } }
@@ -541,6 +551,10 @@ fun NavigateScreen(
                 }
                 }
                 }
+            }
+            if (tripSettings) BottomSheet({ tripSettings = false }, scrolls = true) { close ->
+                SheetHeader(T("Trip settings", "הגדרות נסיעה"), { close { tripSettings = false } })
+                OnTheWayChoices { voiceChanged++ }
             }
         }
     }

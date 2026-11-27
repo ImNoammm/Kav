@@ -56,7 +56,6 @@ import uk.noammm.kav.PendingBackup
 import uk.noammm.kav.Prefs
 import uk.noammm.kav.Seen
 import uk.noammm.kav.data.Backup
-import uk.noammm.kav.data.GoogleRecipe
 import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.MapFile
@@ -64,7 +63,6 @@ import uk.noammm.kav.data.MapPack
 import uk.noammm.kav.data.MapPacks
 import uk.noammm.kav.data.PlanSettings
 import uk.noammm.kav.data.Schedules
-import uk.noammm.kav.data.SignedFile
 import uk.noammm.kav.data.Source
 import uk.noammm.kav.data.Sources
 import uk.noammm.kav.data.StopNames
@@ -109,27 +107,17 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
     }
     val waiting = model.update != null && Shown.updatePrompts
 
-    // Everything about a trip, from what a plan may show to its alerts and sharing it.
+    // What a plan may show. A trip's voice and what it does by itself are on the navigation screen (Navigate.kt), its
+    // link's choices in the Share sheet (ShareSheet.kt).
     val offered = filtersOf(KavPlan.source)
     val ways = offered.count { it in model.filters }
-    var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
-    var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
     part(
         "trips",
         T("Trips", "נסיעות"),
-        listOfNotNull(
-            if (ways == offered.size) T("Every way of getting there", "כל הדרכים להגיע")
-            else T("$ways of ${offered.size} ways of getting there", "$ways מתוך ${offered.size} דרכים להגיע"),
-            if (spoken) T("alerts said out loud", "התראות בקול") else T("alerts on the screen", "התראות על המסך"),
-            Prefs.linkStyle(ctx).expiryDays.let { T("links last $it days", "קישורים ל-$it ימים") },
-        ).joinToString(" · "),
+        if (ways == offered.size) T("Every way of getting there", "כל הדרכים להגיע")
+        else T("$ways of ${offered.size} ways of getting there", "$ways מתוך ${offered.size} דרכים להגיע"),
     ) {
         PlanChoices(model)
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
-            OnTheWayChoices(spoken, startNow, { spoken = it }, { startNow = it })
-            // Sharing a trip: how its link looks and how long it lasts.
-            LinkCustomization()
-        }
     }
 
     // Paying with Rav-Pass, on its own page (Noam, 19 Nov 2026).
@@ -147,11 +135,6 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             PayingSettings()
             FareProfileGroup(header = Shown.payments)
         }
-    }
-
-    // Who Kav asks for what.
-    part("live", T("Providers", "ספקים"), providersSummary()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { Providers() }
     }
 
     part(
@@ -183,7 +166,8 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) { MapChoices() }
     }
 
-    // What search sees, and the proxy everything can go through.
+    // What search sees, who Kav asks for live times and trips, and the proxy everything can go through. Its id was once
+    // two pages, privacy and live (Providers); extensions opening live come here (ExtActions.kt).
     part(
         "privacy",
         T("Privacy", "פרטיות"),
@@ -196,11 +180,17 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
                     else -> T("$who sees no location", "$who לא רואה מיקום")
                 }
             },
+            if (providersAreKavs(ctx)) null else T("your own providers", "ספקים משלכם"),
             if (RiderProxy.setting.on) T("through your proxy", "דרך הפרוקסי שלכם") else null,
         ).joinToString(" · "),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             PrivacyRows(model) { choosing = true }
+            // Still the part settings.page.live, which was the Providers page, for extensions made for it.
+            val providers = T("Live times and trips", "זמן אמת ומסלולים")
+            KavPart("settings.page.live", "live" to providers, { org.json.JSONObject().put("page", "live").put("title", providers) }) {
+                Column { Providers(providers) }
+            }
             ProxyChoice()
         }
     }
@@ -220,7 +210,6 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
         Column(Modifier.fillMaxWidth().padding(horizontal = K.gap3)) {
             if (BuildConfig.UPDATER) AutomaticUpdates()
             BackupSection(model)
-            FixCheck()
             HelpSection()
         }
         // With the page's other sections: its header on their line, its list on a card as theirs are.
@@ -317,7 +306,7 @@ private class SettingsPart(val id: String, val title: String, val summary: Strin
 
 // Riding first (what is changed most), then how Kav looks, then Kav itself.
 private val SETTINGS_GROUPS = listOf(
-    listOf("trips", "paying", "live"),
+    listOf("trips", "paying"),
     listOf("look", "language", "map"),
     listOf("privacy", "extensions", "kav"),
 )
@@ -425,9 +414,13 @@ private fun noVoice(ctx: android.content.Context) = android.widget.Toast.makeTex
     android.widget.Toast.LENGTH_LONG,
 ).show()
 
+// A trip's voice, then what it does by itself: the navigation screen's Trip settings (Navigate.kt). onChange: a switch
+// was moved.
 @Composable
-internal fun OnTheWayChoices(spoken: Boolean, startNow: Boolean, onSpoken: (Boolean) -> Unit, onStart: (Boolean) -> Unit) {
+internal fun OnTheWayChoices(onChange: () -> Unit) {
     val ctx = LocalContext.current
+    var spoken by remember { mutableStateOf(Prefs.spokenAlerts(ctx)) }
+    var startNow by remember { mutableStateOf(Prefs.beginTripsImmediately(ctx)) }
     InfoHeader(T("Voice", "הקראה"), T(
         "Spoken over what's playing, in Kav's language. On silent, only into headphones.",
         "מושמעות מעל מה שמתנגן, בשפה של Kav. במצב שקט, רק באוזניות.",
@@ -436,13 +429,13 @@ internal fun OnTheWayChoices(spoken: Boolean, startNow: Boolean, onSpoken: (Bool
     ListGroup {
         row {
             ToggleRow(T("Say alerts out loud", "הקראת התראות בקול"), spoken, { SpeakerGlyph(toggleInk(spoken), 18.dp) }) { on ->
-                onSpoken(on); Prefs.setSpokenAlerts(ctx, on)
+                spoken = on; Prefs.setSpokenAlerts(ctx, on); onChange()
                 if (on) uk.noammm.kav.Speaker.say(ctx, T("Alerts will sound like this", "כך יישמעו ההתראות")) { noVoice(ctx) }
             }
         }
         row {
             ToggleRow(T("Say walking directions", "הקראת הוראות הליכה"), turns, { WalkGlyph(toggleInk(turns), 16.dp) }) { on ->
-                turns = on; Prefs.setSpokenTurns(ctx, on)
+                turns = on; Prefs.setSpokenTurns(ctx, on); onChange()
                 if (on) uk.noammm.kav.Speaker.say(ctx, T("Turn right onto Herzl", "פנו ימינה להרצל")) { noVoice(ctx) }
             }
             // Only with alerts said out loud, which it is about.
@@ -462,14 +455,13 @@ internal fun OnTheWayChoices(spoken: Boolean, startNow: Boolean, onSpoken: (Bool
             }
         }
     }
-    Sub(T("During a trip", "במהלך הנסיעה"))
-    ListGroup {
+    ListGroup(Modifier.padding(top = K.gap6)) {
         row {
             ToggleRow(T("Start right away", "להתחיל מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }, info = T(
                 "A trip goes straight to its first walk instead of waiting for its time.",
                 "הנסיעה עוברת מיד להליכה הראשונה, בלי לחכות לשעה שלה.",
             )) { on ->
-                onStart(on); Prefs.setBeginTripsImmediately(ctx, on)
+                startNow = on; Prefs.setBeginTripsImmediately(ctx, on); onChange()
             }
         }
         row {
@@ -479,7 +471,7 @@ internal fun OnTheWayChoices(spoken: Boolean, startNow: Boolean, onSpoken: (Bool
                     "While Kav is open and you move with a bus, Home offers to follow it. Kav's server is asked for the buses around you.",
                     "כש-Kav פתוחה ואתם נוסעים עם אוטובוס, מסך הבית מציע לעקוב אחריו. השרת של Kav נשאל על האוטובוסים סביבכם.",
                 ),
-            ) { on -> suggestBus = on; OnBus.setSuggest(ctx, on) }
+            ) { on -> suggestBus = on; OnBus.setSuggest(ctx, on); onChange() }
         }
     }
 }
@@ -1625,14 +1617,13 @@ private fun CheckLines(c: KavLive.Check) {
     }
 }
 
+// A shared trip's link: how long it lasts and how its page looks, under the Share sheet's Options (ShareSheet.kt).
+// onChange: the style was saved, so the sheet's card and link are made again in it.
 @Composable
-private fun LinkCustomization() {
+internal fun LinkOptions(onChange: () -> Unit) {
     val ctx = LocalContext.current
     var style by remember { mutableStateOf(Prefs.linkStyle(ctx)) }
-    fun save(next: uk.noammm.kav.data.ShareStyle) { style = next; Prefs.setLinkStyle(ctx, next) }
-    // Kav's: a week, and the page as Kav is.
-    Sub(T("Sharing a trip", "שיתוף נסיעה"))
-    DefaultOrCustom(style == uk.noammm.kav.data.ShareStyle(), { save(uk.noammm.kav.data.ShareStyle()) }) {
+    fun save(next: uk.noammm.kav.data.ShareStyle) { style = next; Prefs.setLinkStyle(ctx, next); onChange() }
     // Made where the rider picked (TripShare.server).
     val on = if (TripShare.server != KavLive.KAV_SERVER) T("your server", "שרת שלכם") else T("Kav's server", "שרת של Kav")
     InfoHeader(
@@ -1652,8 +1643,8 @@ private fun LinkCustomization() {
         row {
             ToggleRow(T("Page matches my Kav", "כמו ה-Kav שלי"), matching,
                 { Icon(Icons.Rounded.Sync, null, tint = toggleInk(matching), modifier = Modifier.size(20.dp)) },
-                info = T("The shared page's language, stop names and colors. Applies to links you share from now on.",
-                    "השפה, שמות התחנות והצבעים של העמוד המשותף. חל על קישורים שתשתפו מעכשיו.")) { on ->
+                info = T("The shared page's language, stop names and colors.",
+                    "השפה, שמות התחנות והצבעים של העמוד המשותף.")) { on ->
                 save(if (on) style.copy(language = "auto", stopLanguage = "auto", theme = "auto")
                 else style.copy(language = kavLanguage, stopLanguage = kavStops, theme = kavTheme))
             }
@@ -1677,7 +1668,6 @@ private fun LinkCustomization() {
             KavSegmented(listOf("OLED", T("Light", "בהיר"), T("Dark", "כהה")), themes.indexOf(style.theme.takeUnless { it == "auto" } ?: kavTheme),
                 { save(style.copy(theme = themes[it])) })
         }
-    }
     }
 }
 
@@ -1797,40 +1787,23 @@ internal fun TimetableUpdates() {
     }
 }
 
-// Providers' summary: who answers live times and trips, the timetable when it isn't the week from Kav, and links.
-@Composable
-private fun providersSummary(): String {
-    fun named(at: String?) = when (at) {
-        null -> T("unavailable", "לא זמין")
-        KavLive.KAV_SERVER -> T("Kav's server", "השרת של Kav")
-        else -> T("your server", "השרת שלכם")
-    }
-    val live = named(KavLive.server)
-    // The planner results open on; an extension's is named, not called a server.
-    val first = KavPlan.opensOn()
-    val trips = first?.takeIf(uk.noammm.kav.ext.Extensions::isAddress)?.let(KavPlan::tabName)
-        ?: if (KavPlan.source.provider) sourceName(KavPlan.source) else named(KavPlan.planner())
-    val timetable = if (Schedules.source.provider) sourceName(Schedules.source)
-        else if (KavLive.timetableServer != null) T("your server", "השרת שלכם") else null
-    return listOfNotNull(
-        if (live == trips) T("Live and trips: ", "זמן אמת ומסלולים: ") + live
-        else T("Live: ", "זמן אמת: ") + live + " · " + T("trips: ", "מסלולים: ") + trips,
-        timetable?.let { T("timetable: ", "לוח זמנים: ") + it },
-        // Where links are made, once there's a choice of it (ShareServerChoice).
-        if (KavLive.ownServer.isEmpty()) null else T("links: ", "קישורים: ") + named(TripShare.server),
-    ).joinToString(" · ")
-}
-
-// Who Kav asks for live times, trips, the timetable, line alerts and how busy, and where a shared trip's link is made:
-// the Providers page. Default is Kav for all of it; Custom opens each choice.
-@Composable
-internal fun Providers() {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val kavs = listOf(KavLive.source, KavPlan.source, Schedules.source, RideAlerts.source).all { it == Source.KAV } &&
+// Every choice of Providers is Kav's own (Default).
+private fun providersAreKavs(ctx: android.content.Context) =
+    listOf(KavLive.source, KavPlan.source, Schedules.source, RideAlerts.source).all { it == Source.KAV } &&
         TripShare.server == KavLive.KAV_SERVER && RideAlerts.language == "auto" && uk.noammm.kav.data.KavCrowd.enabled && !GoogleCrowd.enabled &&
         Prefs.timetableUpdates(ctx) && !Prefs.timetableOnMobile(ctx)
-    DefaultOrCustom(kavs, { providersToKav(ctx, scope) }, Modifier.padding(top = K.gap6)) {
+
+// Who Kav asks for live times, trips, the timetable, line alerts and how busy, and where a shared trip's link is made:
+// on the Privacy page, after search. Default is Kav for all of it; Custom opens each choice.
+@Composable
+internal fun Providers(title: String) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    InfoHeader(title, T(
+        "Who Kav asks for live times, trips, the timetable, line alerts and how full a bus is. By default, Kav's server.",
+        "את מי Kav שואלת על זמן אמת, מסלולים, לוח הזמנים, התראות קווים וכמה האוטובוס מלא. כברירת מחדל, את השרת של Kav.",
+    ))
+    DefaultOrCustom(providersAreKavs(ctx), { providersToKav(ctx, scope) }) {
         LiveSource()
         PlanningSource()
         TimetableSource()
@@ -1844,7 +1817,7 @@ internal fun Providers() {
     StopPhotoChoice()
 }
 
-// Kav for every choice on the Providers page. A server of the rider's own stays set up, unused.
+// Kav for every choice of Providers. A server of the rider's own stays set up, unused.
 private fun providersToKav(ctx: android.content.Context, scope: kotlinx.coroutines.CoroutineScope) {
     val before = KavLive.timetableServer
     KavLive.source = Source.KAV; Prefs.setLiveSource(ctx, Source.KAV)
@@ -2250,49 +2223,6 @@ private fun ShieldGlyph(tint: Color, size: Dp = 18.dp) {
         drawPath(shield, tint, style = Stroke(sw))
         drawCircle(tint, w * .085f, Offset(w * .5f, h * .46f))
         drawLine(tint, Offset(w * .5f, h * .46f), Offset(w * .5f, h * .66f), sw, StrokeCap.Round)
-    }
-}
-
-// Kav's fixes for Google are signed files it checks once a day. This asks now, for when something has just stopped
-// working and a fix may already be out.
-@Composable
-private fun FixCheck() {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var result by remember { mutableStateOf<SignedFile.Check?>(null) }
-    var checking by remember { mutableStateOf(false) }
-    InfoHeader(
-        T("Fixes for Google", "תיקונים ל-Google"),
-        T("Small signed updates for when Google changes how it answers, so Kav keeps working between releases.",
-            "עדכונים קטנים וחתומים למקרה ש-Google משנה את אופן התשובה, כדי ש-Kav תמשיך לעבוד בין גרסאות."),
-    )
-    Row(
-        Modifier.fillMaxWidth().panel(K.rCard).padding(horizontal = K.gap4, vertical = K.gap3),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(K.gap3),
-    ) {
-        Column(Modifier.weight(1f)) {
-            // The status rolls from one state to the next, in its colour.
-            LiveText(
-                when {
-                    result == SignedFile.Check.NEWER -> T("A fix arrived and is in use", "הגיע תיקון והוא כבר בשימוש")
-                    result == SignedFile.Check.SAME -> T("Kav has the latest fixes", "ל-Kav יש את התיקונים האחרונים")
-                    result == SignedFile.Check.FAILED -> T("Couldn't check. Try again online.", "לא הצלחנו לבדוק. נסו שוב כשיש חיבור.")
-                    else -> T("Checked once a day", "נבדק פעם ביום")
-                },
-                style = K.type.body, color = if (result == SignedFile.Check.NEWER) K.realtime else K.text,
-            )
-        }
-        KavButton(T("Check now", "בדקו עכשיו"), busy = checking, style = ButtonStyle.Secondary, onClick = {
-            if (checking) return@KavButton
-            scope.launch {
-                checking = true
-                result = withContext(Dispatchers.IO) {
-                    runCatching { GoogleRecipe.refresh(ctx, force = true) }.getOrDefault(SignedFile.Check.FAILED)
-                }
-                checking = false
-            }
-        })
     }
 }
 

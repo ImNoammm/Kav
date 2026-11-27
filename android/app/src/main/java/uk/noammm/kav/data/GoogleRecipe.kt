@@ -89,9 +89,8 @@ internal class GoogleRecipe private constructor(
         var current = DEFAULT
             private set
 
-        // The copy kept from an earlier check, then Vela's latest at most once a day, or now when forced. Blocks, so
-        // off the main thread.
-        fun refresh(ctx: Context, force: Boolean = false) = VELA.refresh(ctx, force, ::take)
+        // The copy kept from an earlier check, then Vela's latest at most once a day. Blocks, so off the main thread.
+        fun refresh(ctx: Context) = VELA.refresh(ctx, ::take)
 
         // The copy kept from an earlier check, without the network: Kav opens with it, and the background check (Checks)
         // asks for Vela's published one.

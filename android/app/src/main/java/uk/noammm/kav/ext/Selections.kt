@@ -20,7 +20,7 @@ object Selections {
         private set
 
     // The extension's tab results open on, when the rider (or an extension, with results.planner.select) chose one.
-    // Null: the tab of Kav's own planner (Settings › Providers).
+    // Null: the tab of Kav's own planner (Settings › Privacy).
     var opens by mutableStateOf<Namespace?>(null)
         private set
 

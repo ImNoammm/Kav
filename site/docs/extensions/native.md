@@ -515,7 +515,7 @@ when the part next shows.
 | `pay.history.ride` | `{"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}` | One ride. Optional fields are omitted. Time is in milliseconds, fare range in kilometres, and price in agorot. | `ui/PayHistory.kt:127` |
 | `settings.page.trips` | `{"page", "title"}` | The Trips Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:284` |
-| `settings.page.live` | `{"page", "title"}` | The Providers Settings page body. | `ui/Settings.kt:284` |
+| `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:284` |
 | `settings.page.look` | `{"page", "title"}` | The Look Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.language` | `{"page", "title"}` | The Language and time Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:284` |

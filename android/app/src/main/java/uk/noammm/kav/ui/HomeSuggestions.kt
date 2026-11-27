@@ -212,8 +212,9 @@ private fun SuggestionsCard(model: KavModel, latest: ActiveJourney?, onLatest: (
                         when (now.near) {
                             Near.ASK -> Column(Modifier.fillMaxWidth().padding(start = K.gap4, end = K.gap4, bottom = K.gap4),
                                 verticalArrangement = Arrangement.spacedBy(K.gap3)) {
-                                Text(T("Your location is used on the phone to find nearby stops.",
-                                    "המיקום משמש בטלפון למציאת תחנות קרובות."), style = K.type.subhead, color = K.textSecondary)
+                                // The station is found on the phone; its live times are Kav's server's, asked by its stops.
+                                Text(T("To show the station nearest you, with its live times.",
+                                    "כדי להראות את התחנה הקרובה אליכם, עם הזמנים שלה בזמן אמת."), style = K.type.subhead, color = K.textSecondary)
                                 KavButton(T("Use my location", "השתמשו במיקום שלי"), {
                                     if (hasLocationPermission(ctx)) locate() else permission.launch(LOCATION_PERMISSIONS)
                                 }, Modifier.fillMaxWidth(), busy = locating)
