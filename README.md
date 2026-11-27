@@ -52,6 +52,8 @@ Installing, using Kav and running your own server are all covered on
   as you say.
 - Shows where your bus actually is. The trip stays in the notification shade
   while you're on the way, and on Android 16 it shows up as a live update.
+  Alerts can be said out loud, and if you turn it on, a bus arriving and getting
+  off during a phone call too, only in your ear and never on speakerphone.
 - Live bus locations on the map, free. With Kav selected, they come from its server
   ([server/](server)), which takes them straight from the Ministry of
   Transport's real-time feed, and it plans your trips too, on the ministry's
@@ -60,8 +62,11 @@ Installing, using Kav and running your own server are all covered on
   Cloudflare, and keeps no logs.
 - A live screen with every stop around you and the buses reporting their
   position.
-- Departure boards for every station, and a page for every line with its route
-  on a map, its stops and its buses on the road.
+- Departure boards for every station, and a page for every line with both its
+  directions, a day's schedule, its route on a map, its stops and its buses on
+  the road. A home screen widget shows a stop's next buses, offline too.
+- Already on a bus? Tap "I'm already on a bus" in Lines, or let Home suggest the
+  bus you're on (off until you turn it on), and Kav follows it to your stop.
 - Separate choices for trip planning, live locations and timetables. Pick
   Kav or your own server for each. The timetable kept on the
   phone remains available without signal.
@@ -87,11 +92,14 @@ Installing, using Kav and running your own server are all covered on
 - Private search, on by default, keeps your exact location out of searches:
   Google or OpenStreetMap's Photon search sees only the center of the town
   you're in, or a place you pick. Choose the search provider in setup or Settings.
-- Pay with Rav-Pass: "Pay for a ride" opens the Rav-Pass app on its bus
+  Exact house numbers, off until you turn it on, also asks GovMap, the Survey of
+  Israel's map, so a typed address lands on the right house. GovMap gets only the
+  typed text.
+- Pay with Rav-Pass or Egged's egg: "Pay for a ride" opens the app on its bus
   scanner or its train or light rail section, a button over it brings you back,
-  and Kav reads your ticket off Rav-Pass's screen to show it in Kav, every
+  and Kav reads your ticket off the app's screen to show it in Kav, every
   passenger's code included, with a ride history on your phone. You can't pay
-  inside Kav, and Kav tells Rav-Pass nothing about you or the ride.
+  inside Kav, and Kav tells the app nothing about you or the ride.
 - Reports a driver, a bus, an inspector or a train to the Ministry of Transport
   on its own form. Kav fills it in from your ride, and you check it and send it
   yourself. Your details stay on the phone and only go into that form.
@@ -115,7 +123,7 @@ GitHub builds every APK there from the code in this repo, and you can check the
 one you downloaded with the [GitHub CLI](https://cli.github.com):
 
 ```sh
-gh attestation verify kav-5.1.apk --repo ImNoammm/kav
+gh attestation verify kav-5.2.apk --repo ImNoammm/kav
 ```
 
 ### If Play Protect blocks installation
@@ -265,7 +273,11 @@ your own server (below): Kav's server only answers the APKs from Releases.
   [@Kido130](https://github.com/Kido130) kept last night's buses on the departure
   board after midnight; [@donno2048](https://github.com/donno2048) made the
   release workflow build the APK on GitHub from the tagged code; and
-  [@GbaGuy](https://github.com/GbaGuy) added clear buttons to the search fields.
+  [@GbaGuy](https://github.com/GbaGuy) added clear buttons to the search fields;
+  [@o29mxuhta](https://github.com/o29mxuhta) (Gil) made following the bus you're
+  on, paying with egg, the question before a bug report adds your phone's
+  details, and exact house numbers from GovMap; and [@bhl0583273229-collab](https://github.com/bhl0583273229-collab)
+  made the next buses widget.
 - Thanks to the amazing team at [HTTP Toolkit](https://httptoolkit.com), who
   kindly gave Kav a free Pro licence.
 - A huge thanks to [@yair-654](https://github.com/yair-654) for all the support

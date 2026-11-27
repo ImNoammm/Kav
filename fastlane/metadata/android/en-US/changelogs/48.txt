@@ -1,0 +1,6 @@
+• Settings and setup are sorted again; a trip's voice and options are on the trip screen, a link's in the share sheet.
+• Already on a bus? Kav can follow it to your stop.
+• A next buses widget, a line page with both directions and a day's schedule, and paying with egg.
+• Exact house numbers, if you turn it on, also asks GovMap.
+• Speak during calls, off unless you turn it on, only in your ear.
+• For developers: extensions API 5.

@@ -127,7 +127,7 @@ loads your code, so they never go into your dex.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
   with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
-  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and came with Kav 5.2, version code 48: with `"api": 5`, set `minKav` to 48. A Kav with an older API than your manifest says doesn't start your
   code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
@@ -159,7 +159,7 @@ declares it too:
 ### The API
 
 Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
-one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4, the Kav after it has 5). Plain
+one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4, Kav 5.2 has 5). Plain
 types only: text, numbers, JSON as text, and Android's own `Context`, `View` and `Bitmap`.
 
 **When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
@@ -543,7 +543,7 @@ when the part next shows.
 | `pay.history.ride` | `{"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}` | One ride. Optional fields are omitted. Time is in milliseconds, fare range in kilometres, and price in agorot. | `ui/PayHistory.kt:127` |
 | `settings.page.trips` | `{"page", "title"}` | The Trips Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:284` |
-| `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:284` |
+| `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:191` |
 | `settings.page.look` | `{"page", "title"}` | The Look Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.language` | `{"page", "title"}` | The Language and time Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:284` |
@@ -1916,7 +1916,7 @@ as they host extensions, in the same bundle or a bundle of their own, and the co
 
 ```json
 {
-  "format": 1, "kind": "theme", "minKav": 47, "api": 5,
+  "format": 1, "kind": "theme", "minKav": 48, "api": 5,
   "name": "night-sea", "displayName": "Night sea", "version": "1.0.0", "release": 1,
   "description": "Deep blue pages and a sea-green accent.",
   "contributions": [],
@@ -2145,7 +2145,7 @@ At most 64 KB.
 | `version` | What riders see as the version. Any text up to 32 characters. Kav does not compare versions. |
 | `release` | Needed: a whole number from 1. Riders see it beside the version. Raise it with each release. |
 | `minKav` | The lowest Kav version code that can run it. Kav 5 is 45; set at least 45. An extension that needs a newer Kav is listed and can't be switched on. Default 0. |
-| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks, with Kav 5.1 (`minKav` 47). Default 1. |
+| `api` | The API it was made for: `2` or `3` for Kav 5.0, `4` for actions, screen parts, tickets and hooks, with Kav 5.1 (`minKav` 47), `5` for planner tabs, the rider's trips, home screen widgets and Kav's timetable and live vehicles, with Kav 5.2 (`minKav` 48). Default 1. |
 | `description` | At most 2000 characters. |
 | `native` | Its Android code: `{ "dex": "<path in its folder>", "entry": "<full class name>" }`. Needed, except for a theme, which may bring none. See [native.md](https://kavapp.link/docs/extensions/native). |
 | `permissions` | A list of plain words (the same rule as `name`). Kav shows them to riders as written. |

@@ -218,7 +218,7 @@ as they host extensions, in the same bundle or a bundle of their own, and the co
 
 ```json
 {
-  "format": 1, "kind": "theme", "minKav": 47, "api": 5,
+  "format": 1, "kind": "theme", "minKav": 48, "api": 5,
   "name": "night-sea", "displayName": "Night sea", "version": "1.0.0", "release": 1,
   "description": "Deep blue pages and a sea-green accent.",
   "contributions": [],

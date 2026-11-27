@@ -99,7 +99,7 @@ loads your code, so they never go into your dex.
 - `minKav: 45` is Kav 5. `api` is the API level your code uses: 2 and 3 run on every Kav 5, and 4 is needed for
   actions, screen parts, tickets and hooks ([below](#api-4-taking-over-kav)). API 4 came with Kav 5.1, version code 47:
   with `"api": 4`, set `minKav` to 47, so an older Kav lists your extension as needing a newer Kav. API 5 adds
-  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and comes with the Kav after 5.1. A Kav with an older API than your manifest says doesn't start your
+  `kav.prefs()`, `kav.trips()`, `kav.onTrip()`, `kav.widget()` and `kav.refreshWidget()` and came with Kav 5.2, version code 48: with `"api": 5`, set `minKav` to 48. A Kav with an older API than your manifest says doesn't start your
   code.
 - A manifest without `"native"`, or with `"runtime"`, was made for an older version of Kav: Kav lists it and never
   runs it.
@@ -131,7 +131,7 @@ declares it too:
 ## The API
 
 Everything is in `kav.kavapp.api`, and its sources are in `api/src/`. A newer Kav keeps every method of an older
-one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4, the Kav after it has 5). Plain
+one; `kav.apiVersion()` says which level the Kav in front of you has (Kav 5.0 has 3, Kav 5.1 has 4, Kav 5.2 has 5). Plain
 types only: text, numbers, JSON as text, and Android's own `Context`, `View` and `Bitmap`.
 
 **When it runs.** Kav calls `start` once each time Kav starts, and at once when the rider switches the extension on
@@ -515,7 +515,7 @@ when the part next shows.
 | `pay.history.ride` | `{"key", "kind", "line", "from", "to", "at", "riders", "band", "price"}` | One ride. Optional fields are omitted. Time is in milliseconds, fare range in kilometres, and price in agorot. | `ui/PayHistory.kt:127` |
 | `settings.page.trips` | `{"page", "title"}` | The Trips Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.paying` | `{"page", "title"}` | The Paying Settings page body. | `ui/Settings.kt:284` |
-| `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:284` |
+| `settings.page.live` | `{"page", "title"}` | Live times and trips, on the Privacy Settings page (once its own page, Providers; opening `live` opens Privacy). | `ui/Settings.kt:191` |
 | `settings.page.look` | `{"page", "title"}` | The Look Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.language` | `{"page", "title"}` | The Language and time Settings page body. | `ui/Settings.kt:284` |
 | `settings.page.map` | `{"page", "title"}` | The Map Settings page body. | `ui/Settings.kt:284` |
