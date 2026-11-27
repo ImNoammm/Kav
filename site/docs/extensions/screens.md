@@ -282,7 +282,7 @@ every look; a part left out is drawn as Kav's. Older Kav ignores it.
 | `button`, `buttonPressed`, `buttonPrimary` | buttons (and icon buttons, chips and the chosen one of a segmented control); a pressed button and a chosen chip on `buttonPressed`, the main action's button on `buttonPrimary` |
 | `card` | cards (anything at the `card` corner); Kav clips it to that corner |
 | `cardTitle` | a strip across the top of each card, as tall as its picture at its scale, with the card's content below it |
-| `field` | text fields, the search field, and the track of a segmented control |
+| `field` | text fields, the search field, the track of a segmented control, and grouped lists (Live's vehicles, recent trips, stops, ride history) as one box round all their rows |
 | `background` | not a piece: a PNG, JPEG or WebP behind every screen, cropped from its middle to fill it, seen where a screen leaves its background clear |
 
 A piece is `image`, the path of a PNG in the theme's folder; `insets`, the edges kept as they are, `[left, top, right,
