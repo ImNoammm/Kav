@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import uk.noammm.kav.Pip
+import uk.noammm.kav.Tab
 import uk.noammm.kav.ext.ScreenPieces
 import java.lang.ref.WeakReference
 
@@ -117,10 +118,11 @@ object ScreenOverlay {
     private const val TAG = "kav.screen.overlay"
     private var shownOn: WeakReference<Activity>? = null
 
+    // Made again when the tab changes, with the tab shown, as the tab bar's part is.
     @Composable
-    internal fun Host() {
+    internal fun Host(tab: Tab) {
         val activity = LocalContext.current as? Activity ?: return
-        val part = if (Pip.active) null else rememberPart(ScreenPieces.PART, Unit) { JSONObject() }
+        val part = if (Pip.active) null else rememberPart(ScreenPieces.PART, tab) { JSONObject().put("tab", tab.name.lowercase()) }
         val views = part?.after?.map { it.second }.orEmpty()
         SideEffect { show(activity, views) }
         DisposableEffect(activity) { onDispose { show(activity, emptyList()) } }
