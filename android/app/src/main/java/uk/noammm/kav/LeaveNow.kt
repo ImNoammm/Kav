@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.runBlocking
 import uk.noammm.kav.data.KavLive
+import uk.noammm.kav.data.LeaveNowTimes
 import uk.noammm.kav.data.LineAlert
 import uk.noammm.kav.data.Net
 import uk.noammm.kav.data.Schedules
@@ -43,7 +44,7 @@ class LeaveNowReceiver : BroadcastReceiver() {
 // chosen bus or train leaves their stop: leave now and you catch it. A delayed bus moves the moment with it, from
 // the server's live times; with no live time the timetable's, marked as such. Each departure alerts once. The wake
 // is an inexact alarm, which a sleeping phone may hold back a few minutes. The time logic itself, which departure
-// to aim at, when to fire and when to stay quiet, lives in data/LeaveNow on plain values, tested without a phone.
+// to aim at, when to fire and when to stay quiet, lives in data/LeaveNowTimes on plain values, tested without a phone.
 object LeaveNow {
     const val ACT_WAKE = "uk.noammm.kav.LEAVE_NOW"
     const val ACT_QUIET = "uk.noammm.kav.LEAVE_NOW_QUIET"
@@ -65,22 +66,28 @@ object LeaveNow {
         if (System.currentTimeMillis() / 1000 < until) Prefs.quietAlert(ctx, id, until)
     }
 
-    // The alert's chosen departures still ahead, live from the server when it answers, from the timetable when it
-    // does not or knows nothing of the stop.
-    private fun departures(ctx: Context, net: Net?, a: LineAlert, now: Long): List<uk.noammm.kav.data.LeaveNow.Dep> {
+    // The server's departures at the alert's stop, live times where it has them. Null when it can't be asked.
+    private fun liveDeps(ctx: Context, a: LineAlert): List<LeaveNowTimes.Dep>? {
         runCatching { Prefs.loadSources(ctx) }
-        val live = runCatching {
+        return runCatching {
             val board = KavLive.stops(listOf(a.code))
             board.due.filter { it.stop == a.code && (it.expected > 0 || it.aimed > 0) }.map { d ->
-                uk.noammm.kav.data.LeaveNow.Dep(d.number, board.lines[d.route]?.to ?: "", d.aimed, d.expected)
+                LeaveNowTimes.Dep(d.number, board.lines[d.route]?.to ?: "", d.aimed, d.expected)
             }
         }.getOrNull()
-        if (!live.isNullOrEmpty()) return live
-        return if (net == null) emptyList() else timetableDeps(net, a, now)
     }
 
-    private fun timetableDeps(net: Net, a: LineAlert, now: Long): List<uk.noammm.kav.data.LeaveNow.Dep> {
-        val out = ArrayList<uk.noammm.kav.data.LeaveNow.Dep>()
+    // The next chosen departure: live from the server when it has one of the chosen lines, else the timetable's.
+    // A stop with live times for other lines only must not hide the chosen lines' timetable.
+    private fun nextDeparture(ctx: Context, net: Net?, a: LineAlert, now: Long): LeaveNowTimes.Dep? {
+        val lines = a.lines.toSet()
+        val ends = a.toward.map { it.name }.toSet()
+        liveDeps(ctx, a)?.let { LeaveNowTimes.target(it, lines, ends, now) }?.let { return it }
+        return net?.let { LeaveNowTimes.target(timetableDeps(it, a, now), lines, ends, now) }
+    }
+
+    private fun timetableDeps(net: Net, a: LineAlert, now: Long): List<LeaveNowTimes.Dep> {
+        val out = ArrayList<LeaveNowTimes.Dep>()
         val zone = ZoneId.of("Asia/Jerusalem")
         val today = Instant.ofEpochSecond(now).atZone(zone).toLocalDate()
         // Today and tomorrow cover every window the alert can be in, trips after midnight included.
@@ -97,7 +104,7 @@ object LeaveNow {
                     val at = base + net.stDep[st]
                     if (at <= now) continue
                     val route = net.tripRoute[trip]
-                    out.add(uk.noammm.kav.data.LeaveNow.Dep(net.rShort[route], net.name[net.tripLast(trip)], at, 0))
+                    out.add(LeaveNowTimes.Dep(net.rShort[route], net.name[net.tripLast(trip)], at, 0))
                 }
             }
         }
@@ -123,21 +130,20 @@ object LeaveNow {
         // alerts' windows that is the next window's start; inside, the next leave moment.
         val net = Loaded.net ?: runBlocking { runCatching { loadNet(ctx) }.getOrNull() }
         val active = alerts.filter { it.window(now) != null }
-        class Target(val a: LineAlert, val dep: uk.noammm.kav.data.LeaveNow.Dep)
+        class Target(val a: LineAlert, val dep: LeaveNowTimes.Dep)
         val targets = active.mapNotNull { a ->
-            uk.noammm.kav.data.LeaveNow.target(departures(ctx, net, a, now), a.lines.toSet(), a.toward.map { it.name }.toSet(), now)
-                ?.let { Target(a, it) }
+            nextDeparture(ctx, net, a, now)?.let { Target(a, it) }
         }
-        val plan = uk.noammm.kav.data.LeaveNow.plan(
+        val plan = LeaveNowTimes.plan(
             targets.map {
-                uk.noammm.kav.data.LeaveNow.State(
-                    it.a.id, uk.noammm.kav.data.LeaveNow.leaveAt(it.dep, it.a.leaveMin),
-                    uk.noammm.kav.data.LeaveNow.depAt(it.dep), Prefs.alertQuietUntil(ctx, it.a.id),
+                LeaveNowTimes.State(
+                    it.a.id, LeaveNowTimes.leaveAt(it.dep, it.a.leaveMin),
+                    LeaveNowTimes.depAt(it.dep), Prefs.alertQuietUntil(ctx, it.a.id),
                 )
             }, now,
         )
         val nextWindow = alerts.mapNotNull { it.nextStart(now) }.minOrNull()
-        schedule(ctx, listOfNotNull(plan.wakeAt, nextWindow).minOrNull())
+        schedule(ctx, listOfNotNull(plan.wakeAt, nextWindow).minOrNull()?.let { LeaveNowTimes.approach(it, now) })
         val firing = targets.filter { it.a.id in plan.fire }
         // Deleted, finished or swiped away.
         runCatching { ctx.getSystemService(android.app.NotificationManager::class.java).activeNotifications }.getOrNull().orEmpty()
@@ -145,14 +151,14 @@ object LeaveNow {
             .forEach { nm.cancel(TAG, it.id) }
         for (t in firing) {
             // Fired: quiet until this bus's time passes, so a rerun, a boot or an update does not alert for it twice.
-            Prefs.quietAlert(ctx, t.a.id, uk.noammm.kav.data.LeaveNow.depAt(t.dep))
+            Prefs.quietAlert(ctx, t.a.id, LeaveNowTimes.depAt(t.dep))
             post(ctx, t.a, t.dep, now)
         }
     }
 
     private fun notificationId(a: LineAlert) = a.id.hashCode()
 
-    private fun post(ctx: Context, a: LineAlert, dep: uk.noammm.kav.data.LeaveNow.Dep, now: Long) {
+    private fun post(ctx: Context, a: LineAlert, dep: LeaveNowTimes.Dep, now: Long) {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) return
         nm.createNotificationChannel(
@@ -165,7 +171,7 @@ object LeaveNow {
                 .build(),
         )
         val clock = clockFormat()
-        val at = uk.noammm.kav.data.LeaveNow.depAt(dep)
+        val at = LeaveNowTimes.depAt(dep)
         val label = if (a.toward.isNotEmpty()) shownName(dep.endName) else dep.line
         // The walk minutes say where they came from: measured ones carry when and from where, since the rider may
         // be somewhere else by now; chosen ones say they were chosen.
