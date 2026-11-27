@@ -112,9 +112,15 @@ fun KavButton(
         ButtonStyle.Secondary, ButtonStyle.Destructive -> K.fill
         ButtonStyle.Plain -> Color.Transparent
     }, tween(200), label = "buttonFill")
+    // A skin's button piece in place of the fill: pressed, the main one's, or the button's.
+    val piece = K.skin?.let { sk ->
+        if (style == ButtonStyle.Plain) null
+        else (if (pressed) sk["buttonPressed"] else null) ?: (if (style == ButtonStyle.Primary) sk["buttonPrimary"] else null) ?: sk["button"]
+    }
     val ink by animateColorAsState(when {
         !enabled -> K.textTertiary
-        style == ButtonStyle.Primary -> K.onAccent
+        piece?.ink != null && style != ButtonStyle.Destructive -> piece.ink
+        style == ButtonStyle.Primary -> if (piece != null) K.text else K.onAccent
         style == ButtonStyle.Secondary -> K.text
         style == ButtonStyle.Plain -> K.accentInk
         else -> K.critical
@@ -126,8 +132,8 @@ fun KavButton(
             .heightIn(min = 52.dp)
             .graphicsLayer { scaleX = press; scaleY = press }
             .clip(K.capsule)
-            .background(fill)
-            .then(if (style == ButtonStyle.Plain) Modifier else Modifier.controlOutline())
+            .then(if (piece != null) Modifier.skin(piece) else Modifier.background(fill))
+            .then(if (style == ButtonStyle.Plain || piece != null) Modifier else Modifier.controlOutline())
             .clickable(source, LocalIndication.current, enabled = enabled && !busy, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (style == ButtonStyle.Plain) K.gap4 else K.gap5),
         verticalAlignment = Alignment.CenterVertically,
@@ -213,7 +219,8 @@ fun KavIconButton(
     Box(
         modifier
             .size(size)
-            .then(if (floating) Modifier.glassSurface(K.pill(size / 2)) else Modifier.clip(K.capsule).background(K.fill).controlOutline())
+            .then(K.skin?.get("button")?.let { Modifier.clip(K.capsule).skin(it) }
+                ?: if (floating) Modifier.glassSurface(K.pill(size / 2)) else Modifier.clip(K.capsule).background(K.fill).controlOutline())
             .semantics { contentDescription = label }
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -237,8 +244,16 @@ fun KavChip(
     // A chip that can't be used yet: in place, greyed and not tappable, as a disabled button is.
     enabled: Boolean = true,
 ) {
+    // On a skin, a chosen chip is its button pressed.
+    val piece = K.skin?.let { sk -> (if (selected) sk["buttonPressed"] else null) ?: sk["button"] }
     val fill by animateColorAsState(if (selected) K.accent else K.fill, tween(150), label = "chipFill")
-    val ink by animateColorAsState(if (selected) K.onAccent else if (enabled) K.textSecondary else K.textTertiary, tween(150), label = "chipInk")
+    val ink by animateColorAsState(when {
+        !enabled -> K.textTertiary
+        piece != null -> piece.ink ?: K.text
+        selected -> K.onAccent
+        else -> K.textSecondary
+    }, tween(150), label = "chipInk")
+    val face = if (piece != null) Modifier.clip(K.capsule).skin(piece) else Modifier.clip(K.capsule).background(fill).controlOutline()
     val ticked by animateFloatAsState(if (selected) 1f else 0f, tween(150), label = "chipTick")
     // With a tick, the label stays centred in room that fits the tick at its start, so choosing moves nothing.
     if (check) {
@@ -246,9 +261,7 @@ fun KavChip(
             modifier
                 .minimumInteractiveComponentSize()
                 .heightIn(min = 36.dp)
-                .clip(K.capsule)
-                .background(fill)
-                .controlOutline()
+                .then(face)
                 .semantics { this.selected = selected }
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
@@ -265,9 +278,7 @@ fun KavChip(
         modifier
             .minimumInteractiveComponentSize()
             .heightIn(min = 36.dp)
-            .clip(K.capsule)
-            .background(fill)
-            .controlOutline()
+            .then(face)
             .semantics { this.selected = selected }
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = K.gap4),
@@ -292,7 +303,11 @@ fun KavSegmented(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val style = K.type.subhead
-    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule).background(K.fill).controlOutline().padding(3.dp)) {
+    // On a skin, the track is a field and the chosen one a button on it.
+    val track = K.skin?.get("field")
+    val thumb = K.skin?.get("button")
+    BoxWithConstraints(modifier.fillMaxWidth().height(40.dp).clip(K.capsule)
+        .then(if (track != null) Modifier.skin(track) else Modifier.background(K.fill).controlOutline()).padding(3.dp)) {
         val n = options.size.coerceAtLeast(1)
         val widths = remember(options, maxWidth, style, density) {
             if (n < 4) List(n) { maxWidth / n } else {
@@ -307,7 +322,8 @@ fun KavSegmented(
         val start = widths.take(selected.coerceIn(0, widths.size)).fold(0.dp) { a, b -> a + b }
         val at by animateDpAsState(start, spring(dampingRatio = 1f, stiffness = 500f), label = "thumb")
         val wide by animateDpAsState(widths.getOrElse(selected) { 0.dp }, spring(dampingRatio = 1f, stiffness = 500f), label = "thumbWidth")
-        Box(Modifier.offset(x = at).width(wide).fillMaxHeight().clip(K.capsule).background(K.accent))
+        Box(Modifier.offset(x = at).width(wide).fillMaxHeight().clip(K.capsule)
+            .then(if (thumb != null) Modifier.skin(thumb) else Modifier.background(K.accent)))
         Row(Modifier.fillMaxSize()) {
             options.forEachIndexed { i, option ->
                 Box(
@@ -318,7 +334,7 @@ fun KavSegmented(
                 ) {
                     val ink by animateColorAsState(
                         when {
-                            i == selected -> K.onAccent
+                            i == selected -> if (thumb != null) thumb.ink ?: K.text else K.onAccent
                             enabled(i) -> K.textSecondary
                             else -> K.textTertiary
                         },
@@ -531,13 +547,13 @@ fun ScreenHeader(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().topBar().padding(horizontal = K.gap4, vertical = K.gap3).heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(K.gap3),
     ) {
         if (back != null) BackButton(back)
         Text(
-            title, style = if (large) K.type.largeTitle else K.type.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            title, style = if (large) K.type.largeTitle else K.type.title, color = topBarInk, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         actions()

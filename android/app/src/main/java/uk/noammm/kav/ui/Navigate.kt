@@ -249,8 +249,12 @@ private fun waitedOn(ride: Transit.Leg, wait: Transit.Leg?, r: Transit.Resolved,
 
 @Composable
 fun StartButton(onClick: () -> Unit) {
+    // On a skin, its main button, with that button's ink.
+    val piece = K.skin?.let { it["buttonPrimary"] ?: it["button"] }
+    val ink = if (piece != null) piece.ink ?: K.text else K.onAccent
     Row(
-        Modifier.heightIn(min = 48.dp).clip(K.capsule).background(K.live)
+        Modifier.heightIn(min = 48.dp).clip(K.capsule)
+            .then(if (piece != null) Modifier.skin(piece) else Modifier.background(K.live))
             .clickable(onClick = onClick).padding(horizontal = K.gap5),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -262,11 +266,11 @@ fun StartButton(onClick: () -> Unit) {
                     moveTo(w * .18f, h * .12f); lineTo(w * .90f, h * .50f)
                     lineTo(w * .18f, h * .88f); close()
                 },
-                K.onAccent,
+                ink,
             )
         }
         Spacer(Modifier.width(9.dp))
-        Text(T("Start", "התחלה"), fontSize = 14.sp, color = K.onAccent, fontWeight = FontWeight.Medium)
+        Text(T("Start", "התחלה"), fontSize = 14.sp, color = ink, fontWeight = FontWeight.Medium)
     }
 }
 

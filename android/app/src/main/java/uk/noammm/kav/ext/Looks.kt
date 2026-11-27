@@ -7,12 +7,15 @@ import org.json.JSONObject
 //
 //   "theme": {"looks": {"dark": {"bg": "#0B0F14", "accent": "#7FD1C7"}, "light": {...}},
 //             "lineBadges": "strip", "corners": {"card": 16, "sheet": 24, "tile": 8, "badge": 4, "control": 6},
-//             "font": "fonts/Mono.ttf", "outline": "double", "map": {"dark": {"ground": "#050805", "ink": "#33FF66"}}}
+//             "font": "fonts/Mono.ttf", "outline": "double", "map": {"dark": {"ground": "#050805", "ink": "#33FF66"}},
+//             "skin": {"button": {"image": "skin/button.png", "insets": [4, 4, 4, 4], "scale": 1.5, "ink": "#000000"},
+//                      "background": "skin/wall.jpg"}}
 //
 // Any of Kav's 18 colour roles (ui/Theme.kt, Palette) and the accent, any subset, any value, for any of the three
 // looks; the bus line badges' style (Kav's plate or the strip); the corners of cards, sheets, tiles, line plates and
 // controls, in dp within CORNERS; a font file of its own that Kav's text is drawn in (FONT); and how cards and controls
-// are outlined (OUTLINES); and, for any look, the colors Kav's own map is drawn in (MapTone). Whatever it leaves out
+// are outlined (OUTLINES); for any look, the colors Kav's own map is drawn in (MapTone); and pictures drawn in place of
+// some of Kav's parts, in every look (Skin). Whatever it leaves out
 // stays Kav's, or the rider's own (the accent, the badges) (OPEN-PLAN section 3). Fields Kav doesn't take (a map style)
 // are ignored: the map type stays the rider's, since every map but Kav's own loads from someone else. Readability is the maker's to check (the developer kit warns); Kav refuses
 // nothing for it. A theme resolves once to one immutable value.
@@ -36,6 +39,29 @@ object Looks {
     // A font file in the package: a path of plain names, ending .ttf or .otf.
     val FONT = Regex("([A-Za-z0-9_-][A-Za-z0-9._-]{0,95}/){0,3}[A-Za-z0-9_-][A-Za-z0-9._-]{0,91}\\.(ttf|otf|TTF|OTF)")
 
+    // The parts a skin may draw, each a picture stretched by nine slices: the top of a screen, the tab bar and its chosen
+    // tab, buttons (as they are, pressed, and the main one), cards and a strip across their top, and fields.
+    val PIECES = listOf("topBar", "tabBar", "tabSelected", "button", "buttonPressed", "buttonPrimary", "card", "cardTitle", "field")
+    // A piece's picture, PNG, and the page's background picture, PNG, JPEG or WebP: paths of plain names, as for FONT.
+    val PIECE_IMAGE = Regex("([A-Za-z0-9_-][A-Za-z0-9._-]{0,95}/){0,3}[A-Za-z0-9_-][A-Za-z0-9._-]{0,91}\\.(png|PNG)")
+    val BACKGROUND_IMAGE = Regex("([A-Za-z0-9_-][A-Za-z0-9._-]{0,95}/){0,3}[A-Za-z0-9_-][A-Za-z0-9._-]{0,91}\\.(png|PNG|jpg|JPG|jpeg|JPEG|webp|WEBP)")
+    // The most a piece's insets (in its picture's pixels) and its scale (dp for each of them) may be.
+    const val INSET_MAX = 512
+    const val SCALE_MIN = .25
+    const val SCALE_MAX = 8.0
+
+    // One piece: its picture, the left, top, right and bottom edges (in the picture's pixels) kept as they are while the
+    // middle stretches, how many dp each pixel is drawn, and the color of text and icons on it (null: Kav's own).
+    class Piece(val image: String, insets: List<Int>, val scale: Double = 1.0, val ink: Int? = null) {
+        val insets: List<Int> = java.util.Collections.unmodifiableList(insets.toList())
+    }
+
+    // A skin: the pieces it sets, and the page's background picture; one it leaves out is Kav's own.
+    class Skin(pieces: Map<String, Piece>, val background: String? = null) {
+        val pieces: Map<String, Piece> = java.util.Collections.unmodifiableMap(LinkedHashMap(pieces))
+        operator fun get(k: String): Piece? = pieces[k]
+    }
+
     // The corners a theme sets, in dp; one it leaves out is null (Kav's own).
     class Corners(values: Map<String, Int>) {
         val set: Map<String, Int> = java.util.Collections.unmodifiableMap(LinkedHashMap(values))
@@ -55,10 +81,10 @@ object Looks {
 
     // A theme as it resolves: immutable, made once. badges: "kav" or "strip", null for the rider's own. font: the path of
     // its font file in its package, null for Kav's type. outline: one of OUTLINES, null for Kav's own. map: each look's
-    // map tone it sets; a look it leaves out keeps Kav's map.
+    // map tone it sets; a look it leaves out keeps Kav's map. skin: its pictures, null for none.
     class Theme(
         val identity: String, val name: String, looks: Map<String, Colours>, val badges: String? = null, val corners: Corners? = null,
-        val font: String? = null, val outline: String? = null, map: Map<String, MapTone> = emptyMap(),
+        val font: String? = null, val outline: String? = null, map: Map<String, MapTone> = emptyMap(), val skin: Skin? = null,
     ) {
         val looks: Map<String, Colours> = java.util.Collections.unmodifiableMap(LinkedHashMap(looks))
         val map: Map<String, MapTone> = java.util.Collections.unmodifiableMap(LinkedHashMap(map))
@@ -77,6 +103,13 @@ object Looks {
             if (map.isNotEmpty()) put("map", JSONObject().apply {
                 for ((k, m) in map) put(k, JSONObject().put("ground", hex(m.ground)).put("ink", hex(m.ink)).apply { m.water?.let { put("water", hex(it)) } })
             })
+            skin?.let { sk ->
+                put("skin", JSONObject().apply {
+                    for ((k, p) in sk.pieces) put(k, JSONObject().put("image", p.image).put("insets", org.json.JSONArray(p.insets))
+                        .put("scale", p.scale).apply { p.ink?.let { put("ink", hex(it)) } })
+                    sk.background?.let { put("background", it) }
+                })
+            }
         }
     }
 
@@ -105,8 +138,9 @@ object Looks {
         val font = t.optString("font").takeIf { FONT.matches(it) }
         val outline = t.optString("outline").takeIf { it in OUTLINES }
         val map = readMap(t)
-        if (looks.isEmpty() && badges == null && corners == null && font == null && outline == null && map.isEmpty()) return null
-        return Theme(identity, name, looks, badges, corners, font, outline, map)
+        val skin = readSkin(t)
+        if (looks.isEmpty() && badges == null && corners == null && font == null && outline == null && map.isEmpty() && skin == null) return null
+        return Theme(identity, name, looks, badges, corners, font, outline, map, skin)
     }
 
     // Checking needs no name in the rider's language, so installing reads nothing of Kav's screens.
@@ -137,6 +171,24 @@ object Looks {
             out[look] = MapTone(ground, ink, c("water"))
         }
         return out
+    }
+
+    // The skin's pieces and background, or null when it sets none. A piece without a PNG picture, or with insets that
+    // aren't four whole numbers within INSET_MAX, is left out; a scale out of range is 1, an ink that isn't a color none.
+    fun readSkin(t: JSONObject): Skin? {
+        val o = t.optJSONObject("skin") ?: return null
+        val pieces = LinkedHashMap<String, Piece>()
+        for (k in PIECES) {
+            val p = o.optJSONObject(k) ?: continue
+            val image = p.optString("image").takeIf { PIECE_IMAGE.matches(it) } ?: continue
+            val a = p.optJSONArray("insets")
+            val insets = (0 until 4).mapNotNull { i -> (a?.opt(i) as? Number)?.toDouble()?.takeIf { it == Math.floor(it) && it in 0.0..INSET_MAX.toDouble() }?.toInt() }
+            if (a == null || a.length() != 4 || insets.size != 4) continue
+            val scale = (p.opt("scale") as? Number)?.toDouble()?.takeIf { it in SCALE_MIN..SCALE_MAX } ?: 1.0
+            pieces[k] = Piece(image, insets, scale, (p.opt("ink") as? String)?.let(::parse))
+        }
+        val background = o.optString("background").takeIf { BACKGROUND_IMAGE.matches(it) }
+        return if (pieces.isEmpty() && background == null) null else Skin(pieces, background)
     }
 
     // Whether a font file's start (its table directory) has a variations table: a variable font, drawn at each weight.

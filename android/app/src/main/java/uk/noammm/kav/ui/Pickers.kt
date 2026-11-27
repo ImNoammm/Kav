@@ -85,6 +85,11 @@ fun KavField(
     }
     // Changed from outside (the clear button, a pick): the cursor goes to the end.
     val shown = if (field.text == value) field else TextFieldValue(value, TextRange(value.length))
+    val shape = when {
+        multiline -> androidx.compose.foundation.shape.RoundedCornerShape(K.rTile)
+        search -> androidx.compose.foundation.shape.RoundedCornerShape(K.rCard)
+        else -> K.capsule
+    }
     BasicTextField(
         value = shown,
         onValueChange = { field = it; if (it.text != value) onValue(it.text) },
@@ -101,13 +106,11 @@ fun KavField(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            // A capsule with a quiet fill, a search bar a card's rounded rectangle; glass where it floats over a list.
-            .then(if (flat) Modifier else if (floating) Modifier.glassSurface(if (search) K.rCard else K.pill(26.dp))
-                else Modifier.clip(when {
-                    multiline -> androidx.compose.foundation.shape.RoundedCornerShape(K.rTile)
-                    search -> androidx.compose.foundation.shape.RoundedCornerShape(K.rCard)
-                    else -> K.capsule
-                }).background(K.fill))
+            // A capsule with a quiet fill, a search bar a card's rounded rectangle; glass where it floats over a list; a skin's
+            // field where it has one.
+            .then(if (flat) Modifier else K.skin?.get("field")?.let { Modifier.clip(shape).skin(it) }
+                ?: if (floating) Modifier.glassSurface(if (search) K.rCard else K.pill(26.dp))
+                else Modifier.clip(shape).background(K.fill))
             .focusRequester(focus)
             .semantics { contentDescription = placeholder }
             .padding(horizontal = K.gap4, vertical = 14.dp),

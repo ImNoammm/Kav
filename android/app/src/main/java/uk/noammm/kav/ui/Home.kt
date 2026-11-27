@@ -97,14 +97,16 @@ internal fun HomeScreen(
         Column(Modifier.fillMaxSize()) {
             // No title: where to is what this screen is for, so it leads, with Settings beside it.
             FloatingTop(top = {
+                // On a skin's topBar, with room under the field.
                 Row(
-                    Modifier.padding(start = K.gap4, end = K.gap4, top = K.gap3).fillMaxWidth(),
+                    Modifier.fillMaxWidth().topBar()
+                        .padding(start = K.gap4, end = K.gap4, top = K.gap3, bottom = if (K.skin?.get("topBar") != null) K.gap3 else 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(K.gap3),
                 ) {
                     Row(
                         Modifier.weight(1f).heightIn(min = 52.dp)
-                            .glassSurface(K.rCard)
+                            .then(K.skin?.get("field")?.let { Modifier.clip(RoundedCornerShape(K.rCard)).skin(it) } ?: Modifier.glassSurface(K.rCard))
                             .clickable(role = Role.Button, onClickLabel = T("Search destination", "חיפוש יעד"), onClick = onSearch)
                             .padding(horizontal = K.gap4),
                         verticalAlignment = Alignment.CenterVertically,

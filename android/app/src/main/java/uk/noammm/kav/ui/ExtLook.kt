@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +91,7 @@ object ExtLook {
     @Volatile private var theme: Looks.Theme? = null
     @Volatile private var palettes: Map<String, Palette> = emptyMap()
     @Volatile private var font: FontFamily? = null
+    @Volatile private var skin: Skin? = null
     // The extensions folder, where a theme's font is read from (ExtShown.start).
     @Volatile internal var root: java.io.File? = null
     private var holds by mutableIntStateOf(0)
@@ -106,6 +108,8 @@ object ExtLook {
     fun outline(): String? = theme?.takeIf { holds == 0 }?.outline?.takeIf { it != "kav" }
     // The colors of Kav's own map in a look (MapFile.toned), or null for Kav's own map, likewise.
     fun mapTone(look: Look): Looks.MapTone? = theme?.takeIf { holds == 0 }?.map?.get(look.name.lowercase())
+    // Its skin's pictures as read, or null for Kav's own parts, likewise.
+    fun skin(): Skin? = skin?.takeIf { theme != null && holds == 0 }
 
     // The theme's colours for a look (Looks.Theme.colours decides), or Kav's own.
     fun paletteFor(look: Look): Palette {
@@ -119,6 +123,7 @@ object ExtLook {
         palettes = r?.looks?.mapValues { (k, c) -> paletteOf(c, palette(Look.entries.first { it.name.lowercase() == k })) }.orEmpty()
         val d = root
         font = if (t == null || d == null) null else r?.font?.let { fontOf(uk.noammm.kav.ext.Registry.packageDir(d, t.sha256), it) }
+        skin = if (t == null || d == null) null else r?.skin?.let { skinOf(uk.noammm.kav.ext.Registry.packageDir(d, t.sha256), it) }
         theme = r
         K.applyTheme(K.look)
     }
@@ -140,6 +145,34 @@ object ExtLook {
         if (Looks.variable(head)) FontFamily(listOf(400, 500, 600, 700).map { Font(file, FontWeight(it)) })
         else FontFamily(Font(file))
     }.getOrNull()
+
+    // The skin's pictures in a package's folder, each read once here, or null when none can be: a picture that isn't
+    // there, that Android can't read, larger than PIECE_SIDE (a piece) or whose insets don't fit in it is left out. The
+    // background is read at most BACKGROUND_SIDE on its longer side.
+    private const val PIECE_SIDE = 1024
+    private const val BACKGROUND_SIDE = 2048
+
+    private fun skinOf(dir: java.io.File, s: Looks.Skin): Skin? {
+        fun read(path: String, most: Int, shrink: Boolean): android.graphics.Bitmap? = runCatching {
+            val file = java.io.File(dir, path)
+            if (!file.canonicalPath.startsWith(dir.canonicalPath + java.io.File.separator) || !file.isFile) return null
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            if (shrink) while (maxOf(bounds.outWidth, bounds.outHeight) / sample > most) sample *= 2
+            else if (maxOf(bounds.outWidth, bounds.outHeight) > most) return null
+            android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        }.getOrNull()
+        val pieces = s.pieces.mapNotNull { (k, p) ->
+            val b = read(p.image, PIECE_SIDE, shrink = false) ?: return@mapNotNull null
+            val (l, t, r, bottom) = p.insets
+            if (l + r > b.width || t + bottom > b.height) return@mapNotNull null
+            k to SkinPiece(b.asImageBitmap(), p.insets.toIntArray(), p.scale.toFloat(), p.ink?.let(::Color))
+        }.toMap()
+        val background = s.background?.let { read(it, BACKGROUND_SIDE, shrink = true) }?.asImageBitmap()
+        return if (pieces.isEmpty() && background == null) null else Skin(pieces, background)
+    }
 
     // A role the theme leaves out stays Kav's own (base).
     private fun paletteOf(c: Looks.Colours, base: Palette): Palette {

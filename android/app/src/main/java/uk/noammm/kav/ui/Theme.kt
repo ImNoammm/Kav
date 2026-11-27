@@ -99,6 +99,9 @@ object K {
     // The colors a theme draws Kav's own map in, in the chosen look (MapFile.toned); null is Kav's own map.
     var mapTone by mutableStateOf<uk.noammm.kav.ext.Looks.MapTone?>(null)
         private set
+    // A theme's pictures for some of Kav's parts (Skin.kt), in every look; null is Kav's own parts.
+    var skin by mutableStateOf<Skin?>(null)
+        private set
 
     // Interaction and selection only: filled primary buttons, chosen chips, switches, links. Setting it sets the rider's
     // own (Settings' color); a theme's, while one sets it, is what's drawn (applyTheme).
@@ -137,8 +140,8 @@ object K {
     fun restyle(change: () -> Unit) { restyling = Restyle(change) }
 
     // Every colour has to be set for every look, or a switch leaves strays from the last one (Palette has them all).
-    // A theme the rider chose gives the colours, the accent, the line badges, the corners, the font and the outlines it
-    // sets, except on Kav's protected surfaces (ExtLook).
+    // A theme the rider chose gives the colours, the accent, the line badges, the corners, the font, the outlines and the
+    // skin it sets, except on Kav's protected surfaces (ExtLook).
     fun applyTheme(chosen: Look) {
         look = chosen
         themeAccent = ExtLook.accentFor(chosen)
@@ -147,6 +150,7 @@ object K {
         font = ExtLook.font()
         outline = ExtLook.outline()
         mapTone = ExtLook.mapTone(chosen)
+        skin = ExtLook.skin()
         val p = ExtLook.paletteFor(chosen)
         bg = p.bg; surface = p.surface; surfaceRaised = p.surfaceRaised
         fill = p.fill; fillStrong = p.fillStrong; separator = p.separator
