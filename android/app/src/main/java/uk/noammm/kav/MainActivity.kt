@@ -514,7 +514,8 @@ class KavModel(net: Net? = null, ctx: Context? = null) : ViewModel() {
 
     var fix by mutableStateOf<Fix?>(null)
     var here by mutableStateOf<Pair<Double, Double>?>(null)
-    private var hereAt by mutableLongStateOf(0L)
+    var hereAt by mutableLongStateOf(0L)
+        private set
     var restored by mutableStateOf(false)
     var heading by mutableStateOf<Float?>(null)
     // A trip's map is on screen before the trip starts: it shows where you are and which way you face.
