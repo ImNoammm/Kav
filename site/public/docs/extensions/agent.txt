@@ -933,8 +933,11 @@ public interface Kav {
     /** API 5. As capture, and with it behind: the same screen without its pieces, made off the screen, so nothing on it
      *  changes. Where a piece is, what Kav draws behind it there: its background, a theme's background picture, a skin's
      *  top bar or card, its maps; or, where that isn't what shows around the piece (a page of one color), the color seen
-     *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. null,
-     *  null and "[]" as with capture. From any thread. */
+     *  most around it. Elsewhere it is the picture as it is. The same size as the picture, and also yours to recycle. The
+     *  picture then has only the pieces, each with only what is its own: what of its box is what is behind it (the map,
+     *  the background around a button) is clear, as is all that is in no piece; drawn over behind, it is the screen. Each
+     *  piece's box is tight to what is its own, and a piece with nothing of its own (a box only over the map) isn't
+     *  given. null, null and "[]" as with capture. From any thread. */
     default void captureBehind(CapturedBehind captured) {}
 
     /**

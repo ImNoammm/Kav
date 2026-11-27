@@ -81,6 +81,56 @@ object ScreenPieces {
         }
     }
 
+    // Only what is each piece's own in the picture (shot, width × height, one color a pixel), and the pieces with their
+    // boxes tight to it. Not its own: what of its box is what is behind it (behind, the same size), reached from the
+    // box's edge through more of it, so a face of the page's color within its outline stays. A pixel is what is behind
+    // it when it is within 8 in each of alpha, red, green and blue of behind there or at a pixel next to it: a picture
+    // drawn again off the screen is a little off where it is scaled. Cleared in shot: that, and all that is in no
+    // piece's box. A piece with less than 4 px left across is no piece.
+    fun faces(pieces: JSONArray, width: Int, height: Int, shot: IntArray, behind: IntArray): JSONArray {
+        val back = BooleanArray(width * height) { true }
+        val boxes = boxes(pieces).map { b -> intArrayOf(maxOf(b[0], 0), maxOf(b[1], 0), minOf(b[2], width), minOf(b[3], height)) }
+        for (b in boxes) for (y in b[1] until b[3]) for (x in b[0] until b[2]) back[y * width + x] = false
+        fun behind(x: Int, y: Int): Boolean {
+            val p = shot[y * width + x]
+            for (ny in maxOf(y - 1, 0)..minOf(y + 1, height - 1)) for (nx in maxOf(x - 1, 0)..minOf(x + 1, width - 1))
+                if (close(p, behind[ny * width + nx])) return true
+            return false
+        }
+        for (b in boxes) {
+            val (l, t, r, bt) = b
+            if (r <= l || bt <= t) continue
+            val queue = IntArray((r - l) * (bt - t))
+            val seen = BooleanArray(queue.size)
+            var head = 0; var tail = 0
+            fun reach(x: Int, y: Int) {
+                val k = (y - t) * (r - l) + (x - l)
+                if (seen[k]) return
+                seen[k] = true
+                if (back[y * width + x] || behind(x, y)) { back[y * width + x] = true; queue[tail++] = y * width + x }
+            }
+            for (x in l until r) { reach(x, t); reach(x, bt - 1) }
+            for (y in t until bt) { reach(l, y); reach(r - 1, y) }
+            while (head < tail) {
+                val at = queue[head++]; val x = at % width; val y = at / width
+                if (x > l) reach(x - 1, y); if (x < r - 1) reach(x + 1, y)
+                if (y > t) reach(x, y - 1); if (y < bt - 1) reach(x, y + 1)
+            }
+        }
+        for (k in back.indices) if (back[k]) shot[k] = 0
+        val out = JSONArray()
+        for (i in boxes.indices) {
+            val (l, t, r, bt) = boxes[i]
+            var minX = r; var minY = bt; var maxX = l - 1; var maxY = t - 1
+            for (y in t until bt) for (x in l until r) if (!back[y * width + x]) {
+                if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y
+            }
+            if (maxX - minX + 1 < 4 || maxY - minY + 1 < 4) continue
+            out.put(JSONObject(pieces.getJSONObject(i).toString()).put("x", minX).put("y", minY).put("w", maxX - minX + 1).put("h", maxY - minY + 1))
+        }
+        return out
+    }
+
     // Whether a box (from the screen's top left corner) is inside a piece's: what is drawn there goes with the piece.
     fun within(l: Float, t: Float, r: Float, b: Float, pieces: JSONArray): Boolean =
         boxes(pieces).any { l >= it[0] - 1 && t >= it[1] - 1 && r <= it[2] + 1 && b <= it[3] + 1 }
@@ -88,6 +138,12 @@ object ScreenPieces {
     private fun boxes(pieces: JSONArray) = (0 until pieces.length()).map {
         val p = pieces.getJSONObject(it)
         intArrayOf(p.getInt("x"), p.getInt("y"), p.getInt("x") + p.getInt("w"), p.getInt("y") + p.getInt("h"))
+    }
+
+    private fun close(a: Int, b: Int): Boolean {
+        var s = 0
+        while (s < 32) { if (Math.abs((a ushr s and 255) - (b ushr s and 255)) > 8) return false; s += 8 }
+        return true
     }
 
     private fun near(a: Int, b: Int) = (0..2).all { Math.abs((a shr it * 8 and 255) - (b shr it * 8 and 255)) <= 12 }

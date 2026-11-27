@@ -127,8 +127,9 @@ object ScreenOverlay {
     }
 
     // Kav's screen in front, with what the part's views cover, from its top left corner, and with behind, the screen
-    // without its pieces, else null. Told on the main thread: null, null and "[]" when Kav isn't in front or the copy
-    // fails. The pictures are the extension's, to recycle when done.
+    // without its pieces, else null; then the picture has only the pieces, each only what is its own (faces()). Told on
+    // the main thread: null, null and "[]" when Kav isn't in front or the copy fails. The pictures are the extension's,
+    // to recycle when done.
     fun capture(activity: Activity?, behind: Boolean = false, answer: (Bitmap?, Bitmap?, String) -> Unit) {
         val main = Handler(Looper.getMainLooper())
         main.post {
@@ -153,7 +154,9 @@ object ScreenOverlay {
                         blank(picture, fields)
                         val back = if (behind) without(content, layer, box, picture, maps, pieces) else null
                         maps?.recycle()
-                        answer(picture, back, pieces.toString())
+                        val own = if (back != null) runCatching { faces(picture, back, pieces) }.getOrNull() else null
+                        if (behind && own == null) { picture.recycle(); back?.recycle(); answer(null, null, "[]"); return@under }
+                        answer(picture, back, (own ?: pieces).toString())
                     }
                 }, main)
             } catch (_: IllegalArgumentException) { shot.recycle(); answer(null, null, "[]") }
@@ -217,6 +220,17 @@ object ScreenOverlay {
         drawn?.recycle()
         out
     }.getOrNull()
+
+    // Only each piece's own in the picture, the rest cleared, and the pieces with their boxes tight to it
+    // (ScreenPieces.faces): no piece carries the map or background around it.
+    private fun faces(picture: Bitmap, back: Bitmap, pieces: JSONArray): JSONArray {
+        val w = picture.width; val h = picture.height
+        val shot = IntArray(w * h).also { picture.getPixels(it, 0, w, 0, 0, w, h) }
+        val behind = IntArray(w * h).also { back.getPixels(it, 0, w, 0, 0, w, h) }
+        val own = ScreenPieces.faces(pieces, w, h, shot, behind)
+        picture.setPixels(shot, 0, w, 0, 0, w, h)
+        return own
+    }
 
     // Kav's backdrops off the screen, each in the order it is drawn, at its place: not one inside a piece's box, which
     // goes with the piece; Kav's maps over the one they show through.

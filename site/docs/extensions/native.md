@@ -635,6 +635,12 @@ instead, the one seen most around it. Everything else is the picture as it is, f
 `null` when the picture is; `behind` is yours to `recycle()` as well. It costs a little more than `capture`, so ask
 for it only when you need the places pieces leave.
 
+With `captureBehind`, the picture has only the pieces, each with only what is its own: what of a piece's box is what is
+behind it (the map under a button, the background around a place's tile) is clear, and so is everything in no piece.
+Drawn over `behind`, it is the screen again. Each piece's box is tight to what is its own, and a piece with nothing of
+its own (a box that only lies over the map) isn't in `pieces`. So a piece you cut from the picture by its box carries
+its own face and nothing of what was around it.
+
 To move Kav's pieces about, draw `behind` over the whole of your view (that hides Kav's own screen, which stays as it
 was under it), and draw each piece from the picture where it moves to. Take every touch while you do, so none reaches
 Kav's screen you hide; draw nothing and take no touch when you're done.
