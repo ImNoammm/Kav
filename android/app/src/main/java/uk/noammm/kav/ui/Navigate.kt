@@ -125,6 +125,15 @@ internal sealed class Step {
     ) : Step()
 }
 
+// Paying at a train station's gates (#126): with several trains to pick from, the train isn't chosen yet, so Rav-Pass opens on
+// its train section with no line; with one, for that train.
+@androidx.compose.runtime.Composable
+internal fun GatesPay(options: List<Pair<Transit.Leg, Transit.Leg?>>, pick: Int, r: Transit.Resolved) {
+    val ride = options[boardingIndex(pick, options.size)].first
+    if (options.size > 1) RidePay(RavPass.Section.TRAIN, false, r.stop(ride.fromStop)?.shown(), null, ride.dep * 1000)
+    else RidePay(ride, r)
+}
+
 internal fun buildSteps(trip: Transit.Itinerary, fromLabel: String, toLabel: String): List<Step> {
     val all = trip.legs
     val whole = all.flatMap { it.shape }
@@ -713,7 +722,7 @@ internal fun StepCard(
                 // A train is paid at the station's gates, reached on the way to it: its paying is on this card too.
                 val ride = step.toRide
                 if (pay && ride != null && step.toLeg >= 0 && RavPass.section(ride, r) == RavPass.Section.TRAIN) {
-                    RidePay(boardingChoice(ride, step.toWait, chosen[step.toLeg] ?: 0).first, r)
+                    GatesPay(Transit.boardingOptions(ride, step.toWait), chosen[step.toLeg] ?: 0, r)
                 }
             }
         }
@@ -742,6 +751,11 @@ internal fun StepCard(
                 // Changing trains here: where the next one leaves from, on the card for waiting for it.
                 step.after?.let { trainChange(it, options[pick].first, options[pick].second, r) }?.let {
                     ChangeBlock(it)
+                    Spacer(Modifier.height(K.gap3))
+                }
+                // At a station, before a train is picked: paying at the gates is here too, not only on the walk's card (#126).
+                if (pay && RavPass.section(options[pick].first, r) == RavPass.Section.TRAIN) {
+                    GatesPay(options, chosen[step.legIndex] ?: 0, r)
                     Spacer(Modifier.height(K.gap3))
                 }
                 order.forEachIndexed { place, index ->
