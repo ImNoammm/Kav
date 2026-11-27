@@ -32,6 +32,9 @@
          follows your location so the steps move with the phone, "special use" keeps it
          up when location isn't granted, and Android 16 shows it as a live update. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Get-off alert: asked once, to run on time with the screen off and to sound through Do Not Disturb. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -212,6 +215,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="ongoing transit trip status" />
         </service>
+        <service
+            android:name=".GetOffService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <!-- line alerts: their alarm, and the restart, update or new clock that sets it again -->
         <receiver

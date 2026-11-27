@@ -1735,6 +1735,7 @@ private fun PageStops(
     val glide = remember(keys) { mutableStateOf(true) }
     LaunchedEffect(keys) { delay(600); glide.value = false }
     val scope = rememberCoroutineScope()
+    val getOffStops = remember(rows) { rows.map { GetOffStop(it.name, it.lat, it.lon) } }
     LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(
         start = K.gap2, end = K.gap2, bottom = LocalBottomBarInset.current,
     )) {
@@ -1786,22 +1787,25 @@ private fun PageStops(
                     enter = expandVertically(spring(dampingRatio = 1f, stiffness = 500f), expandFrom = Alignment.Top) + fadeIn(tween(200, delayMillis = 60)),
                     exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f), shrinkTowards = Alignment.Top) + fadeOut(tween(120)),
                 ) {
-                    // The week's times there fade to the provider's.
-                    AnimatedContent(
-                        way != null && line != null,
-                        transitionSpec = {
-                            (fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(150)))
-                                .using(SizeTransform(clip = false) { _, _ -> spring(dampingRatio = 1f, stiffness = 500f) })
-                        },
-                        label = "stopTimes",
-                    ) { provided ->
-                        if (provided && way != null && line != null) {
-                            ScheduleAtStop(net, s.week, line, way, i, last = i == rows.lastIndex, alight = i in way.alight, board = s.week.takeIf { it >= 0 }?.let { at ->
-                                { model.openStation(at) }
-                            })
-                        } else if (s.week >= 0) {
-                            LineAtStop(net, routes, s.week, last = i == rows.lastIndex) { model.openStation(s.week) }
+                    Column {
+                        // The week's times there fade to the provider's.
+                        AnimatedContent(
+                            way != null && line != null,
+                            transitionSpec = {
+                                (fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(150)))
+                                    .using(SizeTransform(clip = false) { _, _ -> spring(dampingRatio = 1f, stiffness = 500f) })
+                            },
+                            label = "stopTimes",
+                        ) { provided ->
+                            if (provided && way != null && line != null) {
+                                ScheduleAtStop(net, s.week, line, way, i, last = i == rows.lastIndex, alight = i in way.alight, board = s.week.takeIf { it >= 0 }?.let { at ->
+                                    { model.openStation(at) }
+                                })
+                            } else if (s.week >= 0) {
+                                LineAtStop(net, routes, s.week, last = i == rows.lastIndex) { model.openStation(s.week) }
+                            }
                         }
+                        GetOffButton(getOffStops, i, keys[i])
                     }
                 }
             }
