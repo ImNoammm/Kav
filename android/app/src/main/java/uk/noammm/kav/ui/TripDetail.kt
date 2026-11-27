@@ -686,11 +686,11 @@ internal fun summaryTimes(trip: Transit.Itinerary, r: Transit.Resolved): Pair<St
 // The trip's leave time and what it is, as its card says it: "Now" while leaving now still makes the first ride
 // (leavesNow()), else the time to leave at.
 internal fun leaveEndpoint(trip: Transit.Itinerary, now: Long, r: Transit.Resolved? = null): Pair<String, String> {
-    // #117: a route that begins with a walk goes by the bus's live time less the walk.
-    val p = if (r != null) leavePlan(trip) else null
-    if (p != null && r != null) {
-        return if (leaveNowDue(p, r, emptyMap(), now)) T("Now", "עכשיו") to T("Leave", "יציאה")
-        else hm.format(Date(leaveAt(p, r, emptyMap()) * 1000)) to T("Leave at", "יציאה בשעה")
+    // A route that begins with a walk goes by the bus's live time less the walk and a margin.
+    val leave = if (r != null) leaveTime(trip, r, emptyMap(), now) else null
+    if (leave != null) {
+        return if (leave.now) T("Now", "עכשיו") to T("Leave", "יציאה")
+        else hm.format(Date(leave.at * 1000)) to T("Leave at", "יציאה בשעה")
     }
     return if (leavesNow(trip, now)) T("Now", "עכשיו") to T("Leave", "יציאה")
     else hm.format(Date(trip.dep * 1000)) to T("Leave at", "יציאה בשעה")
