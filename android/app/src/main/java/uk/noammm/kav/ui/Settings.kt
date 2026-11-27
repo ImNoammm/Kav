@@ -981,7 +981,7 @@ internal fun CrowdChoice() {
 private fun AlertsSource() {
     val ctx = LocalContext.current
     SourceChoice(
-        T("Alerts from", "הודעות מ"),
+        T("Alerts from", "מקור ההודעות"),
         { s ->
             when (s) {
                 Source.GOOGLE -> T(
