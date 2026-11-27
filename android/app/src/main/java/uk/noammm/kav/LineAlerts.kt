@@ -72,7 +72,8 @@ object LineAlerts {
             schedule(ctx, null)
             return
         }
-        val alerts = Prefs.lineAlerts(ctx)
+        // Leave-now alerts are LeaveNow's; here the rolling ones.
+        val alerts = Prefs.lineAlerts(ctx).filter { it.leaveMin == 0 }
         val quietUntil = { a: LineAlert -> Prefs.alertQuietUntil(ctx, a.id) }
         val showing = alerts.filter { it.window(now) != null && quietUntil(it) <= now }
         // The next wake first: a run the system cuts short for taking too long must not end the alerts.

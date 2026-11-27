@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -65,14 +66,19 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uk.noammm.kav.KavModel
+import uk.noammm.kav.data.KavPlan
 import uk.noammm.kav.data.LineAlert
 import uk.noammm.kav.data.Net
+import uk.noammm.kav.data.Transit
 import uk.noammm.kav.data.stopKey
 import uk.noammm.kav.data.shownName
+import uk.noammm.kav.requestLocationOnce
 import java.util.Locale
 import kotlin.math.abs
 
@@ -81,6 +87,7 @@ import kotlin.math.abs
 @Composable
 internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val key = net.stopKey(stop)
     val numbers = remember(stop) { net.linesAt(stop) }
     // A train station numbers no line: its trains are chosen by where they end.
@@ -90,6 +97,13 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     var days by remember { mutableIntStateOf(LineAlert.WEEKDAYS) }
     var from by remember { mutableIntStateOf(8 * 60) }
     var to by remember { mutableIntStateOf(9 * 60) }
+    // Minutes the walk to the stop takes, for a "leave now" alert; 0 for the hours' rolling times. The choices
+    // offered; turning the alert on measures the walk from where the rider is with Kav's planner and sets one.
+    var leaveMin by remember { mutableIntStateOf(0) }
+    val walkChoices = listOf(3, 5, 10, 15, 20, 30, 45)
+    var walkMeasured by remember { mutableStateOf(false) }
+    // True when measuring the walk was tried and could not be done; the rider then chooses the minutes, told so.
+    var walkFailed by remember { mutableStateOf(false) }
     // The time on the wheels: 0 from, 1 until, null neither. last keeps it while the wheels fold away.
     var editing by remember { mutableStateOf<Int?>(null) }
     var last by remember { mutableIntStateOf(0) }
@@ -98,7 +112,10 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
     }
     // Let post notifications, the alarm that was left off for them is set.
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) uk.noammm.kav.LineAlerts.reschedule(ctx)
+        if (granted) {
+            uk.noammm.kav.LineAlerts.reschedule(ctx)
+            uk.noammm.kav.LeaveNow.reschedule(ctx)
+        }
     }
     BottomSheet(onDismiss, scrolls = true) { close ->
         SheetHeader(T("Line alerts", "התראות קווים"), { close(onDismiss) }, subtitle = net.stopName(stop))
@@ -155,6 +172,56 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                     }
                 }
             }
+            Heading(T("Leave now", "צאו עכשיו"))
+            KavChip(
+                T("Tell me when to leave, by the walk", "תגידו לי מתי לצאת, לפי ההליכה"), leaveMin > 0,
+                { leaveMin = if (leaveMin > 0) 0 else 10 }, check = true,
+            )
+            AnimatedVisibility(leaveMin > 0, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(T("Walk", "הליכה"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                        // A chip the rider picks themselves replaces whatever was measured, and says nothing of it.
+                        for (m in walkChoices) KavChip("$m", leaveMin == m, { leaveMin = m; walkMeasured = false; walkFailed = false }, Modifier.weight(1f))
+                        Text(T("min", "דקות"), style = K.type.caption, modifier = Modifier.align(Alignment.CenterVertically))
+                    }
+                    // Where the minutes came from, so they are never taken for fresher or surer than they are.
+                    if (walkMeasured) Text(
+                        T("Measured from your current location; the choices above change it", "נמדד מהמיקום הנוכחי; הבחירה למעלה משנה אותו"),
+                        style = K.type.caption,
+                    ) else if (walkFailed) Text(
+                        T("Could not be measured from your location; the minutes are yours to choose", "לא ניתן היה למדוד מהמיקום; בחרו את הדקות בעצמכם"),
+                        style = K.type.caption,
+                    )
+                }
+            }
+            // Turning "leave now" on measures the walk from where the rider is now and sets it; the chips stay
+            // theirs to change. No location or no planner answering leaves the choice as it is.
+            LaunchedEffect(leaveMin > 0) {
+                if (leaveMin <= 0 || walkMeasured) return@LaunchedEffect
+                val at = KavPlan.planner()
+                if (at == null) { walkFailed = true; return@LaunchedEffect }
+                requestLocationOnce(ctx, onFail = { walkFailed = true }) { (lat, lon) ->
+                    scope.launch {
+                        val mins = withContext(Dispatchers.IO) {
+                            runCatching {
+                                KavPlan.plan(lat to lon, net.lat[stop] to net.lon[stop], 0L, Transit.TIME_DEPARTURE, emptyList(), false, at = at)
+                                    .plan.itineraries.firstOrNull()?.legs
+                                    // A plan that rides anything is not a walk to the stop: its walk legs alone would be
+                                    // too short, so it counts as not measured and the rider chooses.
+                                    ?.takeIf { legs -> legs.none { it.kind == Transit.LegKind.RIDE } }
+                                    ?.filter { it.kind == Transit.LegKind.WALK }
+                                    ?.sumOf { ((it.arr - it.dep) / 60).toInt().coerceAtLeast(1) }
+                            }.getOrNull()
+                        }
+                        if (mins != null && mins > 0) {
+                            walkMeasured = true
+                            walkFailed = false
+                            leaveMin = walkChoices.firstOrNull { it >= mins } ?: walkChoices.last()
+                        } else walkFailed = true
+                    }
+                }
+            }
             Spacer(Modifier.height(K.gap5))
             val ready = (lines.isNotEmpty() || toward.isNotEmpty()) && days != 0
             // Until it can be added, it says what's missing.
@@ -169,6 +236,8 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                         val alert = LineAlert(
                             System.currentTimeMillis(), key, net.stopName(stop), numbers.filter { it in lines }, days, from, to,
                             toward = ends.filter { it in toward }.map { LineAlert.End(net.name[it], net.code[it], net.lat[it], net.lon[it]) },
+                            leaveMin = leaveMin,
+                            leaveSrc = if (leaveMin > 0 && walkMeasured) 1 else 0,
                         )
                         model.saveAlerts(ctx, model.lineAlerts + alert)
                         lines = emptySet()
@@ -180,7 +249,10 @@ internal fun AlertSheet(model: KavModel, net: Net, stop: Int, onDismiss: () -> U
                 },
             )
             NoteCard(
-                if (numbers.isEmpty()) T(
+                if (leaveMin > 0) T(
+                    "On those days and hours, one alert goes up the walk's length before each of their departures. The walk is measured from your location when you turn this on: your location is sent to Kav's trip planner for that, and only then. The choices above change it.",
+                    "בימים ובשעות האלה, תופיע התראה אחת כמה דקות הליכה לפני כל יציאה שלהם. ההליכה נמדדת מהמיקום שלכם בהפעלה: המיקום נשלח למתכנן המסלולים של Kav לצורך זה בלבד. הבחירה למעלה משנה אותה.",
+                ) else if (numbers.isEmpty()) T(
                     "On those days and hours, the next trains to these places stay in your notifications, refreshed about every minute.",
                     "בימים ובשעות האלה, הרכבות הבאות ליעדים האלה יופיעו בהתראות, ויתעדכנו בערך כל דקה.",
                 ) else T(
@@ -320,7 +392,9 @@ internal fun alertWhen(a: LineAlert): String {
         runs -> "${dayName(on.first())}-${dayName(on.last())}"
         else -> on.joinToString(", ") { dayName(it) }
     }
-    return "$days · ${hhmm(a.from * 60)}-${hhmm(a.to * 60)}"
+    val hours = "$days · ${hhmm(a.from * 60)}-${hhmm(a.to * 60)}"
+    if (a.leaveMin > 0) return hours + " · " + T("leave ${a.leaveMin} min before", "צאו ${a.leaveMin} דקות לפני")
+    return hours
 }
 
 // "12, 18", or "To Tel Aviv Center" at a station: what an alert is for.
