@@ -484,6 +484,7 @@ internal fun OnTheWayChoices(
         "האוטובוס שלכם מגיע ומתי לרדת, וכל פנייה בהליכה כשאתם מגיעים אליה, בקול מעל מה שמתנגן, בשפה של Kav; והצעד הנוכחי בחלון קטן כשיוצאים מ-Kav. במצב שקט הם נאמרים רק באוזניות.",
     ))
     var turns by remember { mutableStateOf(Prefs.spokenTurns(ctx)) }
+    var autoRe by remember { mutableStateOf(AutoReroute.enabled(ctx)) }
     ListGroup {
         row {
             ToggleRow(T("Say alerts out loud", "הקראת התראות בקול"), spoken, { SpeakerGlyph(toggleInk(spoken), 18.dp) }) { on ->
@@ -512,6 +513,11 @@ internal fun OnTheWayChoices(
         row {
             ToggleRow(T("Start right away", "להתחיל מיד"), startNow, { RouteGlyph(toggleInk(startNow)) }) { on ->
                 onStart(on); Prefs.setBeginTripsImmediately(ctx, on)
+            }
+        }
+        row {
+            ToggleRow(T("Plan a new route automatically when off route", "חישוב מסלול חדש אוטומטי כשסוטים מהמסלול"), autoRe, { RouteGlyph(toggleInk(autoRe)) }) { on ->
+                autoRe = on; AutoReroute.set(ctx, on)
             }
         }
     }
