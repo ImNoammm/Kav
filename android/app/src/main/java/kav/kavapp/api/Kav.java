@@ -82,7 +82,8 @@ public interface Kav {
      *  the screen (the part "screen.overlay"). Needs a contribution with capability "screen.capture"; without it, it
      *  throws. Told on the main thread: the picture, the size of the screen.overlay part's views, with Kav's maps and
      *  what those views draw in it; and pieces, a JSON array of {"x", "y", "w", "h", "kind"}, the box of each piece in
-     *  the picture's pixels, kind "button", "field", "text" or "image". Never a piece's text, and never what is typed:
+     *  the picture's pixels, kind "button", "field", "card" (a surface with its own background, whole with what it holds),
+     *  "text" or "image". Never a piece's text, and never what is typed:
      *  each field's inside is painted over in the picture. null and "[]" when Kav isn't in front or the picture couldn't be taken. The picture is yours: recycle it
      *  when you're done. From any thread. */
     default void capture(Captured captured) {}

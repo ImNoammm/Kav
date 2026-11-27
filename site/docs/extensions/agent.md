@@ -616,10 +616,13 @@ while you ask, for Kav's screen alone), and its pieces as JSON text:
 ```
 
 Each box is in the picture's pixels, which are your overlay view's. `kind` is `button` (it takes a tap, a long press
-or a toggle; what it holds is part of it), `field` (text can be typed in it), `text` or `image`, in the order the
-screen has them, at most 300. A piece smaller than 4 px or taking more than half of the screen isn't given (a button
-that big is looked into for its own pieces). The picture is `null` and the pieces `[]` when Kav isn't in front or the
-picture couldn't be taken. The picture is yours: `recycle()` it when you're done.
+or a toggle; what it holds is part of it), `field` (text can be typed in it), `card` (a surface that draws its own
+background, like a card, the tab bar or a sheet; what it holds is part of it, so no empty background is left behind),
+`text` or `image`, in the order the screen has them, at most 300. A piece smaller than 4 px isn't given, nor a button
+or field taking more than half of the screen, or a card more than nine tenths of it (those are looked into for their
+own pieces), nor one all covered by what is drawn over it, like a page open over another. The picture
+is `null` and the pieces `[]` when Kav isn't in front or the picture couldn't be taken. The picture is yours:
+`recycle()` it when you're done.
 
 What you are never given: a piece's text, description or value, and what is typed. Each field's inside is painted
 over in its own color in the picture, so a search, a name or a password typed in Kav isn't in it. Everything else

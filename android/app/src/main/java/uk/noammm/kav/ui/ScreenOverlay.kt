@@ -15,12 +15,15 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.Lifecycle
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,6 +38,11 @@ import java.lang.ref.WeakReference
 //
 // And the screen's picture with its pieces' boxes (Kav.capture): Kav's window copied as it shows now, with its maps,
 // which draw on surfaces of their own, under it.
+// A surface that draws a background of its own (ui/Glass.kt), so a card is one piece with what it holds (ScreenPieces).
+// Seen by nothing else: accessibility skips a key it doesn't know.
+private val Card = SemanticsPropertyKey<Unit>("KavCard")
+internal fun Modifier.cardPiece(): Modifier = semantics { this[Card] = Unit }
+
 object ScreenOverlay {
     private const val TAG = "kav.screen.overlay"
     private var shownOn: WeakReference<Activity>? = null
@@ -89,8 +97,12 @@ object ScreenOverlay {
                 PixelCopy.request(window, box, shot, { r ->
                     if (r != PixelCopy.SUCCESS) { shot.recycle(); answer(null, "[]"); return@request }
                     under(content, layer, box, shot) { picture ->
-                        val pieces = runCatching { pieces(content, layer, box) }.getOrDefault(JSONArray())
-                        blank(picture, pieces)
+                        val roots = runCatching { roots(content, layer) }.getOrDefault(emptyList())
+                        val pieces = runCatching { ScreenPieces.pick(roots, box.width(), box.height(), box.left, box.top) }.getOrDefault(JSONArray())
+                        // Every field, also one inside a card or a button, else none is given: no picture with what is typed.
+                        val fields = runCatching { ScreenPieces.fields(roots, box.width(), box.height(), box.left, box.top) }.getOrNull()
+                        if (fields == null) { picture.recycle(); answer(null, "[]"); return@under }
+                        blank(picture, fields)
                         answer(picture, pieces.toString())
                     }
                 }, main)
@@ -126,12 +138,11 @@ object ScreenOverlay {
 
     // What is typed in a field kept out of the picture: the field's inside painted over in its own color (from near its top
     // edge, where no text is), its rounded ends as they were.
-    private fun blank(picture: Bitmap, pieces: JSONArray) {
+    private fun blank(picture: Bitmap, fields: JSONArray) {
         val canvas = Canvas(picture)
         val paint = android.graphics.Paint()
-        for (k in 0 until pieces.length()) {
-            val p = pieces.getJSONObject(k)
-            if (p.optString("kind") != "field") continue
+        for (k in 0 until fields.length()) {
+            val p = fields.getJSONObject(k)
             val x = p.getInt("x"); val y = p.getInt("y"); val w = p.getInt("w"); val h = p.getInt("h")
             val sy = (y + h * 0.12f).toInt().coerceIn(0, picture.height - 1)
             val seen = listOf(0.3f, 0.5f, 0.7f).map { picture.getPixel((x + w * it).toInt().coerceIn(0, picture.width - 1), sy) }
@@ -141,8 +152,8 @@ object ScreenOverlay {
         }
     }
 
-    // The pieces of each of Kav's Compose views on the screen (not the part's own), by their semantics.
-    private fun pieces(content: ViewGroup, layer: View?, box: Rect): JSONArray {
+    // Each of Kav's Compose views on the screen (not the part's own), by its semantics.
+    private fun roots(content: ViewGroup, layer: View?): List<ScreenPieces.Node> {
         val roots = mutableListOf<ScreenPieces.Node>()
         fun find(v: View) {
             if (v === layer || v.visibility != View.VISIBLE) return
@@ -150,7 +161,7 @@ object ScreenOverlay {
             if (v is ViewGroup) for (i in 0 until v.childCount) find(v.getChildAt(i))
         }
         find(content)
-        return ScreenPieces.pick(roots, box.width(), box.height(), box.left, box.top)
+        return roots
     }
 
     private fun node(n: SemanticsNode): ScreenPieces.Node {
@@ -162,7 +173,19 @@ object ScreenOverlay {
             field = SemanticsActions.SetText in c || SemanticsProperties.EditableText in c,
             text = SemanticsProperties.Text in c,
             image = c.getOrNull(SemanticsProperties.Role) == Role.Image || SemanticsProperties.ContentDescription in c,
-            children = { n.children.map(::node) },
+            card = Card in c,
+            children = { n.children.filter { placed(it, n) }.map(::node) },
         )
+    }
+
+    // Whether a node is on the screen: a tab behind another (MainActivity's TabStack) or a list's item held for reuse
+    // keeps its nodes and their last boxes, but isn't placed, so nothing of it is drawn.
+    private fun placed(n: SemanticsNode, parent: SemanticsNode): Boolean {
+        var i: androidx.compose.ui.layout.LayoutInfo? = n.layoutInfo
+        while (i != null && i !== parent.layoutInfo) {
+            if (!i.isPlaced || i.isDeactivated) return false
+            i = i.parentInfo
+        }
+        return true
     }
 }
