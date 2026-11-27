@@ -481,7 +481,8 @@ fun DirectionsOnline(model: KavModel) {
                 raw.isNotEmpty() && ruleFailure == null && uk.noammm.kav.ext.KavPlans.wanted()) {
                 planning = false; plannedFor = planKey
                 val kavRoutes = raw
-                val asked = uk.noammm.kav.ext.KavPlans.Query(fromLL, toLL, q.atS, if (q.way == 'a') 'a' else 'd', settings, types)
+                // "at" is 0 for a search for now, as in Kav.plan, so an extension can tell it from one for a time picked.
+                val asked = uk.noammm.kav.ext.KavPlans.Query(fromLL, toLL, departAt / 1000, if (q.way == 'a') 'a' else 'd', settings, types)
                 val added = withContext(Dispatchers.IO) {
                     runCatching { uk.noammm.kav.ext.KavPlans.ask("search", asked, q.nowS, kavRoutes.filterNot(res::isTaxiCard), resolved) }.getOrNull()
                         ?.let { a ->

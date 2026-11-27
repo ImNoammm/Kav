@@ -588,7 +588,7 @@ kav.provide("results.add") { input ->
 - Asked `{"query": {"from", "to", "at", "way", "now", "settings", "modes", "reason"}, "routes": [...], "trip"}`:
   `routes` are Kav's own, `reason` is `"search"`, or `"replan"` when Kav plans a New route from here for the trip under
   way, which also gives that `trip` (as `kav.onTrip` gives it). For `"replan"`, the first route you answer is the new
-  route.
+  route. `at` is as for `kav.plan`: `0` when the rider searched for now, `now` the time Kav asks, in seconds since 1970.
 - Answered `[{"ref", "start", "walks"}]`: routes from `kav.plan`, at most 3. `start` is when the rider leaves, in
   seconds since 1970 (the route's own by default); `walks` how many seconds each walk before the route's first ride
   takes (the route's own by default; as many as those walks). Kav lays the walks and waits out from `start`, and takes

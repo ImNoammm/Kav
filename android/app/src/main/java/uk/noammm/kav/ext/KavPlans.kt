@@ -15,7 +15,8 @@ import uk.noammm.kav.data.Transit
 // results.add: once Kav's own planner has answered a search (not an extension's planner, a recent trip an extension
 // planned or a shared trip) and its routes are on screen, each extension that provides it is asked:
 //   asked:    {"query": {"from": [lat, lon], "to", "at", "way", "now", "settings", "modes", "reason"}, "routes": [Kav's],
-//              "trip"}: reason "search", or "replan" for Kav's New route from here, which also gives the trip under way
+//              "trip"}: reason "search", or "replan" for Kav's New route from here, which also gives the trip under way;
+//              at 0 for a search for now
 //   answered: [{"ref", "start", "walks": [seconds, ...]}]
 // Each route it answers goes first in the results, at most MOST_ADDED of each: start is when the rider leaves (the route's
 // own by default), walks how long each walk before its first ride takes (the route's own by default). Kav lays the walks and
