@@ -306,7 +306,7 @@ internal fun lineEndpoints(net: Net): Map<Int, Pair<Int, Int>> {
     }
 }
 
-private data class LineRow(val route: Int, val a: Int, val b: Int, val both: Boolean)
+private data class LineRow(val route: Int, val a: Int, val b: Int, val both: Boolean, val routes: List<Int> = listOf(route))
 
 // What a line's row in the Lines tab is told (lines.row): its number, operator, mode and ends, as its row names them.
 private fun lineRowArgs(net: Net, row: LineRow): org.json.JSONObject = org.json.JSONObject().put("number", net.rShort[row.route])
@@ -316,6 +316,41 @@ private fun scheduleLineArgs(l: Schedules.Line): org.json.JSONObject = org.json.
     .put("operator", l.operator).put("mode", l.type).put("from", l.from).put("to", l.to)
 
 private fun terminusName(net: Net, stop: Int): String = net.name[stop].substringBefore('/').trim()
+
+// An end's name as lines group and pair by it (issue #138): the dashes and spaces the ministry writes one way here
+// and another there ("ת. רכבת תל אביב - סבידור" beside "ת. רכבת תל אביב- סבידור") set straight, so one line's two
+// directions don't split into two one-way rows over a space.
+private val END_DASHES = Regex("[\u2010-\u2015\u05BE]")
+private val END_SPACED_DASH = Regex("\\s*-\\s*")
+private val END_SPACES = Regex("\\s+")
+private fun terminusKey(net: Net, stop: Int): String = net.name[stop].substringBefore('/')
+    .replace(END_DASHES, "-").replace(END_SPACED_DASH, "-").replace(END_SPACES, " ").trim()
+
+// A directed way of a line: its two ends, first then last, as grouping names.
+private fun wayKey(net: Net, e: Pair<Int, Int>): Pair<String, String> = terminusKey(net, e.first) to terminusKey(net, e.second)
+
+// Each route's stops this week, worked out once (stopSetsKept), for pairing a line's rows by the ground they cover:
+// two rows of one line whose stops mostly overlap are its two directions, however differently their ends are named.
+@Volatile private var stopSetsKept: Pair<Net, Array<HashSet<Int>?>>? = null
+private fun stopSetsFor(net: Net): Array<HashSet<Int>?> {
+    stopSetsKept?.takeIf { it.first === net }?.let { return it.second }
+    val sets = arrayOfNulls<HashSet<Int>>(net.nRoutes)
+    for (t in net.tripRoute.indices) {
+        val r = net.tripRoute[t]
+        val s = sets[r] ?: HashSet<Int>().also { sets[r] = it }
+        for (i in net.tripStart[t] until net.tripStart[t + 1]) s.add(net.stStop[i])
+    }
+    stopSetsKept = net to sets
+    return sets
+}
+
+// Two bus rows of a line share this much of their stops when they're its two directions (against the ministry's own
+// line ids and directions on the week's timetable: no two lines it keeps apart come this close).
+private const val WAY_OVERLAP = 0.3
+
+// Whether two routes are the same line: their operator, kind and number.
+private fun sameLine(net: Net, a: Int, b: Int) = net.rShort[a] == net.rShort[b] && net.rType[a] == net.rType[b] &&
+    net.rAgency.getOrElse(a) { -1 } == net.rAgency.getOrElse(b) { -1 }
 
 // A line's end as its row shows it, up to any "/": in English by the whole stop's translation first, as the part before
 // "/" seldom has one of its own.
@@ -343,7 +378,7 @@ private fun namesakeEnds(net: Net, ends: Map<Int, Pair<Int, Int>>): Map<String, 
 
 // The row of the list a route goes in: its operator, kind and number, and its two ends either way round.
 private fun foldKey(net: Net, r: Int, e: Pair<Int, Int>?): String = if (e == null) "lone-$r" else {
-    val a = terminusName(net, e.first); val b = terminusName(net, e.second)
+    val a = terminusKey(net, e.first); val b = terminusKey(net, e.second)
     val (lo, hi) = if (a <= b) a to b else b to a
     "${net.rAgency.getOrElse(r) { -1 }}|${net.rType[r]}|${net.rShort[r]}|$lo $hi"
 }
@@ -353,31 +388,83 @@ private fun foldKey(net: Net, r: Int, e: Pair<Int, Int>?): String = if (e == nul
 private fun weekWays(net: Net, route: Int, ends: Map<Int, Pair<Int, Int>>): List<Pair<Int, String>> {
     val byName = namesakeEnds(net, ends)
     fun endsOf(r: Int) = ends[r] ?: byName[lineKey(net, r)]
-    val key = foldKey(net, route, endsOf(route) ?: return emptyList())
+    val row = foldRoutes(net, (0 until net.nRoutes).filter { sameLine(net, it, route) }, ends, byName)
+        .firstOrNull { route in it.routes } ?: return emptyList()
     val byWay = LinkedHashMap<Pair<String, String>, Pair<Int, Pair<Int, Int>>>()
-    for (r in listOf(route) + (0 until net.nRoutes)) {
-        if (net.rShort[r] != net.rShort[route] || net.rType[r] != net.rType[route]) continue
+    for (r in listOf(route) + row.routes) {
         val e = endsOf(r) ?: continue
-        if (foldKey(net, r, e) == key) byWay.putIfAbsent(terminusName(net, e.first) to terminusName(net, e.second), r to e)
+        byWay.putIfAbsent(wayKey(net, e), r to e)
     }
     if (byWay.size < 2) return emptyList()
-    return byWay.values.map { (r, e) -> r to T("To ⁨${shownEnd(net, e.second)}⁩", "אל ⁨${shownEnd(net, e.second)}⁩") }
+    val chips = byWay.values.map { (r, e) -> Triple(r, e, T("To ⁨${shownEnd(net, e.second)}⁩", "אל ⁨${shownEnd(net, e.second)}⁩")) }
+    val repeated = chips.groupingBy { it.third }.eachCount().filter { it.value > 1 }.keys
+    // Two ways ending at the same place (a variant setting out mid-line) say where they're from, so their buttons differ.
+    return chips.map { (r, e, label) ->
+        r to if (label in repeated) T(
+            "From ⁨${shownEnd(net, e.first)}⁩ to ⁨${shownEnd(net, e.second)}⁩",
+            "מ⁨${shownEnd(net, e.first)}⁩ אל ⁨${shownEnd(net, e.second)}⁩",
+        ) else label
+    }
+}
+
+// The routes a line's page shows its way through: its own and its variants' — the other routes the timetable keeps for
+// the same way of the same line, so a line whose evening or Saturday buses run on another route of the timetable still
+// shows them (issue #138). The other direction's routes stay out: the page's buttons switch to them.
+private fun wayRoutes(
+    net: Net, route: Int, ends: Map<Int, Pair<Int, Int>>, byName: Map<String, Pair<Int, Int>>,
+): Set<Int> {
+    fun endsOf(r: Int) = ends[r] ?: byName[lineKey(net, r)]
+    val way = endsOf(route)?.let { wayKey(net, it) } ?: return setOf(route)
+    val row = foldRoutes(net, (0 until net.nRoutes).filter { sameLine(net, it, route) }, ends, byName)
+        .firstOrNull { route in it.routes } ?: return setOf(route)
+    return row.routes.filterTo(HashSet()) { r -> endsOf(r)?.let { wayKey(net, it) == way } == true }
+        .ifEmpty { setOf(route) }
 }
 
 private fun foldRoutes(
     net: Net, routes: Iterable<Int>, ends: Map<Int, Pair<Int, Int>>,
     byName: Map<String, Pair<Int, Int>>,
 ): Collection<LineRow> {
-    val rows = LinkedHashMap<String, LineRow>()
+    // The routes by their line, then by their way's unordered ends, in the order they come.
+    val lines = LinkedHashMap<String, MutableList<Pair<Int, Pair<Int, Int>?>>>()
     for (r in routes) {
         val e = ends[r] ?: byName[lineKey(net, r)]
         if (e == null && ends.isNotEmpty()) continue
-        val key = foldKey(net, r, e)
-        val prev = rows[key]
-        if (prev == null) rows[key] = LineRow(r, e?.first ?: -1, e?.second ?: -1, false)
-        else if (!prev.both) rows[key] = prev.copy(both = true)
+        lines.getOrPut("${net.rAgency.getOrElse(r) { -1 }}|${net.rType[r]}|${net.rShort[r]}") { mutableListOf() }.add(r to e)
     }
-    return rows.values
+    val sets by lazy { stopSetsFor(net) }
+    val out = ArrayList<LineRow>()
+    for ((_, rs) in lines) {
+        val ways = LinkedHashMap<String, MutableList<Pair<Int, Pair<Int, Int>?>>>()
+        for ((r, e) in rs) ways.getOrPut(foldKey(net, r, e)) { mutableListOf() }.add(r to e)
+        // Join the ways whose stops mostly overlap: a bus line's two directions, whatever its ends are named, and a
+        // variant reaching a little past another. Trains share their stops across the network, so only buses join.
+        val keys = ways.keys.toList()
+        val parent = IntArray(keys.size) { it }
+        fun find(i: Int): Int { var x = i; while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x] }; return x }
+        val wayStops = HashMap<Int, HashSet<Int>>()
+        fun stopsOf(i: Int): HashSet<Int> = wayStops.getOrPut(i) {
+            val s = HashSet<Int>()
+            for ((r, _) in ways.getValue(keys[i])) sets[r]?.let { s.addAll(it) }
+            s
+        }
+        if (rs.any { net.rType[it.first] == 3 }) for (i in keys.indices) for (j in i + 1 until keys.size) {
+            if (find(i) == find(j)) continue
+            val a = stopsOf(i); val b = stopsOf(j)
+            if (a.isEmpty() || b.isEmpty()) continue
+            val shared = a.count { it in b }
+            if (shared.toDouble() / (a.size + b.size - shared) >= WAY_OVERLAP) parent[find(j)] = find(i)
+        }
+        val merged = LinkedHashMap<Int, MutableList<Pair<Int, Pair<Int, Int>?>>>()
+        for (i in keys.indices) merged.getOrPut(find(i)) { mutableListOf() }.addAll(ways.getValue(keys[i]))
+        for ((_, members) in merged) {
+            val (r0, e0) = members[0]
+            val directed = members.mapNotNullTo(HashSet()) { (_, e) -> e?.let { wayKey(net, it) } }
+            val both = directed.any { (a, b) -> directed.contains(b to a) }
+            out.add(LineRow(r0, e0?.first ?: -1, e0?.second ?: -1, both, members.map { it.first }))
+        }
+    }
+    return out
 }
 
 // Rows of one line (its operator, kind and number) that would show the same start or the same end though the stops
@@ -1452,12 +1539,25 @@ private fun LinePage(
     val source = Schedules.source
     LaunchedEffect(keyRoute) { if (keyRoute >= 0) uk.noammm.kav.Prefs.rememberLine(ctx, lineKey(net, keyRoute)) }
     // A train's line is every train between its two stations the same way, each of which the timetable keeps as a
-    // route of its own.
-    val routes = remember(route) {
-        if (route < 0) emptySet() else if (net.rType[route] == 2 && net.rShort[route].isBlank()) net.trainLine(route) else setOf(route)
+    // route of its own; another line's way is its route and its variants' routes, found off the first frame.
+    var wayVariants by remember(route) { mutableStateOf<Set<Int>?>(null) }
+    LaunchedEffect(route) {
+        if (route < 0 || (net.rType[route] == 2 && net.rShort[route].isBlank())) return@LaunchedEffect
+        val v = withContext(Dispatchers.Default) {
+            val list = lineListFor(net)
+            val ends = list.endpoints.ifEmpty {
+                lineEndpoints(net).also { twinsFor(net, it) }.also { list.endpoints = it }
+            }
+            wayRoutes(net, route, ends, namesakeEnds(net, ends))
+        }
+        if (v.size > 1) wayVariants = v
+    }
+    val routes = remember(route, wayVariants) {
+        if (route < 0) emptySet() else if (net.rType[route] == 2 && net.rShort[route].isBlank()) net.trainLine(route)
+        else wayVariants ?: setOf(route)
     }
     // Found on the page's first frame, one pass over the week's trips, so its stops are there as it opens.
-    val weekStops = remember(route) {
+    val weekStops = remember(route, wayVariants) {
         if (route < 0) null else {
             val t = if (routes.size == 1) net.representativeTrip(route) else {
                 val ids = routes.toIntArray()
@@ -1604,7 +1704,7 @@ private fun LinePage(
             }
         }
     }
-    val weekNext = remember(route, StopNames.english) {
+    val weekNext = remember(route, wayVariants, StopNames.english) {
         if (route < 0) null else nextStart(net, routes)?.let { (t, at) ->
             val from = net.stopName(net.stStop[net.tripStart[t]])
             val midnight = Schedules.base(Schedules.today())
