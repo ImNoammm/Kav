@@ -69,7 +69,8 @@ class Hub(
     // updated and failed: sources' names.
     class Report(val updated: List<String>, val failed: List<String>)
 
-    val registry = Registry(dir)
+    // Judged by this Kav at every start: one an older Kav took may run now (#137).
+    val registry = Registry(dir).apply { rejudge(::why) }
     val blockList = BlockList(dir, blockKey)
     private val sourcesFile = File(dir, "sources.json")
     private val settingsFile = File(dir, "settings.json")
@@ -198,15 +199,16 @@ class Hub(
     // The manifest an extension has as installed now, by namespace (Selections checks the rider's rules against it).
     fun manifestOf(ns: Namespace): Manifest? = registry.installed.firstOrNull { it.namespace == ns }?.manifest
 
+    // Why one can't run on this Kav, "" when it can.
+    private fun why(m: Manifest) = when {
+        m.older -> Manifest.OLDER
+        m.minKav > kavVersion -> NEWER_KAV
+        else -> ""
+    }
+
     // Writes a source's bundle and puts its extensions in the registry: why each can't run, if it can't.
     private fun take(s: Source, bytes: ByteArray, b: Bundle) {
-        registry.put(s.key, s.publisher, b.extensions, { e ->
-            when {
-                e.older -> Manifest.OLDER
-                e.manifest.minKav > kavVersion -> NEWER_KAV
-                else -> ""
-            }
-        }, now())
+        registry.put(s.key, s.publisher, b.extensions, { why(it.manifest) }, now())
         val f = bundleFile(s)
         f.parentFile?.mkdirs()
         write(f, bytes)

@@ -143,6 +143,13 @@ class Registry(val dir: File) {
         step("cleaned")
     }
 
+    // Kav updated: each one is judged again by this Kav (problem), as put would; what an older Kav said stays behind
+    // while its source's release is the same. The crash guard's switch-off stays.
+    @Synchronized fun rejudge(problem: (Manifest) -> String) {
+        val next = list.map { it.copy(problem = problem(it.manifest).ifEmpty { it.problem.takeIf { p -> p == NativeGuard.CRASHED }.orEmpty() }) }
+        if (next != list) commit(next)
+    }
+
     // A source removed: every extension of it, with its data.
     @Synchronized fun removeSource(source: String) {
         val gone = list.filter { it.source == source }
