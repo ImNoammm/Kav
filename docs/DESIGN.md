@@ -449,8 +449,8 @@ different corners on one screen is a fail.
 - Surfaces: a card is `Modifier.panel()`; something floating over a map or a list is `Modifier.glassSurface()`
   (`seeThrough()` over the live map). Don't build a see-through background by hand. A surface never changes between
   glass and solid while it is on screen, and pressing it doesn't change how see-through it is.
-- Every look is checked: dark, OLED and light. Kav's own screens (Settings, reports, navigation) keep Kav's look under
-  a theme.
+- Every look is checked: dark, OLED and light. Kav's notices and prompts and the report form keep Kav's look under a
+  theme; Settings and navigation take it.
 
 ## 9. One of each
 

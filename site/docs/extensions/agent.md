@@ -2266,8 +2266,8 @@ marks its own way with `kav.map()` ([native.md](https://kavapp.link/docs/extensi
 below 4.5:1, or `realtime`, `problem` or `critical` below 3:1, on `bg`, `surface` or `surfaceRaised`, where your
 theme sets both colors. Look at it in Kav, in each look you set, before you publish.
 
-Kav keeps its own look on its protected screens: Settings (with extension management, sources, safe mode and the
-themes list itself), its notices, the report form and navigation. So a theme shows once the rider leaves Settings.
+Kav keeps its own look on its notices and prompts and on the report form. Everywhere else, Settings and navigation
+included, shows the applied theme.
 
 An extension (no `kind`) may still bring a look with a `theme` contribution and the same `"theme"` field, as before.
 The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the

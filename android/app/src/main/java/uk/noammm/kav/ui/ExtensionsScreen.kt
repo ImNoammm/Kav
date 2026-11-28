@@ -451,8 +451,8 @@ internal fun ThemeChoice() {
     val hub = remember { ExtApp.hub(ctx) }
     if (hub.registry.installed.none { it.manifest.isTheme }) return
     InfoHeader(T("Theme", "ערכת נושא"), T(
-        "A theme changes how Kav looks, and can add settings and more of its own. Settings keeps Kav's own look, so no theme can hide or fake it.",
-        "ערכת נושא משנה את המראה של Kav, ויכולה להוסיף הגדרות ועוד משלה. ההגדרות נשארות במראה של Kav, כך שאף ערכת נושא לא יכולה להסתיר אותן או לזייף אותן.",
+        "A theme changes how Kav looks, and can add settings and more of its own.",
+        "ערכת נושא משנה את המראה של Kav, ויכולה להוסיף הגדרות ועוד משלה.",
     ))
     ThemeList(hub) { id -> ExtUi.returnTo = "look"; ExtUi.wanted = "e:$id"; SettingsNav.wanted = "extensions" }
     // The page's own parts follow at a section's distance.

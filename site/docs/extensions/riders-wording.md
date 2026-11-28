@@ -50,7 +50,7 @@ extensions, each with its own switch. A tap on an extension opens its page.
 | Show its tags on routes | הצגת התגיות שלו על מסלולים | `results.annotate` |
 | Required | חובה | under a walking model, a transfer rule or a filter that is on: "Without it, a search shows no routes" |
 | Use it as my Home screen | שימוש בו כמסך הבית שלי | `home.body`, with "Kav's Home shows if it fails" |
-| Use its look | שימוש במראה שלו | an extension's `theme` contribution, with "Settings keep Kav's own look" |
+| Use its look | שימוש במראה שלו | an extension's `theme` contribution |
 | Use this theme | שימוש בערכת הנושא | a theme (`"kind": "theme"`): its switch at the top of its page. Elsewhere each theme has Apply (החלה), and a tick once applied |
 | Theme, Themes | ערכת נושא, ערכות נושא | what Kav calls a theme package everywhere |
 | Kav's own look | המראה של Kav | the "Kav" row of the themes list, which takes every theme off |

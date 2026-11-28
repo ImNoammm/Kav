@@ -1677,7 +1677,7 @@ private object MapPool {
     var warmed by mutableStateOf(false)
     // The kept map was let go while Kav was out of sight (drop): none is drawn in its place until Kav is back.
     var resting by mutableStateOf(false)
-    // Screens in front that took the kept map: none is drawn in its place until they go. Made and then put away in the
+    // Screens in front that took the kept map: no new one is started in its place until they go. Made and then put away in the
     // first seconds of the screen that took it, a new one held its main thread for two long frames as it loaded.
     var holders by mutableIntStateOf(0)
 
@@ -1720,9 +1720,9 @@ private object MapPool {
 
 // The phone short of memory with Kav in the background (MainActivity.onTrimMemory): the map kept drawn for the next
 // screen is let go, about 26 MB, and drawn again once Kav is back. Telling the maps in use to let go of what they can
-// (MapView.onLowMemory) freed next to nothing when measured, so they're left alone.
+// (MapView.onLowMemory) freed next to nothing when measured, so they're left alone. Home's kept still goes too.
 internal object SpareMap {
-    fun drop() = MapPool.drop()
+    fun drop() { MapPool.drop(); MapStills.dropHome() }
 
     fun back() { MapPool.resting = false }
 }
@@ -1803,6 +1803,8 @@ fun TileMap(
     firstFrame: Boolean = false,
     // Drawn out of sight only to load its tiles (MapWarmUp).
     warming: Boolean = false,
+    // Home's: its last still is kept as it closes, and stands for it as it opens again until it has drawn (MapStills.homeAt).
+    carryStill: Boolean = false,
     // The map goes with the rider (recenterOn) as they move, centred on them, until a hand moves it.
     followRider: Boolean = false,
     // Where the rider is, on maps that offer heading-up as a control.
@@ -1985,7 +1987,11 @@ fun TileMap(
     // On its own surface, its still for what draws Kav's own layer where its hole is (MapStills) while it's in front: taken
     // once it has rested a moment, and again at most once a second while it draws anything new at rest (the vehicles);
     // dropped for its plain ground as it moves.
-    val still = remember { MapStill() }
+    val still = remember { MapStill().apply { if (carryStill) image = follow?.let { MapStills.homeAt(it.lat to it.lon) } } }
+    if (carryStill && MAP_ON_SURFACE && !warming) {
+        val at by rememberUpdatedState(follow?.let { it.lat to it.lon })
+        DisposableEffect(Unit) { onDispose { at?.let { MapStills.keepHome(still.image, still.tint, it) } } }
+    }
     if (MAP_ON_SURFACE && !warming) {
         // While Kav is seen at all, not only while it's in front: as it comes back from another app (Rav-Pass after Pay
         // for this ride) it's seen before it's in front, and the panels over the map went solid.
@@ -2077,12 +2083,19 @@ fun TileMap(
         val json = MapFile.styleJson(ctx, type, K.look, labels, preview = remote, tone = K.mapTone) ?: return@LaunchedEffect
         val kept = pooled?.style
         if (style == null && json == held[0] && kept != null && kept.isFullyLoaded) style = kept
-        else map?.setStyle(Style.Builder().fromJson(json).withShields(ctx)) {
-            // No fade of MapLibre's own as marks are placed: a tile drawn new as the zoom crossed a whole level placed
-            // the vehicles' marks again, each fading in from nothing over 300 ms while their halos showed at once, so
-            // vehicles seemed to vanish under the fingers. Kav fades its own marks; colors still change over 300 ms.
-            it.transition = org.maplibre.android.style.layers.TransitionOptions(300, 0, false)
-            held[0] = json; style = it; fresh = it
+        else {
+            // The old style can't be read once a new one is set, so every effect drawing on it (each keyed on style)
+            // is ended first: let go, the next frame's composition ends them, and the frame after that is safe. Before,
+            // one of them read a layer of the old style and MapLibre threw: ending a trip under a theme crashed Kav.
+            if (style != null) { style = null; withFrameNanos { }; withFrameNanos { } }
+            map?.setStyle(Style.Builder().fromJson(json).withShields(ctx)) {
+                // No fade of MapLibre's own as marks are placed: a tile drawn new as the zoom crossed a whole level
+                // placed the vehicles' marks again, each fading in from nothing over 300 ms while their halos showed at
+                // once, so vehicles seemed to vanish under the fingers. Kav fades its own marks; colors still change
+                // over 300 ms.
+                it.transition = org.maplibre.android.style.layers.TransitionOptions(300, 0, false)
+                held[0] = json; style = it; fresh = it
+            }
         }
     }
     LaunchedEffect(fresh) { warmBuildings(mapView, map ?: return@LaunchedEffect, fresh ?: return@LaunchedEffect) }
@@ -2981,8 +2994,10 @@ fun TileMap(
         if (MAP_ON_SURFACE) Box(Modifier.fillMaxSize().drawBehind {
             if (MapVeil.on || surfaceAway.value) still.image?.let { drawImage(it, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt())) }
                 ?: drawRect(still.tint)
+            // Before it has drawn at all, a still it came with (carryStill) rather than its ground.
             val cover = 1f - shown.floatValue
-            if (cover > 0f) drawRect(ground, alpha = cover)
+            if (cover > 0f) still.image?.let { drawImage(it, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), alpha = cover) }
+                ?: drawRect(ground, alpha = cover)
         })
 
         val tap by rememberUpdatedState(onTap)
@@ -3211,11 +3226,15 @@ private class PulseClock {
 fun MapWarmUp(here: Pair<Double, Double>?) {
     // Only a map drawn from the phone: one that loads online would ask its server for where the rider is, unasked.
     val provider = MapFile.provider()
-    if (MapPool.warmed || MapPool.resting || MapPool.holders > 0 || provider.online() || provider.pack.state !is MapPack.State.Ready) return
+    if (MapPool.warmed || MapPool.resting || provider.online() || provider.pack.state !is MapPack.State.Ready) return
     // 0: not yet, 1: where the rider is, 2: the latest route, in its trip page's map (RouteMap). The same map goes on
     // from one to the other: given back to the pool between them, its surface was let go and made again for nothing.
     var step by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(3_000); step = 1 }
+    // Started only while no screen that took the kept map is in front (MapPool.holders), then drawn to the end: put
+    // away as the Live tab came to front, its surface going held that switch's frame for about 200 ms on the emulator,
+    // at each switch until it once had time to finish.
+    val free = MapPool.holders == 0
+    LaunchedEffect(free) { if (free && step == 0) { kotlinx.coroutines.delay(3_000); step = 1 } }
     val route = remember { LatestRoute.route?.trip?.legs?.filter { it.shape.size >= 2 }?.flatMap { it.shape }?.takeIf { it.isNotEmpty() } }
     if (step <= 0) return
     val points = if (step == 2 && route != null) route else listOf(here ?: (32.0759 to 34.7745))

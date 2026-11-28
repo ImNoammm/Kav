@@ -119,13 +119,15 @@ internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modi
     LaunchedEffect(model.here) { model.here?.let { HomeMap.keep(ctx, it) } }
     var drawn by remember { mutableStateOf(false) }
     var slow by remember { mutableStateOf(false) }
+    // Coming back to Home, its map stands on its last still until it has drawn (MapStills.homeAt): no pulse over it.
+    val pictured = remember { model.activeJourney == null && (model.here ?: HomeMap.place(ctx))?.let(MapStills::homeAt) != null }
     LaunchedEffect(Unit) { delay(600); slow = true }
     Box(modifier) {
         val journey = model.activeJourney
         if (journey != null) HomeTripMap(model, journey, model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }, padding) { drawn = true; HomeMap.pending = false }
         else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(model, it, model.heading, padding) { drawn = true; HomeMap.pending = false } }
         Box(Modifier.fillMaxSize().backdrop { drawRect(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)) })
-        AnimatedVisibility(slow && !drawn, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
+        AnimatedVisibility(slow && !drawn && !pictured, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
             Box(contentAlignment = Alignment.Center) { LoadingPulse(T("Loading the map", "טוענים את המפה")) }
         }
     }
@@ -227,7 +229,8 @@ private fun HomeBusesMap(model: KavModel, here: Pair<Double, Double>, heading: F
     )
     TileMap(listOf(here), Modifier.fillMaxSize(), follow = Follow(here.first, here.second, 0f, HOME_Z, centered = true),
         contentPadding = padding, geometry = geometry, live = live, rider = me.markers.firstOrNull(), riderHeading = heading,
-        recenterControl = false, attribution = false, onDrawn = onDrawn, firstFrame = true, touch = false, name = "home")
+        recenterControl = false, attribution = false, onDrawn = onDrawn, firstFrame = true, touch = false, name = "home",
+        carryStill = true)
 }
 
 // One still picture of a map, w x h dp at scale pixels to a dp, drawn off screen (MapSnapshotter), with where the points

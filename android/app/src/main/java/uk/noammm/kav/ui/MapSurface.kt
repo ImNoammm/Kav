@@ -77,6 +77,20 @@ internal object MapStills {
     // The maps on their own surfaces seen now (started), in root coordinates.
     val shown = mutableStateListOf<MapStill>()
 
+    // Home's map's last still as Home closed, with its ground and the place it was centered on. A page opened over Home
+    // ends its map, and the Home that comes back makes a new one: it stands on this until it has drawn again
+    // (TileMap's carryStill), instead of on plain ground and then "Loading the map" for most of a second.
+    private var home: Triple<ImageBitmap, Color, Pair<Double, Double>>? = null
+
+    fun keepHome(image: ImageBitmap?, tint: Color, at: Pair<Double, Double>) { home = image?.let { Triple(it, tint, at) } }
+
+    // Kept only while it's still a picture of what Home would show: the same map colors, the rider not 50 m away.
+    fun homeAt(at: Pair<Double, Double>): ImageBitmap? = home?.takeIf { (_, tint, was) ->
+        tint == MapInk.bg && metres(was.first, was.second, at.first, at.second) < 50
+    }?.first
+
+    fun dropHome() { home = null }
+
     // Whether a box at root position at, size size, lies over any map on its own surface in front now.
     fun over(at: Offset, size: androidx.compose.ui.geometry.Size): Boolean = shown.any { s ->
         s.size.width > 0 && s.size.height > 0 && at.x < s.at.x + s.size.width && at.x + size.width > s.at.x &&

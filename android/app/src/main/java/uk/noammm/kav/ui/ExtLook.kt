@@ -85,7 +85,7 @@ object ExtShown {
 }
 
 // The theme in force, resolved once to one value (Looks.Theme), and Kav's protected surfaces: while one is on the screen
-// (Settings, the start popups and notices, the report form, navigation) every colour is Kav's own (PLAN.md section 2).
+// (the start popups and notices, the report form) every colour is Kav's own (PLAN.md section 2).
 // K reads its palette here (Theme.kt, applyTheme).
 object ExtLook {
     @Volatile private var theme: Looks.Theme? = null
