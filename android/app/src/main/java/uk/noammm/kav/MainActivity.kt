@@ -1372,7 +1372,10 @@ private fun Shell(model: KavModel) {
             if (settingsReady || model.settingsOpen) {
                 TabLifecycle(model.settingsOpen) {
                     Box(Modifier.fillMaxSize().graphicsLayer {
-                        translationY = size.height * settingsSlide.value
+                        // Settings uses Kav’s palette. Cover the themed tab before that palette can be seen on it.
+                        val offset = if (uk.noammm.kav.ext.Screens.theme == null) settingsSlide.value
+                            else if (model.settingsOpen) 0f else 1f
+                        translationY = size.height * offset
                     }) {
                         SettingsScreen(model, active = model.settingsOpen || settingsSlide.isRunning) { model.settingsOpen = false }
                     }
@@ -1406,37 +1409,21 @@ private fun TabStack(current: Tab, content: @Composable (Tab) -> Unit) {
     // The tabs opened so far, in the order they were first opened.
     val seen = remember { ArrayList<Tab>() }
     val opened = remember(current) { seen.apply { if (current !in this) add(current) }.toList() }
-    val fades = remember { HashMap<Tab, androidx.compose.animation.core.Animatable<Float, androidx.compose.animation.core.AnimationVector1D>>() }
-    // A field typed into on the tab left doesn't keep the keyboard up on the next.
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(current) { focus.clearFocus() }
-    uk.noammm.kav.ui.VeilMaps { fades.any { (tab, fade) -> fade.value != if (tab == current) 1f else 0f } }
     androidx.compose.ui.layout.Layout(
         content = {
             opened.forEach { tab ->
                 key(tab) {
-                    val shown = tab == current
-                    // The first tab shows at once; any opened after it fades in.
-                    val fade = remember { fades.getOrPut(tab) { androidx.compose.animation.core.Animatable(if (fades.isEmpty()) 1f else 0f) } }
-                    LaunchedEffect(shown) { fade.animateTo(if (shown) 1f else 0f, tween(300)) }
-                    // A tab shown again comes to life (its map, the rider's location, its data) once it has faded in:
-                    // started as it faded, the Live map resuming under the fade and the rest of that work took the
-                    // fade's frames. Opened the first time, it starts at once, so its map loads at once.
-                    val inFront by remember { derivedStateOf { fade.value >= 1f } }
-                    val wasInFront = remember { booleanArrayOf(false) }
-                    SideEffect { if (inFront) wasInFront[0] = true }
-                    TabLifecycle(shown && (inFront || !wasInFront[0])) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = fade.value }) { content(tab) }
+                    TabLifecycle(tab == current) {
+                        Box(Modifier.fillMaxSize()) { content(tab) }
                     }
                 }
             }
         },
     ) { measurables, constraints ->
-        // The tab in front last, over the one fading out; the rest stay as they were laid out.
-        val showing = opened.indices.filter { opened[it] != current && (fades[opened[it]]?.value ?: 0f) > 0f } +
-            opened.indexOf(current)
-        val placeables = showing.map { measurables[it].measure(constraints) }
-        layout(constraints.maxWidth, constraints.maxHeight) { placeables.forEach { it.place(0, 0) } }
+        val front = measurables[opened.indexOf(current)].measure(constraints)
+        layout(constraints.maxWidth, constraints.maxHeight) { front.place(0, 0) }
     }
 }
 

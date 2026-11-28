@@ -404,7 +404,7 @@ private fun ThemeRow(hub: Hub, i: Registry.Installed, line: String?, onOpen: () 
     val ctx = LocalContext.current
     val applied = hub.active(i) && Themes.applied(hub.registry.installed)?.identity == i.identity
     ThemeChoiceRow(i.displayName, line, { ExtTile(hub.registry.iconFile(i.identity), null, listOf(uk.noammm.kav.ext.Looks.CAPABILITY), 40.dp) },
-        applied, hub.blocked(i) == null && i.problem.isEmpty(), { applyLook(ctx, hub, i.identity) }, onOpen)
+        applied, hub.blocked(i) == null && i.problem.isEmpty(), { applyLook(ctx, hub, if (applied) null else i.identity) }, onOpen)
 }
 
 @Composable
@@ -416,7 +416,8 @@ private fun ThemeChoiceRow(name: String, line: String?, tile: @Composable () -> 
                     .using(androidx.compose.animation.SizeTransform { _, _ -> androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f) })
             },
             label = "applied") { on ->
-            if (on) Box(Modifier.heightIn(min = 36.dp), contentAlignment = Alignment.Center) {
+            if (on && onOpen != null) SmallButton(T("Turn off", "כיבוי"), false, onApply)
+            else if (on) Box(Modifier.heightIn(min = 36.dp), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, T("Applied", "בשימוש"), tint = K.accentInk, modifier = Modifier.padding(horizontal = K.gap3).size(20.dp))
             }
             else if (can) SmallButton(T("Apply", "החלה"), false, onApply)

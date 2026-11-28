@@ -1299,7 +1299,7 @@ private fun LiveList(
     if (vehicles.isEmpty()) {
         // Nothing near: a quiet line in the middle of the space, the why behind the (i) at the top.
         Column(
-            modifier.fillMaxWidth().padding(K.gap6),
+            modifier.fillMaxWidth().then(if (K.skin?.background != null) Modifier.background(K.surface) else Modifier).padding(K.gap6),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(K.gap2),
         ) {
             LiveGlyph(K.textTertiary, 28.dp)
