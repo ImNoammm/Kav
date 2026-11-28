@@ -151,6 +151,14 @@ fun SettingsScreen(model: KavModel, active: Boolean = true, onClose: () -> Unit)
             ThemeChoice()
             AccentPreview()
             LookChoices { Sub(it) }
+            // Home as 5.2 made it, with its map, or as it was before (OldHome, Home.kt).
+            Sub(T("Home", "דף הבית"))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(K.gap2)) {
+                KavSegmented(
+                    listOf(T("New", "חדש"), T("Old", "ישן")), selected = if (OldHome.on) 1 else 0,
+                    onSelect = { i -> OldHome.load(ctx); OldHome.set(ctx, i == 1) },
+                )
+            }
             Sub(T("Color", "צבע"))
             AccentPicker { Prefs.setAccent(ctx, it.toArgb()) }
             LineBadgeChoice()
