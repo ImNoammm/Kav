@@ -87,9 +87,11 @@ internal fun HomeScreen(
     }
     // The map at the top (MapPicture.kt), the glass of the places' tiles over it, and paying under Settings, which goes
     // with the map as the list scrolls.
-    val mapShown = ext == null && HomeMap.shown(ctx, model.here)
+    // The old Home (before 5.2's map), switched in Settings > Look (OldHome).
+    remember { OldHome.load(ctx) }
+    val mapShown = ext == null && !OldHome.on && HomeMap.shown(ctx, model.here)
     val mapLiquid = rememberLiquidBackdrop()
-    val payButton = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
+    val payButton = !OldHome.on && (Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val payFade = with(LocalDensity.current) { 56.dp.toPx() }
     val payGone by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset >= payFade } }
@@ -194,7 +196,7 @@ internal fun HomeScreen(
                 // The card only with something in it: tickets or rides.
                 val showPay = Shown.payments || PayMode.lost.isNotEmpty() || PayMode.offer
                 if ((showPay || TicketStore.kept.any { it.key.startsWith("ext:") } || TicketStore.history.any { it.key.startsWith("ext:") }) &&
-                    (TicketStore.kept.isNotEmpty() || TicketStore.history.isNotEmpty())) item(key = "payments") {
+                    (OldHome.on || TicketStore.kept.isNotEmpty() || TicketStore.history.isNotEmpty())) item(key = "payments") {
                     KavPart("home.pay", Unit, { JSONObject() }, ownGap = true) { PayCard(listMotion().padding(top = K.gap4), showPay) }
                 }
                 // Its caption and See all inside the card, as the suggestions card has its pages' captions.
@@ -247,6 +249,23 @@ internal fun HomeScreen(
             onChangePlace = { editing = null; onSetFavourite(f) },
         )
     }
+    }
+}
+
+// Which look Home has, kept on the phone: the old one (before 5.2's map, the pay button under Settings and the pay card
+// shown with nothing in it), or the new one. The default is the new.
+internal object OldHome {
+    var on by mutableStateOf(false)
+    private var read = false
+    private fun store(ctx: android.content.Context) = ctx.applicationContext.getSharedPreferences("home-look", android.content.Context.MODE_PRIVATE)
+    fun load(ctx: android.content.Context) {
+        if (read) return
+        read = true
+        on = store(ctx).getBoolean("old", false)
+    }
+    fun set(ctx: android.content.Context, value: Boolean) {
+        on = value
+        store(ctx).edit().putBoolean("old", value).apply()
     }
 }
 
