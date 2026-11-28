@@ -243,7 +243,10 @@ class MainActivity : ComponentActivity() {
                 splash.setBackgroundColor(launchBg)
                 splash.addView(flight, android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 android.animation.TimeAnimator().apply {
-                    setTimeListener { animator, _, sinceLast ->
+                    setTimeListener { animator, elapsed, sinceLast ->
+                        // Let Home's local map draw behind the launch screen before revealing it. A failed map
+                        // must not keep the rest of Kav covered.
+                        if (uk.noammm.kav.ui.HomeMap.pending && elapsed < 4000) return@setTimeListener
                         // At most two frames' time per frame: when Kav's first frames hold the main thread up, the
                         // flight waits for them instead of jumping to its end unseen.
                         flight.t = minOf(SplashFlight.TOTAL, flight.t + minOf(sinceLast, 33L))
@@ -1407,7 +1410,7 @@ private fun TabStack(current: Tab, content: @Composable (Tab) -> Unit) {
     // A field typed into on the tab left doesn't keep the keyboard up on the next.
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(current) { focus.clearFocus() }
-    uk.noammm.kav.ui.VeilMaps { fades.values.any { it.isRunning } }
+    uk.noammm.kav.ui.VeilMaps { fades.any { (tab, fade) -> fade.value != if (tab == current) 1f else 0f } }
     androidx.compose.ui.layout.Layout(
         content = {
             opened.forEach { tab ->

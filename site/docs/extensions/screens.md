@@ -322,8 +322,8 @@ An extension (no `kind`) may still bring a look with a `theme` contribution and 
 The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the
 applied theme off.
 
-Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors, corners and outlines only, and
-[native/quiet-home](../samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
+Samples: [themes/night-sea](https://github.com/ImNoammm/kav-extension-kit/blob/main/samples/themes/night-sea/manifest.json), colors, corners and outlines only, and
+[native/quiet-home](https://github.com/ImNoammm/kav-extension-kit/blob/main/samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
 hides Home's suggestions card.
 
 ## Home screen widgets

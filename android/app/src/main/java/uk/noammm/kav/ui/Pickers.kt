@@ -197,7 +197,7 @@ fun PlacePicker(
     var recents by remember { mutableStateOf(uk.noammm.kav.Prefs.recents(ctx)) }
     // Before anything is typed: the places the rider's trips often go to, then the town's own places (around).
     val trips = remember { uk.noammm.kav.Prefs.trips(ctx) }
-    val frequent = remember(trips) { frequentPlaces(trips) }
+    val frequent = remember(trips, favourites) { frequentPlaces(trips, exclude = favourites.mapNotNull { it.place }) }
     var around by remember { mutableStateOf<Pair<String, List<Transit.Place>>?>(null) }
     var setting by remember { mutableStateOf(initialSetting) }
     var editing by remember { mutableStateOf<Favourite?>(null) }
@@ -372,8 +372,9 @@ fun PlacePicker(
     }
     // One row a place: a recent place that is a frequent one shows once, under Frequent, and the town's places skip both.
     fun near(a: Transit.Place, b: Transit.Place) = metres(a.lat, a.lon, b.lat, b.lon) < 150
-    val recentShown = recents.filter { r -> frequent.none { near(it, r) } }
-    val aroundShown = around?.let { (title, list) -> title to list.filter { p -> (frequent + recents).none { near(it, p) } } }
+    val saved = favourites.mapNotNull { it.place }
+    val recentShown = recents.filter { r -> (frequent + saved).none { near(it, r) } }
+    val aroundShown = around?.let { (title, list) -> title to list.filter { p -> (frequent + recents + saved).none { near(it, p) } } }
     val showRecents = q.isBlank() && recentShown.isNotEmpty()
     val found = q.isNotBlank() && (places.isNotEmpty() || stations.isNotEmpty())
 
@@ -777,13 +778,23 @@ private fun StopMapBody(
 }
 
 // The places the rider's trips went to more than once, the most often first and, as often, the latest first. Trips that
-// end within about 100 m of each other went to one place, the latest trip's.
-internal fun frequentPlaces(trips: List<uk.noammm.kav.RecentTrip>, most: Int = 3): List<Transit.Place> =
-    trips.groupBy { "%.3f,%.3f".format(java.util.Locale.US, it.to.lat, it.to.lon) }.values
+// end within 150 m of the latest trip went to one place. Saved shortcuts already have their own tiles.
+internal fun frequentPlaces(trips: List<uk.noammm.kav.RecentTrip>, most: Int = 3, exclude: List<Transit.Place> = emptyList()): List<Transit.Place> {
+    val groups = ArrayList<MutableList<uk.noammm.kav.RecentTrip>>()
+    for (trip in trips.sortedByDescending { it.at }) {
+        val same = groups.firstOrNull { group ->
+            val p = group.first().to
+            metres(p.lat, p.lon, trip.to.lat, trip.to.lon) < 150
+        }
+        if (same != null) same += trip else groups += mutableListOf(trip)
+    }
+    return groups
         .map { same -> same.sumOf { it.times } to same.maxBy { it.at } }
         .filter { it.first >= 2 }
         .sortedWith(compareByDescending<Pair<Int, uk.noammm.kav.RecentTrip>> { it.first }.thenByDescending { it.second.at })
+        .filter { (_, trip) -> exclude.none { metres(it.lat, it.lon, trip.to.lat, trip.to.lon) < 150 } }
         .take(most).map { it.second.to }
+}
 
 @Composable
 private fun SectionTitle(text: String) = SectionHeader(text, Modifier.padding(horizontal = K.gap4))

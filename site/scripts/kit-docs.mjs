@@ -43,6 +43,7 @@ const renamed = (s) => s.replace(/\b(?:uk\.noammm\.kav|link\.kavapp|kav\.kavapp)
 function link(target) {
   if (/^([a-z]+:|#|\/)/i.test(target)) return target
   const [path, hash = ''] = target.split('#')
+  if (path.startsWith('../samples/')) return `https://github.com/ImNoammm/kav-extension-kit/blob/main/${path.slice(3)}${hash ? '#' + hash : ''}`
   const page = PAGES.get(path.replace(/^\.\//, '').replace(/\/$/, ''))
   return page ? `/docs/extensions/${page}${hash ? '#' + hash : ''}` : (OTHER[path] ?? target)
 }
@@ -125,7 +126,7 @@ const api = readdirSync(apiDir).filter((f) => f.endsWith('.java')).sort()
 const agent = [
   '# Building a Kav extension',
   '',
-  `Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: ${SITE}/docs/extensions/agent. For Kav 5 and newer, API level 3.`,
+  `Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: ${SITE}/docs/extensions/agent. Covers API levels 3–5. API 5 requires Kav 5.2 or newer (minKav 48).`,
   '',
   '## What a Kav extension is',
   '',
@@ -144,7 +145,7 @@ const agent = [
   '',
   '## What you need',
   '',
-  `- Kav's API jar: ${SITE}${JAR} (a few KB). Or compile the four Java files under "The API" below yourself.`,
+  `- Kav's API jar: ${SITE}${JAR} (a few KB). Or compile the Java files under "The API" below yourself.`,
   '- A JDK, the Android SDK (its `android.jar` and `d8`) and, for Kotlin, the Kotlin compiler.',
   '- The developer kit\'s `kavx` command line does every step (check, bundle, verify): `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on your PATH. Without it, follow "Kotlin and Java" and "The bundle format" below by hand.',
   '- A phone or an emulator with Kav 5 or newer to try it.',

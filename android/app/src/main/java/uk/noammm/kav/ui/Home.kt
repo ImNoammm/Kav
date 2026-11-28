@@ -128,7 +128,6 @@ internal fun HomeScreen(
                         }
                         .graphicsLayer {
                             val by = if (listState.firstVisibleItemIndex > 0) payFade else listState.firstVisibleItemScrollOffset.toFloat().coerceAtMost(payFade)
-                            translationY = -by
                             alpha = 1f - by / payFade
                         },
                     contentAlignment = Alignment.TopEnd,

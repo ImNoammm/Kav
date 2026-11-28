@@ -59,6 +59,8 @@ import uk.noammm.kav.data.KavLive
 import uk.noammm.kav.data.MapFile
 import uk.noammm.kav.data.MapPack
 import uk.noammm.kav.data.MapPacks
+import uk.noammm.kav.data.nearestStops
+import uk.noammm.kav.loadNet
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
@@ -69,6 +71,8 @@ import kotlin.math.roundToInt
 // way the phone faces: a picture of where they are, never following as navigation does. Drawn from Kav's own map on the
 // phone alone: nothing is asked of a map server for it.
 internal object HomeMap {
+    // The launch screen stays over Home until its map has a frame to show.
+    var pending = false
     // Where the rider was last, kept in the cache folder: the map shows there from the first frame, before the phone
     // says where they are now. There is none until the rider's place has been known once.
     private var last: Pair<Double, Double>? = null
@@ -107,15 +111,19 @@ private const val HOME_TURN = 15f
 internal fun HomeLiveMap(model: KavModel, padding: PaddingValues, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     // The compass is on while it shows (MainActivity's heading).
-    DisposableEffect(Unit) { model.homeMapShown = true; onDispose { model.homeMapShown = false } }
+    DisposableEffect(Unit) {
+        model.homeMapShown = true
+        HomeMap.pending = true
+        onDispose { model.homeMapShown = false; HomeMap.pending = false }
+    }
     LaunchedEffect(model.here) { model.here?.let { HomeMap.keep(ctx, it) } }
     var drawn by remember { mutableStateOf(false) }
     var slow by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(600); slow = true }
     Box(modifier) {
         val journey = model.activeJourney
-        if (journey != null) HomeTripMap(model, journey, model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }, padding) { drawn = true }
-        else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(it, model.heading, padding) { drawn = true } }
+        if (journey != null) HomeTripMap(model, journey, model.heading?.let { ((it / HOME_TURN).roundToInt() * HOME_TURN) % 360f }, padding) { drawn = true; HomeMap.pending = false }
+        else (model.here ?: HomeMap.place(ctx))?.let { HomeBusesMap(model, it, model.heading, padding) { drawn = true; HomeMap.pending = false } }
         Box(Modifier.fillMaxSize().backdrop { drawRect(Brush.verticalGradient(0.55f to K.bg.copy(alpha = 0f), 1f to K.bg)) })
         AnimatedVisibility(slow && !drawn, Modifier.fillMaxSize().padding(padding), enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
             Box(contentAlignment = Alignment.Center) { LoadingPulse(T("Loading the map", "טוענים את המפה")) }
@@ -144,13 +152,27 @@ private fun HomeTripMap(model: KavModel, journey: ActiveJourney, heading: Float?
 // The vehicles around the rider, merged where they'd lie on one another as on the Live tab, asked about while Home is
 // in front as often as the Live tab asks. Kept for the Live tab too, which then opens with them (LiveMemory).
 @Composable
-private fun HomeBusesMap(here: Pair<Double, Double>, heading: Float?, padding: PaddingValues, onDrawn: () -> Unit) {
+private fun HomeBusesMap(model: KavModel, here: Pair<Double, Double>, heading: Float?, padding: PaddingValues, onDrawn: () -> Unit) {
+    val ctx = LocalContext.current
     val density = LocalDensity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var area by remember { mutableStateOf(LiveMemory.recentArea(here)) }
     // Asked about again once the rider is 300 m from where they were, as the Live tab's stops are.
     var at by remember { mutableStateOf(here) }
     LaunchedEffect(here) { if (metres(here.first, here.second, at.first, at.second) > 300) at = here }
+    var stops by remember { mutableStateOf(emptyList<Pair<Double, Double>>()) }
+    LaunchedEffect(at, model.net) {
+        val net = model.net ?: runCatching { loadNet(ctx) }.getOrNull() ?: return@LaunchedEffect
+        stops = withContext(Dispatchers.Default) {
+            net.nearestStops(at.first, at.second, k = 120, radius = 1500.0).map { (i, _) -> net.lat[i] to net.lon[i] }
+        }
+    }
+    val geometry = remember(stops, MapInk.bg, MapInk.muted) {
+        MapGeometry(dots = stops.flatMap { (lat, lon) -> listOf(
+            MapDot(lat, lon, MapInk.bg, 6f),
+            MapDot(lat, lon, Color.Transparent, 4.2f, MapInk.muted, 1.6f),
+        ) })
+    }
     LaunchedEffect(at, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
@@ -204,8 +226,8 @@ private fun HomeBusesMap(here: Pair<Double, Double>, heading: Float?, padding: P
         images = vehicles.images + me.images, tracks = vehicles.tracks, together = true,
     )
     TileMap(listOf(here), Modifier.fillMaxSize(), follow = Follow(here.first, here.second, 0f, HOME_Z, centered = true),
-        contentPadding = padding, live = live, rider = me.markers.firstOrNull(), riderHeading = heading,
-        recenterControl = false, attribution = false, onDrawn = onDrawn, touch = false, name = "home")
+        contentPadding = padding, geometry = geometry, live = live, rider = me.markers.firstOrNull(), riderHeading = heading,
+        recenterControl = false, attribution = false, onDrawn = onDrawn, firstFrame = true, touch = false, name = "home")
 }
 
 // One still picture of a map, w x h dp at scale pixels to a dp, drawn off screen (MapSnapshotter), with where the points

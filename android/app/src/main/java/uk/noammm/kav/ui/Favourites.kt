@@ -197,6 +197,7 @@ fun FavouriteStrip(
         if (inEdit) 1f else 0f,
         spring(dampingRatio = .58f, stiffness = Spring.StiffnessMediumLow), label = "editTravel",
     )
+    if (glass) VeilMaps { travel != if (inEdit) 1f else 0f }
     androidx.activity.compose.BackHandler(inEdit) { editMode = false; order = null; held = null; drag = Offset.Zero }
 
     // A favourite's tile, in its cell of the grid.
@@ -324,9 +325,8 @@ fun FavouriteStrip(
     Column(Modifier.fillMaxWidth()) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = K.gap2)) {
             val cols = ((maxWidth + K.gap2) / SLOT).toInt().coerceAtLeast(1)
-            // Where the row sorts, Add shows only while sorting (next to Done) or while no favorite is set yet.
-            val bare = manage && favourites.none { it.place != null }
-            val slots = shown.size + if (inEdit) 2 else if (!manage || bare) 1 else 0
+            // Where the row sorts, Add shows only while sorting, next to Done.
+            val slots = shown.size + if (inEdit) 2 else if (!manage) 1 else 0
             SpotGrid(
                 cols, slots, pitch,
                 Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 1f, stiffness = 500f)),
@@ -339,18 +339,16 @@ fun FavouriteStrip(
                     )
                 } else {
                     // A quiet Add tile with an empty favorite's look; holding a favorite sorts and removes them.
-                    // Once a favorite is set it comes in with Done, so Home shows only the favorites.
-                    if (bare || inEdit || travel > 0f) key("add") {
+                    // It comes in with Done, so Home shows only the favorites.
+                    if (inEdit || travel > 0f) key("add") {
                         StripTile(
                             Icons.Rounded.Add, T("Add", "הוספה"), T("Add a favorite", "הוספת מועדף"),
-                            on = false, onClick = onAdd, quiet = true, enabled = bare || inEdit,
+                            on = false, onClick = onAdd, quiet = true, enabled = inEdit,
                             modifier = Modifier.layoutId(rememberSpot(shown.size, cols)).graphicsLayer {
-                                if (!bare) {
-                                    val grown = .3f + .7f * travel.coerceAtLeast(0f)
-                                    alpha = travel.coerceIn(0f, 1f)
-                                    scaleX = grown
-                                    scaleY = grown
-                                }
+                                val grown = .3f + .7f * travel.coerceAtLeast(0f)
+                                alpha = travel.coerceIn(0f, 1f)
+                                scaleX = grown
+                                scaleY = grown
                             },
                         )
                     }

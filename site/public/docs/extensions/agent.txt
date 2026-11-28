@@ -1,6 +1,6 @@
 # Building a Kav extension
 
-Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: https://kavapp.link/docs/extensions/agent. For Kav 5 and newer, API level 3.
+Everything an AI coding agent needs to build an extension for Kav, the Android transit app for Israel, in one file. Nothing else is needed. The same file as a page: https://kavapp.link/docs/extensions/agent. Covers API levels 3–5. API 5 requires Kav 5.2 or newer (minKav 48).
 
 ## What a Kav extension is
 
@@ -19,7 +19,7 @@ Everything an AI coding agent needs to build an extension for Kav, the Android t
 
 ## What you need
 
-- Kav's API jar: https://kavapp.link/docs/extensions/kav-api.jar (a few KB). Or compile the four Java files under "The API" below yourself.
+- Kav's API jar: https://kavapp.link/docs/extensions/kav-api.jar (a few KB). Or compile the Java files under "The API" below yourself.
 - A JDK, the Android SDK (its `android.jar` and `d8`) and, for Kotlin, the Kotlin compiler.
 - The developer kit's `kavx` command line does every step (check, bundle, verify): `git clone https://github.com/ImNoammm/kav-extension-kit`, then `npm link` in its folder puts `kavx` on your PATH. Without it, follow "Kotlin and Java" and "The bundle format" below by hand.
 - A phone or an emulator with Kav 5 or newer to try it.
@@ -2264,8 +2264,8 @@ An extension (no `kind`) may still bring a look with a `theme` contribution and 
 The rider chooses it with "Use this look" on its page. It is the same single choice as a theme: choosing it takes the
 applied theme off.
 
-Samples: [themes/night-sea](../samples/themes/night-sea/manifest.json), colors, corners and outlines only, and
-[native/quiet-home](../samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
+Samples: [themes/night-sea](https://github.com/ImNoammm/kav-extension-kit/blob/main/samples/themes/night-sea/manifest.json), colors, corners and outlines only, and
+[native/quiet-home](https://github.com/ImNoammm/kav-extension-kit/blob/main/samples/native/quiet-home/src/org/example/quiet/QuietHome.java), a theme with a setting that
 hides Home's suggestions card.
 
 ### Home screen widgets

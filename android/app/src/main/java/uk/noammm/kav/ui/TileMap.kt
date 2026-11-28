@@ -1791,6 +1791,8 @@ fun TileMap(
     remote: Boolean = false,
     // Once it has drawn all it shows.
     onDrawn: (() -> Unit)? = null,
+    // Home reveals the ready map without another fade after the launch screen's own reveal.
+    firstFrame: Boolean = false,
     // Drawn out of sight only to load its tiles (MapWarmUp).
     warming: Boolean = false,
     // The map goes with the rider (recenterOn) as they move, centred on them, until a hand moves it.
@@ -1905,7 +1907,8 @@ fun TileMap(
         if (!drawn) return@LaunchedEffect
         shownAt = android.os.SystemClock.uptimeMillis()
         onDrawn?.invoke()
-        animate(showing(), 1f, animationSpec = tween(250)) { v, _ -> show(v) }
+        if (firstFrame) show(1f)
+        else animate(showing(), 1f, animationSpec = tween(250)) { v, _ -> show(v) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(mapView, lifecycle) {
