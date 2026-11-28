@@ -1287,7 +1287,14 @@ private fun Shell(model: KavModel) {
 
     // Kav's protected surfaces keep Kav's own look under a theme (ExtLook): Settings, the report form, navigation.
     // An extension page opened from Settings sits over it in the extension's own look.
-    ExtLook.Protected((model.settingsOpen && ExtPageNav.overlay.isEmpty()) || model.report != null || model.navigating)
+    val settingsShield = model.settingsOpen && ExtPageNav.overlay.isEmpty()
+    ExtLook.Protected(settingsShield || model.report != null || model.navigating)
+    // Set in the same pass as that hold, so it changes in the same frame as the palette does: under a theme, Settings (in
+    // Kav's palette) covers the tabs exactly while that palette is in force, and neither is seen in the other's.
+    var settingsHeld by remember { mutableStateOf(false) }
+    DisposableEffect(settingsShield) { settingsHeld = settingsShield; onDispose { } }
+    val settingsCovers = if (uk.noammm.kav.ext.Screens.theme == null) model.settingsOpen
+        else settingsHeld || (model.settingsOpen && ExtPageNav.overlay.isNotEmpty())
     var exitAsk by remember { mutableStateOf(false) }
     BackHandler(enabled = !model.navigating) {
         when {
@@ -1307,7 +1314,11 @@ private fun Shell(model: KavModel) {
 
     val liquid = rememberLiquidBackdrop()
     CompositionLocalProvider(LocalLiquidBackdrop provides liquid) {
-    Box(Modifier.fillMaxSize().backdrop(maps = true) { drawRect(K.bg); K.skin?.background?.let { cover(it) } }) {
+    // Read here, not as it's drawn: a theme's wallpaper goes and comes back with the rest of the screen's look, in the
+    // frame Settings covers the tabs (settingsCovers), not a frame before.
+    val backdropBg = K.bg
+    val wallpaper = K.skin?.background
+    Box(Modifier.fillMaxSize().backdrop(maps = true) { drawRect(backdropBg); wallpaper?.let { cover(it) } }) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
@@ -1319,7 +1330,7 @@ private fun Shell(model: KavModel) {
             // Settings covers the bar in the overlay above this scaffold; its opening doesn't resize the tabs.
             val covered = model.report != null || uk.noammm.kav.ui.Sheets.open > 0
             val shown = !model.navigating && !covered
-            Box(Modifier.graphicsLayer { alpha = if (model.settingsOpen) 0f else 1f }) {
+            Box(Modifier.graphicsLayer { alpha = if (settingsCovers) 0f else 1f }) {
                 if (!shown) Spacer(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.safeDrawing))
                 androidx.compose.animation.AnimatedVisibility(
                     shown,
@@ -1372,9 +1383,9 @@ private fun Shell(model: KavModel) {
             if (settingsReady || model.settingsOpen) {
                 TabLifecycle(model.settingsOpen) {
                     Box(Modifier.fillMaxSize().graphicsLayer {
-                        // Settings uses Kav’s palette. Cover the themed tab before that palette can be seen on it.
+                        // Settings uses Kav’s palette. Under a theme it covers the tabs exactly while that palette is on.
                         val offset = if (uk.noammm.kav.ext.Screens.theme == null) settingsSlide.value
-                            else if (model.settingsOpen) 0f else 1f
+                            else if (settingsCovers) 0f else 1f
                         translationY = size.height * offset
                     }) {
                         SettingsScreen(model, active = model.settingsOpen || settingsSlide.isRunning) { model.settingsOpen = false }
@@ -1565,9 +1576,12 @@ private fun TabBar(model: KavModel) {
         Row(Modifier.fillMaxSize().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { t ->
                 val on = model.tab == t
-                val ink by animateColorAsState(
-                    if (on) chosen?.ink ?: K.onAccent else bar?.ink ?: K.textSecondary, androidx.compose.animation.core.tween(150), label = "tabInk",
-                )
+                // A new look (a theme back as Settings closes) shows at once; only a change of tab eases.
+                val ink = key(chosen?.ink, K.onAccent, bar?.ink, K.textSecondary) {
+                    animateColorAsState(
+                        if (on) chosen?.ink ?: K.onAccent else bar?.ink ?: K.textSecondary, androidx.compose.animation.core.tween(150), label = "tabInk",
+                    ).value
+                }
                 Column(
                     Modifier.weight(1f).fillMaxHeight().clip(thumb).selectable(
                         on, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },

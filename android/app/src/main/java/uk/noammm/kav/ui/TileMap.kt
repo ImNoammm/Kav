@@ -1089,7 +1089,10 @@ private class MapCamera {
                 WorldPoint(current.worldX + (area.left - area.w / 2) / scale, current.worldY + (area.top - area.h / 2) / scale),
                 WorldPoint(current.worldX + (area.right - area.w / 2) / scale, current.worldY + (area.bottom - area.h / 2) / scale),
             )
-            moveTo(fitCamera(bounds + changed, viewport, padding, current.zoom), scope)
+            // Points that came in after the frame (Live's stops loading) widen it: Recenter comes back to this zoom too.
+            val fit = fitCamera(bounds + changed, viewport, padding, current.zoom)
+            framedZoom = fit.zoom
+            moveTo(fit, scope)
         } else if (resized && !refit && !manual && !placed && current != null && !viewport.contains(points.first(), current)) {
             val area = viewport.inset(padding)
             val scale = current.pxPerWorld
@@ -1111,12 +1114,12 @@ private class MapCamera {
     }
 
     // Zoomed out past the map's own frame (to the whole country, say), it comes back to that frame's zoom; zoomed in
-    // closer, it keeps the zoom.
-    fun centre(point: WorldPoint, scope: CoroutineScope) {
+    // closer, it keeps the zoom. The Recenter button (all) comes back to the frame's zoom from either side.
+    fun centre(point: WorldPoint, scope: CoroutineScope, all: Boolean = false) {
         val current = destination ?: value ?: return
         manual = false
         placed = false
-        val zoom = maxOf(current.zoom, framedZoom ?: current.zoom)
+        val zoom = if (all) framedZoom ?: current.zoom else maxOf(current.zoom, framedZoom ?: current.zoom)
         moveTo(current.copy(worldX = point.x, worldY = point.y, zoom = zoom, rotation = 0f), scope)
     }
 
@@ -1197,13 +1200,18 @@ private class MapCamera {
     // Restore the camera and manual state after a Live card closes. Keep the reference height too, so resizing
     // around the closing card doesn't shift the restored position.
     private var kept: Triple<Camera, Boolean, Float>? = null
+    // The frame's zoom then too: the card's own frame (a vehicle's whole line) isn't what Recenter comes back to.
+    private var keptZoom: Float? = null
     private var returnMotion: Job? = null
     suspend fun awaitReturn() { returnMotion?.join() }
     private var placed = false
-    fun keep(height: Float) { if (kept == null) kept = (destination ?: value)?.let { Triple(it, manual, if (ref > 0f) ref else height) } }
+    fun keep(height: Float) {
+        if (kept == null) kept = (destination ?: value)?.let { keptZoom = framedZoom; Triple(it, manual, if (ref > 0f) ref else height) }
+    }
     fun back(height: Float, scope: CoroutineScope) {
         val (place, hand, from) = kept ?: return
         kept = null
+        framedZoom = keptZoom
         val to = if (ref > 0f) ref else height
         moveTo(place.copy(worldY = place.worldY + (to - from) / 2 / place.pxPerWorld), scope)
         placed = true
@@ -3133,7 +3141,7 @@ fun TileMap(
                             look?.invoke(null, 0.0)
                             when {
                                 follow != null -> camera.resume()
-                                me != null -> camera.centre(WorldPoint(Geo.x(me.second), Geo.y(me.first)), scope)
+                                me != null -> camera.centre(WorldPoint(Geo.x(me.second), Geo.y(me.first)), scope, all = true)
                                 else -> camera.reset(worldPoints, viewport, padFraction, fitMaxZoom, scope)
                             }
                         },
