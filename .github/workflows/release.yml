@@ -6,6 +6,16 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build again
+        required: true
+        type: string
+      publish_compatibility_report:
+        description: Allow third-party hook failures and attach their report (own samples still block)
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -15,8 +25,16 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Check release tag
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
       - uses: gradle/actions/wrapper-validation@v6
       - uses: actions/setup-java@v6
         with:
@@ -38,7 +56,7 @@ jobs:
       # Every release so far is signed with this certificate. Any other key and Android refuses the update.
       - name: Check
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           APK="kav-$VERSION.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$APK"
           python3 -c 'import sys, zipfile; assert not any(n.endswith((".kav", ".kav.gz")) for n in zipfile.ZipFile(sys.argv[1]).namelist()), "Timetable must be downloaded during setup"' "$APK"
@@ -65,6 +83,7 @@ jobs:
       - name: Check extension hooks
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_REPORT: ${{ inputs.publish_compatibility_report || false }}
         run: |
           CHECK_DIR="$(mktemp -d)"
           node site/scripts/community.mjs --kit kit --bundles "$CHECK_DIR/community" \
@@ -74,7 +93,12 @@ jobs:
             node kit/bin/kavx.js bundle "$folder" --out "$CHECK_DIR/samples/${folder##*/}.kavb"
           done
           shopt -s nullglob
-          node kit/tools/hookable.js "$APK" "$VERSION_CODE" "$CHECK_DIR"/community/*/*.kavb "$CHECK_DIR"/samples/*.kavb
+          node kit/tools/hookable.js "$APK" "$VERSION_CODE" "$CHECK_DIR"/samples/*.kavb
+          if ! node kit/tools/hookable.js "$APK" "$VERSION_CODE" "$CHECK_DIR"/community/*/*.kavb > extension-compatibility.txt 2>&1; then
+            cat extension-compatibility.txt
+            [ "$PUBLISH_REPORT" = true ] || exit 1
+            echo "::warning::Third-party hook compatibility failed; see the attached extension-compatibility.txt."
+          fi
 
       - uses: actions/attest-build-provenance@v4
         with:
@@ -84,5 +108,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --title "Kav ${GITHUB_REF_NAME#v}" --notes ''
-          gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
+          gh release view "$RELEASE_TAG" > /dev/null 2>&1 || gh release create "$RELEASE_TAG" --draft --title "Kav ${RELEASE_TAG#v}" --notes ''
+          gh release upload "$RELEASE_TAG" "$APK" extension-compatibility.txt --clobber
