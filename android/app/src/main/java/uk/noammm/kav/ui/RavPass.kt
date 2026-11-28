@@ -310,9 +310,33 @@ private val OFFER_YELLOW = androidx.compose.ui.graphics.Color(0xFFF5C518)
 // Home's pay card: the tickets and rides. Paying itself is the button under Settings, which also offers setting it up.
 @Composable
 internal fun PayCard(modifier: Modifier, showPay: Boolean) {
+    val ctx = LocalContext.current
+    val action = PayMode.lost.isNotEmpty()
+    val offer = !Shown.payments && !action && PayMode.offer
     Column(modifier.fillMaxWidth().panel(K.rCard).animateContentSize(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 500f))) {
+      // The old Home (Settings > Look): paying is the card's first row, as in Kav 5.1, not the button under Settings.
+      if (OldHome.on && showPay) {
+        ListRow(
+            T("Pay for a ride", "תשלום על נסיעה"),
+            subtitle = when {
+                action -> T("Action required", "נדרשת פעולה")
+                offer -> T("Set up paying with Rav-Pass", "הגדרת תשלום עם רב-פס")
+                else -> null
+            },
+            subtitleColor = if (action) K.problem else K.accentInk,
+            leading = { Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, tint = K.textSecondary, modifier = Modifier.size(24.dp)) },
+            chevron = !offer,
+            onClick = {
+                when {
+                    action -> PaySetup.show()
+                    offer -> payMode(ctx, true, "home")
+                    else -> RavPass.open(ctx, RavPass.Section.BUS)
+                }
+            },
+        )
+      }
       // Each part starts with its hairline: the first one's is cut off.
-      Column(Modifier.layout { m, c ->
+      Column(if (OldHome.on && showPay) Modifier else Modifier.layout { m, c ->
           val p = m.measure(c)
           val cut = kotlin.math.ceil(0.5.dp.toPx()).toInt()
           layout(p.width, (p.height - cut).coerceAtLeast(0)) { p.place(0, -cut) }
